@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -83,7 +84,12 @@ func uiSrc(t *testing.T, withIndex bool) string {
 // uiRun runs ci/tag-with-ui.sh in repo and returns its output and its exit error (nil on success).
 func uiRun(t *testing.T, repo, src string) (string, error) {
 	t.Helper()
-	cmd := exec.Command(filepath.Join(repoRoot(t), "ci", "tag-with-ui.sh"), uiTag, src)
+	script := filepath.Join(repoRoot(t), "ci", "tag-with-ui.sh")
+	cmd := exec.Command(script, uiTag, src)
+	if runtime.GOOS == "windows" {
+		// Windows cannot exec a shell script; Git Bash runs it there (#559).
+		cmd = exec.Command("bash", filepath.ToSlash(script), uiTag, src)
+	}
 	cmd.Dir = repo
 	cmd.Env = uiEnv(repo)
 	out, err := cmd.CombinedOutput()

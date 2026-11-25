@@ -65,6 +65,7 @@ func TestClassify(t *testing.T) {
 		{[]string{"web/src/a.ts"}, set("web")},
 		{[]string{"docs/a.md"}, set()},
 		{[]string{"pack/shell/x"}, set("go")},
+		{[]string{"pack/powershell/x"}, set("go")},
 		{[]string{"ci/literal-grep.sh"}, set("go")},
 		{[]string{"tests/pack/fixtures/a.json"}, set("go")},
 		{[]string{"docs/install.md"}, set("go")},

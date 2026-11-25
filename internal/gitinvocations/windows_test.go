@@ -36,3 +36,29 @@ func TestFindWindowsCwd(t *testing.T) {
 		})
 	}
 }
+
+// RepoOf and ExistingAncestor get a native path from their callers (turnroots, bashwrites):
+// `C:\…\repo\new\a.go`. With `\` pyDirname found no parent, so no repo and no ancestor (#559).
+func TestRepoOfWindowsPath(t *testing.T) {
+	repo := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	file := filepath.Join(repo, "new", "a.go")
+	if got, ok := RepoOf(file); !ok || got != filepath.ToSlash(repo) {
+		t.Errorf("RepoOf(%q) = %q, %v; want %q", file, got, ok, filepath.ToSlash(repo))
+	}
+	if got, ok := ExistingAncestor(file); !ok || got != filepath.ToSlash(repo) {
+		t.Errorf("ExistingAncestor(%q) = %q, %v; want %q", file, got, ok, filepath.ToSlash(repo))
+	}
+}
+
+// Walking up from `C:\…` must stop at the drive root `C:/`, never at `C:`: that is the current
+// directory of the drive, so a path just under the root would land in the repo of the cwd (#559).
+func TestExistingAncestorStopsAtTheDriveRoot(t *testing.T) {
+	vol := filepath.VolumeName(t.TempDir())
+	path := vol + `\lighthouse-559-missing\x`
+	if got, ok := ExistingAncestor(path); !ok || got != vol+"/" {
+		t.Errorf("ExistingAncestor(%q) = %q, %v; want %q", path, got, ok, vol+"/")
+	}
+}

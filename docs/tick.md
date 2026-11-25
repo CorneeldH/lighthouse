@@ -228,15 +228,27 @@ slash-commando's.
   (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
   Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
   gepost. Vindt tick geen run of geen sessie voor de handoff, dan geeft hij het issue meteen terug.
-- **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
-  start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
-  niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
-  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag waarna de
-  worktree verschoof, geeft geen toestemming: een antwoord `push` geeft dan dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
-  grens: een run post met hetzelfde account als de gebruiker en kan dus `push` antwoorden; dan valt de
-  review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
-  tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
-  de grens.
+- **Het antwoord op een pusher-Vraag is toestemming, in gewone taal.** Voor precies de `sha` uit de laatste
+  Vraag van de pusher. Per antwoord loopt de stroom zo: (1) exact `push` start de pusher meteen, zonder
+  classifier. (2) Elk ander antwoord gaat eerst langs git (zie *Afloop van een push-rij*): bevat origin
+  de SHA, dan gaat de keten verder, ongeacht de tekst. (3) Staat de SHA niet op origin, dan leest een
+  classifier het antwoord: `permit`, `pushed` of `other`. Bij `permit` start tick de pusher opnieuw met
+  `--permit <sha>`, ook voor een Vraag zonder `after:`; hij draait de vloer opnieuw, en alleen als de SHA
+  niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Bij `pushed`, `other`, een
+  falende classifier of een time-out post tick één 🤖-reactie die zegt wat wel werkt en start niets: de
+  reactie is de nieuwe open Vraag voor een volgend antwoord, en het issue gaat niet terug. Een Vraag
+  waarna de worktree verschoof, geeft geen toestemming: de pusher geeft dan dezelfde Vraag opnieuw.
+  De classifier is één `claude -p` zonder tools (`--tools ""`), met een JSON-schema voor de uitkomst, in
+  een lege tijdelijke map en zonder forge-token in de omgeving, met een time-out van 60 seconden. Hij
+  leest alleen de rode stap, de SHA, de branch en de tekst van het antwoord; de antwoordtekst staat in een
+  data-blok en is nooit een instructie. In twijfel (een vraag, een voorwaarde, *niet pushen*) is de
+  uitkomst `other`. Toestemming heft alleen de review op (een `reject` of shadow mode), nooit een rode
+  vloer, policy of lint. Bekende grens: de toestemming blijft SHA-gebonden (de classifier beslist nooit
+  over een andere SHA dan die van de Vraag) en de pusher draait de vloer altijd, wat de classifier ook
+  zegt; een run post met hetzelfde account als de gebruiker en kan dus een toestemming geven, en dan
+  valt de review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is
+  hygiëne tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle
+  blijft de grens.
 - **Wat de hook niet dekt.** `workflow-push-gate` leest het commando; een alias, `eval git push`,
   `G=git; $G push`, een script dat pusht of een herschreven remote-tracking-ref ontsnapt eraan. Het is
   een vangnet tegen ongelukken, geen grens: de grens blijft dat GitHub een push met `.github/workflows/`
@@ -441,15 +453,25 @@ geen sessie, ook niet terwijl de rij op CI wacht.
   sessie-retry: de eerstvolgende tick start de pusher opnieuw, en na de tweede mislukking komt de Vraag
   of Teruggegeven.
 
-- **Pusher-Vraag met een ander antwoord.** Staat op de Vraag van de pusher een antwoord dat niet `push`
-  is, dan herstelt tick op de `sha` van die Vraag: staat die sha op de remote (`git ls-remote`, zonder
-  forge-token in de omgeving), dan gaat de rij met een Handoff verder en draagt de lane van de Vraag
-  mee. Staat ze er niet, of kan git het niet zeggen, dan komt een 🤖 Teruggegeven met het antwoord
-  of de git-fout als reden (`reason_pusher_answer_moved`, `reason_pusher_git_failed`). Noemt de Vraag
-  geen `after:`, dan gaat het issue terug met `reason_pusher_no_after`. Mislukt de post van die Handoff
-  of Teruggegeven, dan sluit de rij als `returned` en niet als `start_failed`: alleen het antwoord
-  `push` start de pusher, ook bij een tweede poging. De sleutel is dan op en het vangnet (`idle`)
-  pakt het issue op.
+- **Pusher-Vraag met een ander antwoord dan `push`.** Eerst de git-check op de `sha` van de Vraag:
+  `git ls-remote` van de branch (zonder forge-token in de omgeving). Is het resultaat gelijk aan de SHA,
+  dan bevat origin hem. Is het resultaat leeg, dan staat de branch niet op origin en is het antwoord
+  nee, zonder fetch. Anders haalt tick alleen die commit op (`git fetch --no-write-fetch-head`, dus
+  `origin/<branch>` en `FETCH_HEAD` in de worktree blijven ongemoeid) en toetst
+  `git merge-base --is-ancestor`: ook een merge bovenop de SHA telt als ja. Bij ja gaat de rij met een
+  Handoff verder en draagt de lane van de Vraag mee; noemt de Vraag geen `after:`, dan gaat het issue
+  terug met `reason_pusher_no_after`. Bij nee, of als git het niet kan zeggen, beslist de classifier
+  (zie *Het antwoord op een pusher-Vraag is toestemming, in gewone taal*): `permit` start de pusher,
+  elke andere uitkomst geeft één reactie en sluit de rij als `question`. Kon git het niet zeggen, dan
+  noemt de reactie `COULD NOT CHECK` (`reply_push_could_not_check`). Een git-fout is dus geen reden
+  om het issue terug te geven. De rem: staat de SHA niet op origin en is de pauze of de usage-rem
+  dicht, dan claimt tick niets en post niets; het antwoord blijft liggen en een tick met een open rem
+  leest het opnieuw. Je hoeft dus niet opnieuw te antwoorden. De git-check zelf mag langs de rem.
+  Mislukt een post van de reactie, Handoff of Teruggegeven, dan sluit de rij als `returned` en niet
+  als `start_failed`: de sleutel is dan op en het vangnet (`idle`) pakt het issue op. Mislukt de start
+  na een classifier-`permit` (`start_failed`), dan telt hetzelfde antwoord opnieuw als toestemming:
+  de rij draagt de notitie `{"answer":"permit"}`, en de eerstvolgende tick start de pusher opnieuw
+  (`pushAgain`) zonder nieuw antwoord; na de tweede mislukking komt de Vraag of Teruggegeven.
 
 ### Afloop met de lokale werkplek
 
@@ -1109,7 +1131,8 @@ de spec beschrijft de sleutels.
 
 Het `lighthouse.toml` van elke repo in `repos` heeft:
 
-- een `[controller]`-tabel;
+- een `[controller]`-tabel (de standaard van `spec_review` en `plan_review` komt uit het niveau, zie
+  [Controller knobs per level](levels.md#controller-knobs-per-level));
 - `[usage_guard]` met `controller = true`;
 - `[forge.board]` met `project_number` (positief), `project_id`, `status_field_id` en
   `priority_field_id`, en onder `status_options` minstens `To do`, `In progress`, `Done` en `Controller`.

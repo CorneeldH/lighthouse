@@ -47,7 +47,7 @@ met de queries waar ze over gingen.
 
 `lighthouse serve` toont naast de overview een tabblad Priorities (`#priorities`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
-(`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave van issues zonder milestone. De server bouwt de
+(`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave Backlog met de open issues zonder milestone, of in een gesloten milestone. Elke regel van Backlog heeft een statusblokje (de zes toestanden, in de kleur van de milestone of grijs), het nummer, de titel en, waar het past, de relatie (`blocks <nr>` of `waits on <nr>`) en `<milestonetitel> · closed`. Een bewaarde oude voorkeur voor de tab *Without milestone* opent Backlog. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
 levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van een milestone
 (zie het volgende kopje).
@@ -166,7 +166,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
 ## Bekende beperkingen
 
 - GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
-  verdwijnen uit Milestones en uit Without milestone.
+  verdwijnen uit Milestones en uit Backlog.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
 - De kaartvorm van de graaf (kleurstrook links en een statusblokje van 14 bij 14 px vóór het nummer) is alleen met jsdom getest, niet in een browser bekeken.

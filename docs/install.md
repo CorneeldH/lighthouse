@@ -134,8 +134,13 @@ The server listens on `127.0.0.1:8127` and stores its database in
 A timer can keep the binary current. [lighthouse-upgrade.service](../deploy/systemd/lighthouse-upgrade.service)
 runs `lighthouse self-update --restart lighthouse.service`, and
 [lighthouse-upgrade.timer](../deploy/systemd/lighthouse-upgrade.timer) starts it daily. The
-binary is replaced only when the newest release is newer and its checksum matches, and the
-server restarts only after a replacement. A `dev` build is skipped.
+binary is replaced only when the newest release on the channel is newer and its checksum matches, and the
+server restarts only after a replacement. A local build without a tag (`dev`) is skipped.
+
+The timer follows the channel stored in `~/.config/lighthouse/channel`; without that file it is
+`release`. Choose once, by hand: `lighthouse self-update --channel dev` stores `dev` and
+updates at once, `--channel release` goes back, and `lighthouse channel` prints the current
+one.
 
 ```bash
 cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
@@ -150,7 +155,9 @@ The installed binary must already be a release that has `self-update`: upgrade o
 first. Under the unit's hardening `~/go/bin/lighthouse` must not be a symlink to a path outside
 `~/go/bin`, because that directory is the only one the unit may write.
 
-Every release goes live without a review. To stop:
+Every release on the channel goes live without a review. On `release` that is the newest
+release; on `dev` it is the newest `dev` or `rc` prerelease of the next version too, never a
+`-test` tag. To stop:
 `systemctl --user disable --now lighthouse-upgrade.timer`.
 
 Which version runs, and what the last run did:
@@ -447,6 +454,67 @@ wordt niets geschreven) en meet op die ref.
   limiet van de zoek-API; een forgefout, ook een limiet, geeft exit 1 voordat er iets wordt
   geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
   fout (exit 1).
+
+### Inzet, kosten en tokens
+
+`lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--dry-run]` leest de
+Claude Code-transcripten van een repo en schrijft per transcript, in een transactie, de inzet
+(`setups`: model, effort, harness- en toolversies, skillshash, `lane` `sdd` of `native`) en de
+tokens met kosten (`usage`) in `lighthouse.db` (migratie `0013`: `setups.model` en de andere
+velden mogen `NULL` zijn, plus `setups.lane`, `trajectories.plan_tasks` en
+`trajectories.plan_path`). `--repo-dir` is standaard `.`, `--db` standaard de `lighthouse.db` van
+de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.toml` in `--repo-dir`.
+
+- **Vinden.** Onder `~/.claude/projects` hoort een projectmap bij de repo als haar eerste `cwd`
+  in `--repo-dir` ligt, in `[worktree] root`, in een git-worktree van de repo of in een pad dat
+  `<owner>/<repo>` bevat (in elke hoofdletterstand; dat vindt ook een al verwijderde worktree).
+  `[worktree] root` telt alleen als zoekmap wanneer hij binnen de hoofdcheckout ligt (de
+  standaard); een absolute root daarbuiten kan met andere repo's gedeeld zijn, en dan vinden de
+  git-worktrees en het `<owner>/<repo>`-pad de worktrees van deze repo.
+  De subagent-transcripten van een sessie horen bij haar hoofdtranscript.
+- **Uitvoer en exitcodes.** Een regel per transcript: `<soort> <pad>`, of `skip <pad>: <reden>`
+  voor een transcript dat blijft liggen (geen regels, geen leesrechten, de sessie houdt haar
+  traject). Exit 0 is verzameld, ook als er transcripten zijn overgeslagen; 1 een fout in
+  verwerking, config, git of database, ook een pas die deels mislukte (`fail <pad>: <reden>`);
+  2 een verkeerd gebruik.
+- **`--since-last`** laat een transcript staan dat sinds de vorige pas niet veranderde. Zonder de
+  vlag wordt alles opnieuw verwerkt: zo herstel je na een nieuwe prijs of een nieuwe versie. Dat is
+  veilig, want de schrijvers zijn idempotent (zie *Telemetry data model*).
+- **`--dry-run`** opent de database alleen-lezen zonder te migreren, schrijft niets (ook geen
+  zijbestand) en meldt wat er zou gebeuren (`would collect <pad> as <soort>`). Bestaat de
+  database niet, of staat hij op een oudere schemaversie, dan meldt hij dat en toont alleen de
+  gevonden transcripten.
+- **Wat wordt gemeten.** Tokens per model en de inzet per run of sessie. De kosten zijn altijd een
+  raming (`cost_kind` `estimate`), berekend uit `internal/telemetry/prices.toml`: per model de
+  prijs per miljoen tokens met een `as_of` (geldig vanaf; de rij met de grootste `as_of` op of
+  voor het berichtmoment telt). Alleen de letterlijke model-id uit het transcript past; een
+  model zonder prijs, zoals de aliassen `sonnet`, `opus` en `haiku`, geeft `NULL` kosten, nooit
+  een gok. Zijvragen komen niet altijd in het transcript terecht en worden dus
+  ondergeteld. Er is geen quotum: `quota` blijft leeg.
+- **Vragen en antwoorden.** Van een afgesloten sessie (`ended_at` gezet) die aan een traject hangt,
+  schrijft de collector per `AskUserQuestion` een `question`-gebeurtenis en, zodra het antwoord er
+  is, een `answer`-gebeurtenis in `trajectory_events`, met alleen soort, `ref`
+  (`<sessie-id>:<tool-use-id>`) en tijdstip, nooit de tekst. Een open sessie en een run schrijven
+  er geen. Heeft een sessie al gebeurtenissen, dan blijft zij bij haar traject, ook als een latere
+  pas een andere branch ziet (`skip <pad>: <reden>`).
+- **De hook `telemetry-collect-check`** (SessionStart, een basishook zonder stand en zonder
+  override) schrijft een waarneming (tijdstip, lighthouse- en packversie) in een zijbestand,
+  `<state>/<sessie-id>.observations.json`, en start daarna `lighthouse telemetry collect
+  --since-last` losgekoppeld. `<state>` is `LIGHTHOUSE_STATE_DIR`, anders dezelfde terugval als
+  `tick` (`XDG_STATE_HOME` of `~/.local/state`, plus `lighthouse/dispatch`). De collector kiest per
+  run de eerste waarneming binnen zijn venster. De hook blokkeert nooit en opent geen database;
+  een fout is een regel in `<state>/telemetry/hook.log`. In een controller-run
+  (`LIGHTHOUSE_CONTROLLER_RUN`) en met `LIGHTHOUSE_TELEMETRY_COLLECT=off` schrijft hij het
+  zijbestand wel maar start hij geen collector.
+- **`tick`** verzamelt de runs zelf, uit de ruwe transcriptbytes van de werkplek van de run
+  (`workplace.RawTranscripts`): een open run hooguit eens per uur (het moment staat in
+  `<state>/telemetry/last-collect`), een gesloten run elke tick tot zijn `setups`-rij na zijn
+  einde is vastgelegd; een gesloten run waarvan een slag geen rij opleverde (geen regel in zijn
+  venster, of geen transcript) hooguit eens per uur (`<state>/telemetry/closed-tried/<run-id>`).
+  Dat gebeurt vóór het opruimen van werkplekken en mirrors, zodat een
+  transcript niet verdwijnt voordat het is gelezen. Een transcript dat de werkplek niet kan tonen
+  (weg, niet op deze host) geeft `unreachable, not processed` en is geen fout; een andere fout
+  geeft een regel met het run-id en zet de tick op mislukt, waarna hij doorgaat.
 
 ### Menswerk en wachttijd per traject
 

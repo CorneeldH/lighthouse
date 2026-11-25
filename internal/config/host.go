@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -12,7 +11,6 @@ import (
 	"regexp"
 	"slices"
 	"strconv"
-	"syscall"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 )
@@ -183,7 +181,7 @@ func positiveNumber(path string, host map[string]any, name string) (*float64, er
 func IsLocal(ip string) (bool, error) {
 	conn, err := net.ListenPacket("udp4", net.JoinHostPort(ip, "0"))
 	if err != nil {
-		if errors.Is(err, syscall.EADDRNOTAVAIL) {
+		if addrNotAvail(err) {
 			return false, nil
 		}
 		return false, errf("local address %s not measurable: %v", ip, err)

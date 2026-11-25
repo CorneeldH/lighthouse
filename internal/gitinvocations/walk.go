@@ -244,14 +244,24 @@ func commandStart(words []string) int {
 	return idx
 }
 
-// ExistingAncestor is the nearest directory that exists now, going up from path.
+// parentDir is pyDirname, except that the parent of `C:/x` is the drive root `C:/`: a bare `C:`
+// is the current directory of that drive on Windows (#559). Outside Windows it is pyDirname.
+func parentDir(p string) string {
+	parent := pyDirname(p)
+	if vol := filepath.VolumeName(parent); vol != "" && parent == vol {
+		return vol + "/"
+	}
+	return parent
+}
+
+// ExistingAncestor is the nearest directory that exists now, going up from path, in `/` form.
 func ExistingAncestor(path string) (string, bool) {
-	current := path
+	current := filepath.ToSlash(path) // a no-op outside Windows
 	for {
 		if isDir(current) {
 			return current, true
 		}
-		parent := pyDirname(current)
+		parent := parentDir(current)
 		if parent == current {
 			return "", false
 		}
@@ -262,8 +272,9 @@ func ExistingAncestor(path string) (string, bool) {
 // RepoOf is the repo root that path lies in: it walks up until a `.git` is found, without
 // calling git. A worktree has a file there instead of a directory. A `.git` directory without
 // `HEAD` is a stray directory, not a repo, and is walked past; a garbage `HEAD` still counts.
+// The root is in `/` form.
 func RepoOf(path string) (string, bool) {
-	current := path
+	current := filepath.ToSlash(path) // a no-op outside Windows
 	for {
 		dotGit := pyJoin(current, ".git")
 		if info, err := os.Stat(dotGit); err == nil && info.Mode().IsRegular() {
@@ -272,7 +283,7 @@ func RepoOf(path string) (string, bool) {
 		if _, err := os.Lstat(pyJoin(dotGit, "HEAD")); err == nil {
 			return current, true
 		}
-		parent := pyDirname(current)
+		parent := parentDir(current)
 		if parent == current {
 			return "", false
 		}

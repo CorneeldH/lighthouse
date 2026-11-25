@@ -68,26 +68,28 @@ func (e EventRecord) validate() error {
 // the same (trajectory, kind, ref), leaves the first row and reports not new:
 // the first answer to a question wins.
 func RecordEvent(ctx context.Context, db *sql.DB, e EventRecord) (int64, bool, error) {
+	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordEventTx(ctx, tx, e) })
+}
+
+func recordEventTx(ctx context.Context, tx *sql.Tx, e EventRecord) (int64, bool, error) {
 	if err := e.validate(); err != nil {
 		return 0, false, err
 	}
-	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
-		repo, err := resolveRepo(ctx, tx, e.Repo)
-		if err != nil {
-			return 0, false, err
-		}
-		tid, err := eventTrajectory(ctx, tx, e, repo)
-		if err != nil {
-			return 0, false, err
-		}
-		return insertOrFind(ctx, tx, "trajectory_events", `INSERT INTO trajectory_events (source, source_id,
-			recorded_at, trajectory_id, run_id, session_id, kind, ref, at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-			[]any{e.Source, e.SourceID, stamp(e.RecordedAt), tid, nullID(e.RunID), nullID(e.SessionID),
-				string(e.Kind), e.Ref, stamp(e.At)},
-			bySource(e.Origin),
-			lookup{"trajectory_id = ? AND kind = ? AND ref = ?", []any{tid, string(e.Kind), e.Ref}})
-	})
+	repo, err := resolveRepo(ctx, tx, e.Repo)
+	if err != nil {
+		return 0, false, err
+	}
+	tid, err := eventTrajectory(ctx, tx, e, repo)
+	if err != nil {
+		return 0, false, err
+	}
+	return insertOrFind(ctx, tx, "trajectory_events", `INSERT INTO trajectory_events (source, source_id,
+		recorded_at, trajectory_id, run_id, session_id, kind, ref, at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		[]any{e.Source, e.SourceID, stamp(e.RecordedAt), tid, nullID(e.RunID), nullID(e.SessionID),
+			string(e.Kind), e.Ref, stamp(e.At)},
+		bySource(e.Origin),
+		lookup{"trajectory_id = ? AND kind = ? AND ref = ?", []any{tid, string(e.Kind), e.Ref}})
 }
 
 // eventTrajectory returns the trajectory (repo, issue) of an event after

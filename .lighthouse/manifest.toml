@@ -169,7 +169,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-upgrade/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "54f500c4a30bbd851b540d80040a5253a7d75b319dd76d7863d065e431c09281"
+sha256 = "4ec68b49777b0e68db8044dbd7aef6f030d649fa89ece4d71f3c2d21afb1bd54"
 
 [[unit]]
 kind = "file"
@@ -396,6 +396,14 @@ sha256 = "d7332f9a4488bab4db5cfe8bd3aad3f3d5227e65347290d95d1e3812c5a6ce11"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "SessionStart||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect-check"
+package = "core"
+version = "dev"
+sha256 = "84f788c266b23de2ff797358d2ef034293c3a07564a0eec5e0a94f257c693d2e"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-imports-gate.sh"
 package = "go"
 version = "dev"
@@ -607,7 +615,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-upgrade/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "aee84e9062eb13331225c25a21466027ee00b9618e58d68659f137e9662991cb"
+sha256 = "de96e7938368607238a12a59593ebf43d07687f46739469612f1b6f8b1353e72"
 
 [[unit]]
 kind = "file"
@@ -656,7 +664,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "ca1a674fa6fc7726b9c5fa6e5d4a50cdf0a1277f4aee456b6a6fde29845a87b3"
+sha256 = "0deb70a6780540b982b26f5754c6e56ae8657c2cb2237ab4a2fe17c16770c483"
 
 [[unit]]
 kind = "block"

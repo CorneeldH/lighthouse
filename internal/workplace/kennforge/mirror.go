@@ -60,36 +60,52 @@ func (a *Adapter) mirrorDir(sessionID string) string {
 // ErrNotMeasurable and ErrUnanswered: the run is not measurable this tick, never silent. A
 // transcript without a timestamp is ErrNotMeasurable alone, as on self.
 func (a *Adapter) nodeTranscript(ctx context.Context, n *NodeClient, workspaceID, sessionID string) (workplace.Transcript, error) {
+	dir, release, err := a.syncMirror(ctx, n, workspaceID, sessionID)
+	if err != nil {
+		return workplace.Transcript{}, err
+	}
+	defer release()
+	return workplace.ReadTranscript(dir, sessionID)
+}
+
+// syncMirror brings the mirror of the session on a.Node up to date, as nodeTranscript describes,
+// and returns its dir. The lock on the mirror dir stays held until release is called, so the
+// caller reads the files without a concurrent fetch appending to them; release is nil after an
+// error. The errors are those of nodeTranscript.
+func (a *Adapter) syncMirror(ctx context.Context, n *NodeClient, workspaceID, sessionID string) (dir string, release func(), err error) {
 	if err := checkMirror(a.Node, sessionID); err != nil {
-		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: %w", workspaceID, err)
+		return "", nil, fmt.Errorf("transcript in workspace %s: %w", workspaceID, err)
 	}
 	if a.StateDir == "" {
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: no state dir for the mirror", sessionID, a.Node)
+		return "", nil, fmt.Errorf("transcript of %s on node %s: no state dir for the mirror", sessionID, a.Node)
 	}
-	dir := a.mirrorDir(sessionID)
+	dir = a.mirrorDir(sessionID)
 	lock, err := lockMirror(dir)
 	if err != nil {
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, err)
+		return "", nil, fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, err)
 	}
-	defer func() { _ = lock.Close() }()
+	fail := func(err error) (string, func(), error) {
+		_ = lock.Close()
+		return "", nil, err
+	}
 	have, err := mirrorLengths(dir, sessionID)
 	if err != nil {
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: mirror: %w", sessionID, a.Node, err)
+		return fail(fmt.Errorf("transcript of %s on node %s: mirror: %w", sessionID, a.Node, err))
 	}
 	deltas, err := n.Transcript(ctx, workspaceID, sessionID, a.Profile, have)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, err)
+			return fail(fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, err))
 		}
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w: %w", sessionID, a.Node, notMeasurable(err), workplace.ErrUnanswered)
+		return fail(fmt.Errorf("transcript of %s on node %s: %w: %w", sessionID, a.Node, notMeasurable(err), workplace.ErrUnanswered))
 	}
 	if err := applyDeltas(dir, have, deltas); err != nil {
 		if errors.Is(err, workplace.ErrNotMeasurable) { // an answer that does not fit the mirror
 			err = fmt.Errorf("%w: %w", err, workplace.ErrUnanswered)
 		}
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: mirror: %w", sessionID, a.Node, err)
+		return fail(fmt.Errorf("transcript of %s on node %s: mirror: %w", sessionID, a.Node, err))
 	}
-	return workplace.ReadTranscript(dir, sessionID)
+	return dir, func() { _ = lock.Close() }, nil
 }
 
 // lockMirror creates the mirror dir (0700) and takes the lock in it, waiting for a holder. A

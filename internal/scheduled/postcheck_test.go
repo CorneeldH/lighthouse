@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -32,6 +33,14 @@ type fixture struct {
 	pushes int
 	// pushErr, when set, is what Push returns instead of pushing.
 	pushErr error
+}
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
+	}
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -807,6 +816,7 @@ func TestPostcheckResumeChecksTheCommitNotTheWorkTree(t *testing.T) {
 // follows another symlink resolves lexically inside out/ but on disk outside the tree, and must
 // be refused on the checkout before Check follows it.
 func TestPostcheckResumeSymlinkChain(t *testing.T) {
+	skipOnWindows(t, "a symlink in a git checkout on Windows is a plain file without core.symlinks")
 	f := newFixture(t)
 	f.pushAgentCommit(func() {
 		f.write("out/a/b/real.md", "x\n")
@@ -826,6 +836,7 @@ func TestPostcheckResumeSymlinkChain(t *testing.T) {
 // Review round 2, A. Fails if resuming trusts a symlink that already existed at start: a new
 // link through it leaves the tree although its text stays under out/.
 func TestPostcheckResumeLinkThroughAStartSymlink(t *testing.T) {
+	skipOnWindows(t, "a symlink in a git checkout on Windows is a plain file without core.symlinks")
 	f := newFixture(t)
 	ext := t.TempDir()
 	outsideFile(t, ext, "hostname")
@@ -843,6 +854,7 @@ func TestPostcheckResumeLinkThroughAStartSymlink(t *testing.T) {
 // Review round 2, B. Fails if a file system error carries the raw path (with a token in a
 // directory name, or the absolute workplace path) into the Failure.
 func TestPostcheckWithholdsAPathInAnInspectError(t *testing.T) {
+	skipOnWindows(t, "chmod does not close a directory on NTFS")
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores the directory permission this test needs")
 	}

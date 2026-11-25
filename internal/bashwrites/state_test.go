@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -82,11 +83,14 @@ func TestStateDirCreatesTheDirWithMode0700(t *testing.T) {
 	if err != nil || !info.IsDir() {
 		t.Fatalf("state dir missing: %v", err)
 	}
-	if info.Mode().Perm() != 0o700 {
-		t.Fatalf("mode = %o, want 700", info.Mode().Perm())
-	}
 	if !strings.HasSuffix(path, filepath.Join("lighthouse-bash-gates", "abc123")) {
 		t.Fatalf("path = %s", path)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("mode = %o, want 700", info.Mode().Perm())
 	}
 }
 
@@ -389,6 +393,9 @@ func TestLedgerKeepsANanosecondSignatureAbove2To53(t *testing.T) {
 func TestSeedExcludesFilesChangedAtOrAfterThePreStart(t *testing.T) {
 	repo := newRepo(t)
 	writeFile(t, filepath.Join(repo, "a.sh"), "echo a\n")
+	// On Windows time.Now reads a coarse tick (up to ~15.6 ms) that can lag the file stamp, so
+	// a.sh written just before t0 could carry a stamp after it (#559).
+	time.Sleep(30 * time.Millisecond)
 	t0 := time.Now().UnixNano()
 	time.Sleep(30 * time.Millisecond) // the kernel stamps ctime with a coarse clock that lags t0
 	writeFile(t, filepath.Join(repo, "b.sh"), "echo b\n")

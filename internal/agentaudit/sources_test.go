@@ -322,9 +322,7 @@ func TestCollectScriptsOnlyScripts(t *testing.T) {
 		".claude/hooks/lib.mjs":                           "",
 		".claude/hooks/old.cjs":                           "",
 		".claude/hooks/helper.js":                         "",
-		".claude/hooks/run-me":                            "#!/bin/sh\n", // executable below
 		".claude/hooks/notes":                             "plain text\n",
-		".claude/hooks/README.md":                         "# hooks\n",
 		".claude/hooks/package.json":                      "{}\n",
 		".claude/hooks/package-lock.json":                 "{}\n",
 		".claude/hooks/yarn.lock":                         "\n",
@@ -335,12 +333,6 @@ func TestCollectScriptsOnlyScripts(t *testing.T) {
 		".claude/hooks/.cache/x.sh":                       "#!/bin/sh\n",
 		".claude/hooks/sub/deeper.sh":                     "#!/bin/sh\n",
 	})
-	// An executable file counts; an executable README.md stays a data file.
-	for _, name := range []string{"run-me", "README.md"} {
-		if err := os.Chmod(filepath.Join(root, ".claude", "hooks", name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
 	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home, RepoOnly: true})
 	if err != nil {
 		t.Fatal(err)
@@ -352,9 +344,29 @@ func TestCollectScriptsOnlyScripts(t *testing.T) {
 		"project/.claude/hooks/hook.sh",
 		"project/.claude/hooks/lib.mjs",
 		"project/.claude/hooks/old.cjs",
-		"project/.claude/hooks/run-me",
 		"project/.claude/hooks/sub/deeper.sh",
 	})
+}
+
+func TestCollectScriptsCountsAnExecutable(t *testing.T) {
+	skipOnWindows(t, "NTFS has no exec bit")
+	home, configDir := hostless(t)
+	root := tree(t, map[string]string{
+		".claude/hooks/run-me":    "#!/bin/sh\n", // executable below
+		".claude/hooks/notes":     "plain text\n",
+		".claude/hooks/README.md": "# hooks\n",
+	})
+	// An executable file counts; an executable README.md stays a data file.
+	for _, name := range []string{"run-me", "README.md"} {
+		if err := os.Chmod(filepath.Join(root, ".claude", "hooks", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home, RepoOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRows(t, "scripts", inv.Scripts, []string{"project/.claude/hooks/run-me"})
 }
 
 func TestCollectRepoOnly(t *testing.T) {
@@ -485,6 +497,7 @@ func TestCollectBlocking(t *testing.T) {
 }
 
 func TestCollectUnreadableScript(t *testing.T) {
+	skipOnWindows(t, "chmod 000 does not make a file unreadable on NTFS")
 	if os.Geteuid() == 0 {
 		t.Skip("root reads every file")
 	}

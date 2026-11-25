@@ -67,6 +67,9 @@ func TestMemoryWaitGetsWhatTheSlotWaitLeft(t *testing.T) {
 	h.g.Now = func() time.Time { return now }
 	h.g.acquire = func(files []*os.File, _, _ time.Duration) (int, error) {
 		now = now.Add(time.Second) // the slot wait takes 1 s
+		for _, f := range files[1:] {
+			_ = f.Close() // as Acquire: the slots not taken are closed; Windows cannot remove an open file
+		}
 		return 1, nil
 	}
 	meminfo := filepath.Join(h.dir, "meminfo")

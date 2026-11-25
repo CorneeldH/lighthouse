@@ -406,6 +406,53 @@ func TestDecidePushAnswerAfterReturned(t *testing.T) {
 	}
 }
 
+// A pushanswer row the classifier permitted carries {"answer":"permit"}: its failed start is
+// tried again as a push of the Vraag's SHA. Without that note, or with another one, a row of an
+// answer other than `push` never becomes a push.
+func TestPushTargetOfAcceptsPermitNote(t *testing.T) {
+	tests := []struct {
+		name, verdict string
+		want          []string
+	}{
+		{"permit note", `{"answer":"permit"}`, []string{"push::"}},
+		{"no note", "", []string{"return:reason_start_failed:"}},
+		{"other note", `{"answer":"other"}`, []string{"return:reason_start_failed:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, "ja, push maar")
+			item7(&in).Comments[2].Rocket = true
+			addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows",
+				Outcome: runs.StartFailed, Verdict: tt.verdict})
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if tt.want[0] != "push::" {
+				return
+			}
+			if a := got[0]; a.PermitSHA != pushSHA || a.Attempt != 2 || a.TriggerKey != "pushanswer:71" ||
+				a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" {
+				t.Errorf("action = %+v, want attempt 2 of pushanswer:71 with the Vraag's SHA", a)
+			}
+		})
+	}
+}
+
+// The note counts only on a row of the same trigger key: a permit on another answer's row
+// permits nothing here.
+func TestPushTargetOfPermitNoteOfAnotherKey(t *testing.T) {
+	in := pushQuestion(t, "ja, push maar")
+	item7(&in).Comments[2].Rocket = true
+	addRows(&in,
+		runs.Row{ID: 8, Issue: 7, TriggerKey: "pushanswer:69", Command: "push-workflows", Outcome: runs.Handoff,
+			Verdict: `{"answer":"permit"}`},
+		runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.StartFailed})
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"return:reason_start_failed:"}) {
+		t.Fatalf("summary = %q, want the issue back", s)
+	}
+}
+
 // withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
 func withAfter(in *Input) {
 	c := &item7(in).Comments[1]
@@ -422,8 +469,7 @@ func TestDecidePushAnswer(t *testing.T) {
 		{"push", "push", func(*Input) {}, []string{"push::"}},
 		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
 		{"other answer", "gepushed", func(in *Input) { withAfter(in) }, []string{"push_recover::"}},
-		{"other answer without after", "gepushed", func(*Input) {},
-			[]string{"return:reason_pusher_no_after:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"other answer without after", "gepushed", func(*Input) {}, []string{"push_recover::"}},
 		{"push after other answer", "push", func(in *Input) {
 			withAfter(in)
 			c := item7(in).Comments
@@ -465,7 +511,7 @@ func TestDecidePushAnswer(t *testing.T) {
 			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
 				t.Fatalf("summary = %q, want %q", s, tt.want)
 			}
-			if len(tt.want) > 0 && tt.want[0] == "push_recover::" {
+			if tt.name == "other answer" {
 				a := got[0]
 				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" || a.Lane != "docs" ||
 					a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 ||
@@ -511,6 +557,59 @@ func TestAJobCommentDoesNotAnswerAProtocolQuestion(t *testing.T) {
 				t.Errorf("resume planned = %v, want %v", resumed, tt.wantResume)
 			}
 		})
+	}
+}
+
+func TestPushAnswerWithoutAfterIsRecover(t *testing.T) {
+	got := Decide(pushQuestion(t, "gepusht"))
+	if len(got) != 1 || got[0].Kind != KindPushRecover || got[0].After != "" {
+		t.Fatalf("got %+v, want one push_recover with an empty After", got)
+	}
+}
+
+func TestPushAnswerExactPushStaysKindPush(t *testing.T) {
+	for _, ans := range []string{"push", "Push!", " PUSH. "} {
+		got := Decide(pushQuestion(t, ans))
+		if len(got) != 1 || got[0].Kind != KindPush || got[0].PermitSHA != pushSHA {
+			t.Errorf("answer %q: got %+v, want one push with the permit sha", ans, got)
+		}
+	}
+}
+
+// pushReply is a tick reaction (a pusher Vraag header, no session, sha) after the first answer,
+// followed by a second answer.
+func pushReply(t *testing.T) Input {
+	t.Helper()
+	in := pushQuestion(t, "gepusht")
+	item7(&in).Comments[2].Rocket = true
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 72, Author: "lh-bot", URL: "https://example.test/c/72", CreatedAt: "2026-10-31T11:35:00Z",
+			Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nvraag: https://example.test/c/70\n\nNog niet gepusht."},
+		Comment{ID: 73, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "nu wel"})
+	return in
+}
+
+func TestPushReplyIsOpenQuestion(t *testing.T) {
+	got := Decide(pushReply(t))
+	if len(got) != 1 || got[0].Kind != KindPushRecover || got[0].TriggerKey != "pushanswer:73" {
+		t.Fatalf("got %+v, want one push_recover with trigger key pushanswer:73", got)
+	}
+}
+
+func TestPushRecoverCarriesStepAndQuestionURL(t *testing.T) {
+	in := pushQuestion(t, "gepusht")
+	c := &item7(&in).Comments[1]
+	c.URL = "https://example.test/c/70"
+	c.Body = strings.Replace(c.Body, "\nbranch:", "\nstep: actionlint\nbranch:", 1)
+	got := Decide(in)
+	if len(got) != 1 || got[0].Step != "actionlint" || got[0].QuestionURL != "https://example.test/c/70" {
+		t.Fatalf("got %+v, want Step actionlint and the Vraag URL", got)
+	}
+	in = pushReply(t)
+	item7(&in).Comments[3].Body = strings.Replace(item7(&in).Comments[3].Body, "\nbranch:", "\nstep: actionlint\nbranch:", 1)
+	got = Decide(in)
+	if len(got) != 1 || got[0].Step != "actionlint" || got[0].QuestionURL != "https://example.test/c/70" {
+		t.Fatalf("reply: got %+v, want the original Vraag URL from the vraag field", got)
 	}
 }
 

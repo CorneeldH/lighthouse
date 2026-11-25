@@ -108,9 +108,10 @@ func union(a, b []string) []string {
 
 // gitDiffU0 compares two files with git and a fixed algorithm: GNU diff and the BSD diff of
 // macOS line up the same hunks differently, git is the same on both. differ is git's exit 1;
-// any exit other than 0 or 1 is an error.
+// any exit other than 0 or 1 is an error. core.autocrlf=false: Git for Windows sets it to
+// true and then warns about line endings on stderr (#559).
 func gitDiffU0(left, right string, errOut io.Writer) (out string, differ bool, err error) {
-	cmd := exec.Command("git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv",
+	cmd := exec.Command("git", "-c", "core.autocrlf=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv",
 		"-U0", "--diff-algorithm=myers", "--no-indent-heuristic", "--", left, right)
 	cmd.Stderr = errOut
 	data, err := cmd.Output()

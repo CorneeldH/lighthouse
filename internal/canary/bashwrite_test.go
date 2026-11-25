@@ -20,11 +20,12 @@ type gateCase struct {
 }
 
 var gateCases = map[string]gateCase{
-	"shell-lint-check.sh":    {".sh", "testdata/shell-lint-check/SC2164.sh", "SC2164 ("},
-	"ruff-format-check.sh":   {".py", "../../tests/pack/python/testdata/ruff-format-check/E722.py", ": E722 "},
-	"gofmt-check.sh":         {".go", "testdata/gofmt-check/parse-error.go", "[gofmt-check/parse-error]"},
-	"md-link-check":          {".md", "testdata/md-link-check/dead.md", "[md-link-check/dead]"},
-	"code-language-check.sh": {".go", "testdata/code-language-check/non-english.go", "[code-language-check/non-english]"},
+	"shell-lint-check.sh":      {".sh", "testdata/shell-lint-check/SC2164.sh", "SC2164 ("},
+	"ruff-format-check.sh":     {".py", "../../tests/pack/python/testdata/ruff-format-check/E722.py", ": E722 "},
+	"gofmt-check.sh":           {".go", "testdata/gofmt-check/parse-error.go", "[gofmt-check/parse-error]"},
+	"powershell-lint-check.sh": {".ps1", "testdata/powershell-lint-check/PSAvoidUsingInvokeExpression.ps1", "[powershell-lint-check/PSAvoidUsingInvokeExpression]"},
+	"md-link-check":            {".md", "testdata/md-link-check/dead.md", "[md-link-check/dead]"},
+	"code-language-check.sh":   {".go", "testdata/code-language-check/non-english.go", "[code-language-check/non-english]"},
 }
 
 // bashWritePayload is a Bash payload of one tool call, the same for pre and post.
@@ -44,7 +45,7 @@ func bashWritePayload(t *testing.T, root, event, command string) string {
 func TestBashWriteCheckCanaryPerGate(t *testing.T) {
 	for gate, c := range gateCases {
 		t.Run(gate, func(t *testing.T) {
-			root := installRepo(t, "core", "go", "python", "shell")
+			root := installRepo(t, "core", "go", "python", "shell", "powershell")
 			writeConfig(t, root, "[project]\ncode_language = \"en\"\ncode_language_paths = [\"**\"]")
 			data, err := os.ReadFile(c.source)
 			if err != nil {

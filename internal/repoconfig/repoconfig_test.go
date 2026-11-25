@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 const full = `[forge]
@@ -68,7 +69,7 @@ func TestLoadDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := r.Controller
-	if c == nil || c.Profile != "software" || !c.SpecReview || !c.PlanReview {
+	if c == nil || c.Profile != "software" || !c.SpecReview || !c.PlanReview || c.AtRoundLimit != "doorgaan" {
 		t.Errorf("controller defaults: %+v", c)
 	}
 	if r.Board != nil || r.UsageGuardController {
@@ -658,6 +659,139 @@ func TestLoadReadsPaths(t *testing.T) {
 	}
 	if d.Paths != (Paths{}) {
 		t.Errorf("Paths without [paths] = %+v, want zero", d.Paths)
+	}
+}
+
+func writeInstalled(t *testing.T, dir string, components map[string]levels.Stand) {
+	t.Helper()
+	data := levels.Installed{Level: "x", Since: "2026-01-01T00:00:00Z", Components: components}.Marshal()
+	writeRawInstalled(t, dir, string(data))
+}
+
+func writeRawInstalled(t *testing.T, dir, body string) {
+	t.Helper()
+	path := filepath.Join(dir, levels.InstalledPath)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+const bareController = "[forge]\nrepo = \"o/r\"\n[controller]\n"
+
+func TestLoadReviewKnobsFollowInstalled(t *testing.T) {
+	const spec, plan = "skill:review-spec", "skill:review-plan"
+	rows := []struct {
+		name       string
+		components map[string]levels.Stand // nil: no components.toml
+		wantSpec   bool
+		wantPlan   bool
+	}{
+		{"both off", map[string]levels.Stand{spec: levels.StandOff, plan: levels.StandOff}, false, false},
+		{"plan off", map[string]levels.Stand{plan: levels.StandOff}, true, false},
+		{"both on", map[string]levels.Stand{spec: levels.StandOn, plan: levels.StandOn}, true, true},
+		{"no components.toml", nil, true, true},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, bareController)
+			if tc.components != nil {
+				writeInstalled(t, dir, tc.components)
+			}
+			r, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := r.Controller
+			if c.SpecReview != tc.wantSpec || c.PlanReview != tc.wantPlan || c.AtRoundLimit != "doorgaan" {
+				t.Errorf("spec=%v plan=%v limit=%q, want %v %v doorgaan", c.SpecReview, c.PlanReview, c.AtRoundLimit, tc.wantSpec, tc.wantPlan)
+			}
+			if r.ControllerErr != nil {
+				t.Errorf("ControllerErr: %v", r.ControllerErr)
+			}
+		})
+	}
+}
+
+func TestLoadReviewKeyBeatsLevel(t *testing.T) {
+	off := map[string]levels.Stand{"skill:review-spec": levels.StandOff, "skill:review-plan": levels.StandOff}
+	rows := []struct {
+		name       string
+		body       string
+		components map[string]levels.Stand
+	}{
+		{"light with spec_review true", bareController + "spec_review = true\n", off},
+		{"strict with plan_review false", bareController + "plan_review = false\n", map[string]levels.Stand{}},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, tc.body)
+			writeInstalled(t, dir, tc.components)
+			r, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c := r.Controller; !c.SpecReview || c.PlanReview {
+				t.Errorf("spec=%v plan=%v, want true false", c.SpecReview, c.PlanReview)
+			}
+		})
+	}
+}
+
+func TestLoadReviewOverrideOn(t *testing.T) {
+	dir := write(t, bareController)
+	writeInstalled(t, dir, map[string]levels.Stand{"skill:other": levels.StandOff})
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := r.Controller; !c.SpecReview || !c.PlanReview {
+		t.Errorf("spec=%v plan=%v, want true true", c.SpecReview, c.PlanReview)
+	}
+}
+
+func TestLoadBrokenComponentsSetsControllerErr(t *testing.T) {
+	dir := write(t, full[:strings.Index(full, "[controller]")]+"[controller]\nprofile = \"writing\"\n\n[usage_guard]\ncontroller = true\n")
+	writeRawInstalled(t, dir, "level = [\n")
+	r, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load must not fail: %v", err)
+	}
+	want := filepath.Join(dir, ".lighthouse/components.toml")
+	if r.ControllerErr == nil || !strings.Contains(r.ControllerErr.Error(), want) {
+		t.Fatalf("ControllerErr = %v, want it to name %s", r.ControllerErr, want)
+	}
+	if c := r.Controller; !c.SpecReview || !c.PlanReview {
+		t.Errorf("knobs must stay true: %+v", c)
+	}
+	derr := Dispatchable(r)
+	if derr == nil || !strings.Contains(derr.Error(), want) {
+		t.Errorf("Dispatchable = %v, want it to name %s", derr, want)
+	}
+}
+
+func TestLoadComponentsNotReadWhenNotNeeded(t *testing.T) {
+	rows := []struct{ name, body string }{
+		{"no controller", strings.Replace(full, "[controller]", "[unrelated]", 1)},
+		{"both keys set", strings.Replace(full, "spec_review = false", "spec_review = false\nplan_review = true", 1)},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := write(t, tc.body)
+			writeRawInstalled(t, dir, "level = [\n")
+			r, err := Load(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if r.ControllerErr != nil {
+				t.Errorf("ControllerErr: %v", r.ControllerErr)
+			}
+			if derr := Dispatchable(r); derr != nil && strings.Contains(derr.Error(), "components.toml") {
+				t.Errorf("Dispatchable names components.toml: %v", derr)
+			}
+		})
 	}
 }
 

@@ -544,9 +544,35 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/hooks/shell-lint-check.sh"
     },
     {
-      "id": "usage-gate-tool",
+      "id": "powershell-lint-check",
       "phase": "post-tool",
       "row": 7,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "powershell-lint-check.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "powershell-lint-check",
+      "what": "Runs PSScriptAnalyzer on an edited PowerShell script.",
+      "how": [
+        "It checks a fixed set of rules, so a PSScriptAnalyzerSettings.psd1 cannot switch one off.",
+        "A finding of one of those rules blocks with exit 2.",
+        "When pwsh, the PSScriptAnalyzer module or the tooling is missing, it blocks with COULD NOT CHECK; it is never silent."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "A PowerShell script with a PSScriptAnalyzer finding is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/powershell/hooks/powershell-lint-check.sh"
+    },
+    {
+      "id": "usage-gate-tool",
+      "phase": "post-tool",
+      "row": 8,
       "kind": "hook",
       "trigger": "tool",
       "events": [
@@ -708,6 +734,32 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/levelcheck.go"
     },
     {
+      "id": "telemetry-collect-check",
+      "phase": "prompt",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "SessionStart"
+      ],
+      "matcher": "",
+      "command": "run.sh telemetry-collect-check",
+      "effects": [
+        "records"
+      ],
+      "label": "telemetry-collect-check",
+      "what": "At the start of a session, notes the lighthouse and pack versions and starts the telemetry collector in the background.",
+      "how": [
+        "It runs on SessionStart and appends an observation (time, binary version, pack version from .lighthouse/manifest.toml) to a sidecar file of the session in the state directory.",
+        "Unless it runs in a controller run or LIGHTHOUSE_TELEMETRY_COLLECT is off, it starts `lighthouse telemetry collect --since-last` detached and returns at once.",
+        "It never opens the database and always exits 0; a failure is one line in telemetry/hook.log in the state directory, not in the session."
+      ],
+      "when": "When a session starts.",
+      "without": "Telemetry only fills when someone runs the collector by hand, and the lighthouse and pack versions of a session stay unknown.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/telemetrycollectcheck.go"
+    },
+    {
       "id": "permission-check",
       "phase": "pre-tool",
       "row": 5,
@@ -833,6 +885,7 @@
         "gofmt-check",
         "ruff-format-check",
         "shell-lint-check",
+        "powershell-lint-check",
         "bash-write-check-post",
         "go-lint-gate",
         "ty-gate",
@@ -918,6 +971,13 @@
       "label": "A session starts with a core gate switched off",
       "chips": [
         "level-check"
+      ]
+    },
+    {
+      "id": "session-start-telemetry",
+      "label": "A session starts and its telemetry must be collected",
+      "chips": [
+        "telemetry-collect-check"
       ]
     }
   ]

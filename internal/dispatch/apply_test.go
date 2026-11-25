@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -2932,29 +2933,29 @@ func TestApplyPushRecoverBranchOnSHA(t *testing.T) {
 	}
 }
 
+// A branch that does not contain the Vraag's sha goes to the classifier: the row is claimed, the
+// answer rocketed, and without a classifier tick replies that it could not read the answer.
 func TestApplyPushRecoverBranchElsewhere(t *testing.T) {
 	h, specs := pushHarness(t)
 	var asked []string
 	h.env.LsRemote = lsRemoteFake(strings.Repeat("b", 40), nil, &asked)
+	fx := fakeGit(t, h, false, nil)
 	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	p := h.poster(applyRepo)
-	if len(p.bodies) != 1 || !strings.HasPrefix(p.bodies[0], "🤖 Teruggegeven\nreason: ") || !strings.Contains(p.bodies[0], "gepushed") {
-		t.Errorf("posted %q, want one Teruggegeven naming the answer gepushed", p.bodies)
+	if !reflect.DeepEqual(fx.fetched, []string{strings.Repeat("b", 40)}) {
+		t.Errorf("fetched = %q, want the origin sha", fx.fetched)
 	}
-	if !slices.Contains(p.labels, testLabels.NeedsHands) {
-		t.Errorf("labels = %q, want the needs_hands label %q", p.labels, testLabels.NeedsHands)
+	b := h.poster(applyRepo).bodies
+	if len(*specs) != 0 || len(b) != 1 || !strings.Contains(b[0], protocol.Heading("reply_push_unreadable", "nl")) {
+		t.Errorf("specs = %v, posted = %q, want one unreadable reply and no pusher", *specs, b)
 	}
-	if len(*specs) != 0 {
-		t.Errorf("specs = %v, want no pusher", *specs)
-	}
-	rows := h.history(t)
-	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
-		t.Errorf("rows = %+v, want one row closed as returned", rows)
+	if rows := h.history(t); len(rows) != 1 || rows[0].TriggerKey != "pushanswer:71" || rows[0].Outcome != runs.Question {
+		t.Errorf("rows = %+v, want one question row", rows)
 	}
 }
 
+// A git failure is no Returned: the row is claimed and the classifier decides, with COULD NOT CHECK.
 func TestApplyPushRecoverGitFails(t *testing.T) {
 	h, specs := pushHarness(t)
 	var asked []string
@@ -2962,15 +2963,15 @@ func TestApplyPushRecoverGitFails(t *testing.T) {
 	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	p := h.poster(applyRepo)
-	if len(p.bodies) != 1 || !strings.Contains(p.bodies[0], "COULD NOT CHECK") || !strings.Contains(p.bodies[0], "fatal: no network") {
-		t.Errorf("posted %q, want a Teruggegeven with COULD NOT CHECK and the git error", p.bodies)
+	b := h.poster(applyRepo).bodies
+	if len(*specs) != 0 || len(b) != 1 || !strings.Contains(b[0], "COULD NOT CHECK") {
+		t.Fatalf("specs = %v, posted = %q, want one reply with COULD NOT CHECK", *specs, b)
 	}
-	if len(*specs) != 0 {
-		t.Errorf("specs = %v, want no pusher", *specs)
+	if strings.Contains(b[0], "no network") {
+		t.Errorf("reply carries the git error:\n%s", b[0])
 	}
-	if rows := h.history(t); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
-		t.Errorf("rows = %+v, want one row closed as returned", rows)
+	if rows := h.history(t); len(rows) != 1 || rows[0].TriggerKey != "pushanswer:71" || rows[0].Outcome != runs.Question {
+		t.Errorf("rows = %+v, want one question row", rows)
 	}
 }
 
@@ -2984,7 +2985,6 @@ func TestApplyPushRecoverPostFailsClosesReturned(t *testing.T) {
 		wantReason string
 	}{
 		{"handoff post", strings.Repeat("a", 40), "post handoff: 502 bad gateway"},
-		{"returned post", strings.Repeat("b", 40), "post returned: 502 bad gateway"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3006,7 +3006,7 @@ func TestApplyPushRecoverPostFailsClosesReturned(t *testing.T) {
 	}
 }
 
-// A spent trigger key does nothing: no git call, no comment.
+// A spent trigger key does nothing: no comment, no claim. The git check may run before the claim.
 func TestApplyPushRecoverSpentKeyDoesNothing(t *testing.T) {
 	h, _ := pushHarness(t)
 	h.seed(t, 7, "", "pushanswer:71", runs.Handoff)
@@ -3015,7 +3015,500 @@ func TestApplyPushRecoverSpentKeyDoesNothing(t *testing.T) {
 	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if len(asked) != 0 || len(h.poster(applyRepo).bodies) != 0 {
-		t.Errorf("asked = %q, posted = %q, want nothing", asked, h.poster(applyRepo).bodies)
+	if len(h.poster(applyRepo).bodies) != 0 || len(h.history(t)) != 1 {
+		t.Errorf("posted = %q, rows = %+v, want nothing and no new row", h.poster(applyRepo).bodies, h.history(t))
+	}
+}
+
+// originGitFake records the Fetch and IsAncestor calls of originContains.
+type originGitFake struct {
+	fetched, ancestors, envs []string
+}
+
+// fakeGit sets Fetch and IsAncestor on h.env: IsAncestor answers is, fetch fails with fetchErr.
+func fakeGit(t *testing.T, h *harness, is bool, fetchErr error) *originGitFake {
+	t.Helper()
+	fx := &originGitFake{}
+	h.env.Fetch = func(_ context.Context, _, sha string, env []string) error {
+		fx.fetched = append(fx.fetched, sha)
+		fx.envs = append(fx.envs, strings.Join(env, ","))
+		return fetchErr
+	}
+	h.env.IsAncestor = func(_ context.Context, _, sha, tip string, env []string) (bool, error) {
+		fx.ancestors = append(fx.ancestors, sha+"<"+tip)
+		fx.envs = append(fx.envs, strings.Join(env, ","))
+		return is, nil
+	}
+	return fx
+}
+
+// noClassifier fails the test when the classifier is asked.
+func noClassifier(t *testing.T, h *harness) {
+	t.Helper()
+	h.env.ClassifyAnswer = func(context.Context, AnswerInput) (AnswerVerdict, error) {
+		t.Fatal("classifier asked")
+		return "", nil
+	}
+}
+
+func TestApplyPushRecoverOriginEqual(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	fx := fakeGit(t, h, false, nil)
+	noClassifier(t, h)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(fx.fetched) != 0 {
+		t.Errorf("fetched = %q, want no fetch", fx.fetched)
+	}
+	if b := h.poster(applyRepo).bodies; len(b) != 1 || !strings.Contains(b[0], "next: /lighthouse-write-pr 7") {
+		t.Errorf("posted %q, want the handoff", b)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Outcome != runs.Handoff {
+		t.Errorf("rows = %+v, want one handoff row", rows)
+	}
+}
+
+func TestApplyPushRecoverOriginMergedOnTop(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	tip := strings.Repeat("b", 40)
+	h.env.LsRemote = lsRemoteFake(tip, nil, &asked)
+	fx := fakeGit(t, h, true, nil)
+	noClassifier(t, h)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if !reflect.DeepEqual(fx.fetched, []string{tip}) || !reflect.DeepEqual(fx.ancestors, []string{strings.Repeat("a", 40) + "<" + tip}) {
+		t.Errorf("fetched = %q, ancestors = %q", fx.fetched, fx.ancestors)
+	}
+	if len(fx.envs) != 2 {
+		t.Fatalf("git calls = %d, want fetch and merge-base", len(fx.envs))
+	}
+	for _, e := range fx.envs {
+		if !strings.Contains(e, "GIT_TERMINAL_PROMPT=0") || strings.Contains(e, "TOKEN") || strings.Contains(e, "forge-tok") {
+			t.Errorf("git env = %q, want scrubbed with GIT_TERMINAL_PROMPT=0", e)
+		}
+	}
+	if b := h.poster(applyRepo).bodies; len(b) != 1 || !strings.Contains(b[0], "🤖 Handoff") {
+		t.Errorf("posted %q, want the handoff", b)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Outcome != runs.Handoff {
+		t.Errorf("rows = %+v, want one handoff row", rows)
+	}
+}
+
+func TestApplyPushRecoverOriginContainsWithoutAfter(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	a := pushRecoverAction()
+	a.After = ""
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if b := h.poster(applyRepo).bodies; len(b) != 1 || !strings.HasPrefix(b[0], "🤖 Teruggegeven") {
+		t.Errorf("posted %q, want a Teruggegeven", b)
+	}
+	if !slices.Contains(h.poster(applyRepo).labels, testLabels.NeedsHands) {
+		t.Errorf("labels = %q, want the issue given back", h.poster(applyRepo).labels)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Outcome != runs.Returned {
+		t.Errorf("rows = %+v, want one returned row", rows)
+	}
+}
+
+// A failed post of the Returned for a missing after: command closes the row as returned.
+func TestApplyPushRecoverNoAfterPostFailsClosesReturned(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	h.poster(applyRepo).postErr = errors.New("502 bad gateway")
+	a := pushRecoverAction()
+	a.After = ""
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Errorf("Apply: nil error, want the failed post")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != "post returned: 502 bad gateway" {
+		t.Errorf("rows = %+v, want one row closed as returned with reason post returned", rows)
+	}
+}
+
+func TestApplyPushRecoverEmptyLsRemote(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake("", nil, &asked)
+	fx := fakeGit(t, h, true, nil)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(fx.fetched) != 0 || len(fx.ancestors) != 0 {
+		t.Errorf("fetched = %q, ancestors = %q, want no git call", fx.fetched, fx.ancestors)
+	}
+}
+
+func TestApplyPushRecoverBrakedOriginContains(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	a := pushRecoverAction()
+	a.Braked = "pause"
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if b := h.poster(applyRepo).bodies; len(b) != 1 || !strings.Contains(b[0], "🤖 Handoff") {
+		t.Errorf("posted %q, want the handoff", b)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Open {
+		t.Errorf("rows = %+v, want one closed row", rows)
+	}
+}
+
+// A closed brake and an origin without the sha, or a git that cannot tell, claims nothing.
+func TestApplyPushRecoverBrakedLeavesTheAnswer(t *testing.T) {
+	tests := []struct {
+		name string
+		sha  string
+		err  error
+	}{
+		{"not on origin", strings.Repeat("c", 40), nil},
+		{"git error", "", errors.New("fatal: no network")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, specs := pushHarness(t)
+			var asked []string
+			h.env.LsRemote = lsRemoteFake(tt.sha, tt.err, &asked)
+			fakeGit(t, h, false, nil)
+			noClassifier(t, h)
+			a := pushRecoverAction()
+			a.Braked = "pause"
+			res, err := Apply(context.Background(), h.env, []Action{a})
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			p := h.poster(applyRepo)
+			if len(h.history(t)) != 0 || len(p.bodies) != 0 || len(p.rockets) != 0 || len(*specs) != 0 {
+				t.Errorf("rows = %+v, posted = %q, rockets = %v, want nothing", h.history(t), p.bodies, p.rockets)
+			}
+			if len(res.DeferredActions) != 1 || res.DeferredActions[0].Kind != KindDefer || res.DeferredActions[0].Issue != 7 {
+				t.Errorf("DeferredActions = %+v, want one KindDefer for issue 7", res.DeferredActions)
+			}
+		})
+	}
+}
+
+// originContains reads and writes no ref: the production fetch leaves refs and FETCH_HEAD alone.
+func TestOriginContainsLeavesRefsAlone(t *testing.T) {
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	root := t.TempDir()
+	origin, clone, other := root+"/origin.git", root+"/clone", root+"/other"
+	git(root, "init", "--bare", "-b", "main", origin)
+	git(root, "clone", origin, clone)
+	git(clone, "commit", "--allow-empty", "-m", "one")
+	git(clone, "push", "origin", "HEAD:refs/heads/feat")
+	sha := git(clone, "rev-parse", "HEAD")
+	git(root, "clone", origin, other)
+	git(other, "checkout", "feat")
+	git(other, "commit", "--allow-empty", "-m", "two")
+	git(other, "push", "origin", "HEAD:refs/heads/feat")
+	refs := func() string { return git(clone, "for-each-ref") }
+	fetchHead := func() string {
+		b, _ := os.ReadFile(clone + "/.git/FETCH_HEAD")
+		return string(b)
+	}
+	beforeRefs, beforeHead := refs(), fetchHead()
+	h := newHarness(t)
+	h.env.Getenv = func(k string) string { return map[string]string{"PATH": os.Getenv("PATH"), "HOME": root}[k] }
+	h.env.TokenEnv = func(string) string { return "GH_TOKEN" }
+	a := pushRecoverAction()
+	a.Worktree, a.Branch, a.PermitSHA = clone, "feat", sha
+	got, err := applier{env: h.env}.originContains(context.Background(), a)
+	if err != nil || got != onOrigin {
+		t.Fatalf("originContains = %v, %v, want onOrigin", got, err)
+	}
+	if refs() != beforeRefs || fetchHead() != beforeHead {
+		t.Errorf("refs or FETCH_HEAD changed:\n%s\n--\n%s", beforeRefs, refs())
+	}
+}
+
+// classifierFake answers verdict and err, and records what it read.
+func classifierFake(verdict AnswerVerdict, err error, read *[]AnswerInput) func(context.Context, AnswerInput) (AnswerVerdict, error) {
+	return func(_ context.Context, in AnswerInput) (AnswerVerdict, error) {
+		*read = append(*read, in)
+		return verdict, err
+	}
+}
+
+// originLacks makes origin lack the Vraag's sha: no branch on origin.
+func originLacks(h *harness) {
+	var asked []string
+	h.env.LsRemote = lsRemoteFake("", nil, &asked)
+}
+
+// A permit from the classifier starts the pusher on the claimed row for exactly the Vraag's sha,
+// notes the permit on the row and posts nothing; without an after: command too.
+func TestApplyPushRecoverPermit(t *testing.T) {
+	for _, after := range []string{"/lighthouse-write-pr 7", ""} {
+		t.Run("after "+after, func(t *testing.T) {
+			h, specs := pushHarness(t)
+			originLacks(h)
+			var read []AnswerInput
+			h.env.ClassifyAnswer = classifierFake(VerdictPermit, nil, &read)
+			a := pushRecoverAction()
+			a.After, a.AnswerText, a.Step = after, "ja, push maar", "actionlint"
+			res, err := Apply(context.Background(), h.env, []Action{a})
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			want := []AnswerInput{{Step: "actionlint", SHA: a.PermitSHA, Branch: "issue-7-x", Answer: "ja, push maar"}}
+			if !reflect.DeepEqual(read, want) {
+				t.Errorf("classifier read %+v, want %+v", read, want)
+			}
+			rows := h.history(t)
+			if len(rows) != 1 || !rows[0].Open || rows[0].Verdict != `{"answer":"permit"}` {
+				t.Fatalf("rows = %+v, want one open row noted permit", rows)
+			}
+			if len(*specs) != 1 || (*specs)[0].Permit != strings.Repeat("a", 40) || (*specs)[0].RunID != rows[0].ID ||
+				(*specs)[0].Worktree != "/work/issue-7-x" {
+				t.Errorf("specs = %+v, want one start of row %d permitting the Vraag's sha", *specs, rows[0].ID)
+			}
+			if res.Started != 1 {
+				t.Errorf("Started = %d, want 1", res.Started)
+			}
+			if b := h.poster(applyRepo).bodies; len(b) != 0 {
+				t.Errorf("posted %q, want nothing", b)
+			}
+		})
+	}
+}
+
+// A failed start after a permit closes the row start_failed with the note, and the retry reads it
+// as a push of the Vraag's sha.
+func TestApplyPushRecoverPermitStartFails(t *testing.T) {
+	h, _ := pushHarness(t)
+	originLacks(h)
+	var read []AnswerInput
+	h.env.ClassifyAnswer = classifierFake(VerdictPermit, nil, &read)
+	h.env.StartPusher = func(context.Context, PusherSpec) error { return errors.New("no such file") }
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err == nil {
+		t.Fatalf("Apply: nil error, want the start error")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Verdict != `{"answer":"permit"}` {
+		t.Fatalf("rows = %+v, want one start_failed row noted permit", rows)
+	}
+	in := pushQuestion(t, "ja, push maar")
+	item7(&in).Comments[2].Rocket = true
+	addRows(&in, rows...)
+	got := Decide(in)
+	if len(got) != 1 || got[0].Kind != KindPush || got[0].PermitSHA != pushSHA || got[0].Attempt != 2 {
+		t.Errorf("retry = %+v, want a second KindPush permitting the Vraag's sha", got)
+	}
+}
+
+// A permit that cannot be noted starts nothing: the row closes start_failed.
+func TestApplyPushRecoverPermitNoteFails(t *testing.T) {
+	t.Run("db refuses", func(t *testing.T) {
+		h, specs := pushHarness(t)
+		originLacks(h)
+		var read []AnswerInput
+		h.env.ClassifyAnswer = classifierFake(VerdictPermit, nil, &read)
+		if _, err := h.db.Exec(`CREATE TRIGGER no_verdict BEFORE UPDATE OF verdict ON runs
+			BEGIN SELECT RAISE(ABORT, 'verdict refused'); END`); err != nil {
+			t.Fatal(err)
+		}
+		res, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()})
+		if err == nil || !strings.Contains(err.Error(), "verdict refused") {
+			t.Errorf("Apply error = %v, want the refused note", err)
+		}
+		rows := h.history(t)
+		if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed {
+			t.Errorf("rows = %+v, want one start_failed row", rows)
+		}
+		if len(*specs) != 0 || res.Started != 0 {
+			t.Errorf("specs = %+v, Started = %d, want no pusher", *specs, res.Started)
+		}
+	})
+	t.Run("row closed meanwhile", func(t *testing.T) {
+		h, specs := pushHarness(t)
+		originLacks(h)
+		h.env.ClassifyAnswer = func(ctx context.Context, _ AnswerInput) (AnswerVerdict, error) {
+			rows, err := runs.History(ctx, h.db, applyRepo)
+			if err != nil || len(rows) != 1 {
+				t.Fatalf("History: %v %+v", err, rows)
+			}
+			if err := runs.Release(ctx, h.db, rows[0].ID, runs.Returned, "elsewhere", applyNow); err != nil {
+				t.Fatal(err)
+			}
+			return VerdictPermit, nil
+		}
+		_, _ = Apply(context.Background(), h.env, []Action{pushRecoverAction()})
+		if len(*specs) != 0 {
+			t.Errorf("specs = %+v, want no pusher", *specs)
+		}
+		if rows := h.history(t); len(rows) != 1 || rows[0].Verdict != "" {
+			t.Errorf("rows = %+v, want the closed row without a note", rows)
+		}
+	})
+}
+
+// Every outcome but permit posts one sessionless pusher Vraag that says what works, starts
+// nothing, gives nothing back and closes the row as question.
+func TestApplyPushRecoverReply(t *testing.T) {
+	tests := []struct {
+		name    string
+		verdict AnswerVerdict
+		err     error
+		nilFn   bool
+		line    string
+	}{
+		{"pushed", VerdictPushed, nil, false, "reply_push_not_on_origin"},
+		{"other", VerdictOther, nil, false, "reply_push_not_permit"},
+		{"classifier error", "", errors.New("claude: exit 1"), false, "reply_push_unreadable"},
+		{"classifier nil", "", nil, true, "reply_push_unreadable"},
+		{"classifier timeout", "", context.DeadlineExceeded, false, "reply_push_unreadable"},
+		{"unknown verdict", "maybe", nil, false, "reply_push_unreadable"},
+		{"permit with error", VerdictPermit, errors.New("x"), false, "reply_push_unreadable"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, specs := pushHarness(t)
+			originLacks(h)
+			var read []AnswerInput
+			h.env.ClassifyAnswer = classifierFake(tt.verdict, tt.err, &read)
+			if tt.nilFn {
+				h.env.ClassifyAnswer = nil
+			}
+			a := pushRecoverAction()
+			a.Step, a.QuestionURL = "actionlint", "https://example.test/c/70"
+			res, err := Apply(context.Background(), h.env, []Action{a})
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			p := h.poster(applyRepo)
+			if len(p.bodies) != 1 {
+				t.Fatalf("posted %q, want one reply", p.bodies)
+			}
+			body := p.bodies[0]
+			hd, ok := protocol.ParseHeader(body)
+			if !ok || !pusherQuestion(hd) || hd.Fields["vraag"] != "https://example.test/c/70" || hd.Fields["step"] != "actionlint" ||
+				hd.Fields["after"] != a.After || hd.Fields["lane"] != a.Lane || hd.Fields["sha"] != a.PermitSHA {
+				t.Errorf("header = %+v, want a pusher Vraag with the Vraag's fields", hd)
+			}
+			for _, key := range []string{tt.line, "reply_push_works"} {
+				want := protocol.Heading(key, "nl")
+				if key == "reply_push_not_on_origin" {
+					want = "De SHA `" + a.PermitSHA + "` staat niet op `origin/issue-7-x`."
+				}
+				if !strings.Contains(body, want) {
+					t.Errorf("reply lacks %s (%q):\n%s", key, want, body)
+				}
+			}
+			if !strings.Contains(body, "cd /work/issue-7-x && git push -u origin HEAD") || strings.Contains(body, "COULD NOT CHECK") {
+				t.Errorf("reply wants the push command and no COULD NOT CHECK:\n%s", body)
+			}
+			if len(*specs) != 0 || res.Started != 0 {
+				t.Errorf("specs = %+v, want no pusher", *specs)
+			}
+			if got := h.log.all(); slices.Contains(got, "EditIssue") || slices.Contains(got, "SetStatus") || len(p.labels) != 0 {
+				t.Errorf("forge calls = %q, labels = %q, want no hand-back", got, p.labels)
+			}
+			if rows := h.history(t); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Question || rows[0].Verdict != "" {
+				t.Errorf("rows = %+v, want one question row without a note", rows)
+			}
+			if !reflect.DeepEqual(p.rockets, []int64{71}) {
+				t.Errorf("rockets = %v, want the answer", p.rockets)
+			}
+		})
+	}
+}
+
+// When git could not tell, a permit still starts the pusher (its floor checks again); any other
+// outcome replies with COULD NOT CHECK instead of "not on origin".
+func TestApplyPushRecoverGitErrorClassifierPermit(t *testing.T) {
+	tests := []struct {
+		verdict AnswerVerdict
+		start   bool
+	}{{VerdictPermit, true}, {VerdictPushed, false}, {VerdictOther, false}}
+	for _, tt := range tests {
+		t.Run(string(tt.verdict), func(t *testing.T) {
+			h, specs := pushHarness(t)
+			var asked []string
+			h.env.LsRemote = lsRemoteFake("", errors.New("fatal: no network"), &asked)
+			var read []AnswerInput
+			h.env.ClassifyAnswer = classifierFake(tt.verdict, nil, &read)
+			if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			b := h.poster(applyRepo).bodies
+			if tt.start {
+				if len(*specs) != 1 || len(b) != 0 {
+					t.Errorf("specs = %+v, posted = %q, want a pusher and no reply", *specs, b)
+				}
+				return
+			}
+			if len(*specs) != 0 || len(b) != 1 || !strings.Contains(b[0], "COULD NOT CHECK") ||
+				strings.Contains(b[0], "staat niet op `origin/") {
+				t.Errorf("specs = %+v, posted = %q, want one reply with COULD NOT CHECK", *specs, b)
+			}
+		})
+	}
+}
+
+// A reply to an answer on an earlier reply keeps the link to the Vraag with the diff.
+func TestApplyPushRecoverReplyKeepsVraagLink(t *testing.T) {
+	got := Decide(pushReply(t))
+	if len(got) != 1 || got[0].Kind != KindPushRecover {
+		t.Fatalf("decide = %+v, want one push_recover", got)
+	}
+	a := got[0]
+	a.Repo = applyRepo
+	h, _ := pushHarness(t)
+	originLacks(h)
+	var read []AnswerInput
+	h.env.ClassifyAnswer = classifierFake(VerdictOther, nil, &read)
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	b := h.poster(applyRepo).bodies
+	if len(b) != 1 {
+		t.Fatalf("posted %q, want one reply", b)
+	}
+	if hd, _ := protocol.ParseHeader(b[0]); hd.Fields["vraag"] != "https://example.test/c/70" {
+		t.Errorf("vraag = %q, want the original Vraag", hd.Fields["vraag"])
+	}
+	if !strings.Contains(b[0], "](https://example.test/c/70)") {
+		t.Errorf("reply lacks the link to the Vraag:\n%s", b[0])
+	}
+}
+
+// A failed post of the reply closes the row as returned: its key is spent, and no push follows.
+func TestApplyPushRecoverPostFails(t *testing.T) {
+	h, specs := pushHarness(t)
+	originLacks(h)
+	var read []AnswerInput
+	h.env.ClassifyAnswer = classifierFake(VerdictOther, nil, &read)
+	h.poster(applyRepo).postErr = errors.New("502 bad gateway")
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err == nil {
+		t.Errorf("Apply: nil error, want the failed post")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != "post reply: 502 bad gateway" {
+		t.Errorf("rows = %+v, want one row closed as returned with reason post reply", rows)
+	}
+	if len(*specs) != 0 {
+		t.Errorf("specs = %v, want no pusher", *specs)
 	}
 }

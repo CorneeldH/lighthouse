@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,9 @@ func TestOpenSetsPragmas(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	checkPragmas(t, s)
 
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
+	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		t.Fatalf("stat dir: %v", err)
@@ -116,6 +120,23 @@ func TestDSNTxLock(t *testing.T) {
 	}
 }
 
+// TestDSNPath pins the path part of the file: URI. A Windows path has a
+// volume and no leading slash; without the slash SQLite reads the volume
+// as the URI authority ("invalid uri authority: C:%5CUsers…", #559).
+// filepath.ToSlash turns `C:\x\l.db` into "C:/x/l.db" on Windows only, so
+// the case is given in its slash form here.
+func TestDSNPath(t *testing.T) {
+	for _, tc := range []struct{ path, want string }{
+		{"/x/l.db", "file:///x/l.db?"},
+		{"C:/x/l.db", "file:///C:/x/l.db?"},
+		{"/x/a b#?%.db", "file:///x/a%20b%23%3F%25.db?"},
+	} {
+		if got := dsn(tc.path); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("dsn(%q) = %q, want prefix %q", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestOpenSharedTakesNoLock(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "l.db")
@@ -174,6 +195,9 @@ func TestOpenTwiceIsLocked(t *testing.T) {
 func TestOpenPutsFilesAtThePath(t *testing.T) {
 	for _, name := range []string{"plain", "with space", "with?query", "with#hash", "with%41pct"} {
 		t.Run(name, func(t *testing.T) {
+			if name == "with?query" && runtime.GOOS == "windows" {
+				t.Skip("NTFS refuses ? in a file name; see host-assumptions.md")
+			}
 			dir := filepath.Join(t.TempDir(), name)
 			path := filepath.Join(dir, "l.db")
 			s, err := Open(context.Background(), path)

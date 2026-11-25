@@ -10,6 +10,7 @@ base = [
   "permission-check",
   "workflow-push-gate",
   "level-check",
+  "telemetry-collect-check",
   "no-verify-check",
 ]
 
