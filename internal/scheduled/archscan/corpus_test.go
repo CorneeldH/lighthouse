@@ -247,6 +247,43 @@ func TestHotspotsCountsPerPathWithinWindow(t *testing.T) {
 	}
 }
 
+func TestHotspotsKeepsNonASCIIPaths(t *testing.T) {
+	// Fails if hotspots reads git's quoted form ("a/caf\303\251.go") instead of the real path.
+	r := newRig(t)
+	put(t, r.repo, "a/café ü.go", "1\n")
+	r.commit()
+	got, err := hotspots(context.Background(), r.env(), r.repo, "3 months", []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Hotspot{{Path: "a/café ü.go", Changes: 1}}
+	if !slices.Equal(got, want) {
+		t.Fatalf("hotspots = %+v, want %+v", got, want)
+	}
+}
+
+func TestHotspotsCappedHighestFirst(t *testing.T) {
+	// Fails if hotspots returns more than maxHotspots, or drops the busiest file instead of the
+	// quietest.
+	r := newRig(t)
+	for i := range maxHotspots + 5 {
+		put(t, r.repo, fmt.Sprintf("a/f%03d.go", i), "1\n")
+	}
+	r.commit()
+	put(t, r.repo, "a/f204.go", "2\n")
+	r.commit()
+	got, err := hotspots(context.Background(), r.env(), r.repo, "3 months", []string{"a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != maxHotspots {
+		t.Fatalf("len = %d, want %d", len(got), maxHotspots)
+	}
+	if got[0] != (Hotspot{Path: "a/f204.go", Changes: 2}) {
+		t.Fatalf("first = %+v, want the busiest file", got[0])
+	}
+}
+
 // stage runs Stage on the rig and decodes the corpus.
 func stage(t *testing.T, r *rig) (corpus, []byte) {
 	t.Helper()

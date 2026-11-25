@@ -29,9 +29,11 @@ const (
 	// maxIssueBody is the cut, in characters, of the body of every issue but the scan issues.
 	maxIssueBody = 2000
 	// maxCorpus is the limit of the whole corpus in bytes, as max_corpus_bytes of reflect.
-	maxCorpus  = 400000
-	gitLimit   = 2 * time.Minute
-	fetchLimit = 5 * time.Minute
+	maxCorpus = 400000
+	// maxHotspots caps the hotspots of the corpus, highest Changes first.
+	maxHotspots = 200
+	gitLimit    = 2 * time.Minute
+	fetchLimit  = 5 * time.Minute
 )
 
 // Hotspot is one file and how many commits changed it within the window.
@@ -94,14 +96,15 @@ func revParse(ctx context.Context, env scheduled.Env, dir, ref string) (string, 
 // hotspots counts, per file under paths, the commits within window (a git date such as
 // "3 months") that changed it: most changes first, then by path.
 func hotspots(ctx context.Context, env scheduled.Env, dir, window string, paths []string) ([]Hotspot, error) {
-	args := []string{"log", "--since=" + window, "--no-renames", "--name-only", "--format=", "HEAD", "--"}
+	args := []string{"-c", "core.quotePath=false", "log", "-z", "--since=" + window, "--no-renames", "--name-only", "--format=", "HEAD", "--"}
 	out, err := git(ctx, env, dir, gitLimit, append(args, paths...)...)
 	if err != nil {
 		return nil, err
 	}
 	count := map[string]int{}
-	for _, line := range strings.Split(out, "\n") {
-		if p := strings.TrimSpace(line); p != "" {
+	// -z separates the paths by NUL and leaves them unquoted; the empty format adds newlines.
+	for _, line := range strings.Split(out, "\x00") {
+		if p := strings.Trim(line, "\r\n"); p != "" {
 			count[p]++
 		}
 	}
@@ -112,6 +115,9 @@ func hotspots(ctx context.Context, env scheduled.Env, dir, window string, paths 
 	slices.SortFunc(spots, func(a, b Hotspot) int {
 		return cmp.Or(cmp.Compare(b.Changes, a.Changes), strings.Compare(a.Path, b.Path))
 	})
+	if len(spots) > maxHotspots {
+		spots = spots[:maxHotspots]
+	}
 	return spots, nil
 }
 
