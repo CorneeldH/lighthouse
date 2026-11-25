@@ -48,21 +48,21 @@ UNION ALL
 SELECT '', s.superpowers_version, x.started_at, s.id, NULL, x.id
   FROM setups s JOIN sessions x ON s.session_id = x.id
   WHERE x.assignment = 'standard' AND s.superpowers_version IS NOT NULL
-ORDER BY at, sid`,
+`,
 	DimModel: `
 SELECT coalesce(s.lane, ''), s.model, r.started_at AS at, s.id AS sid, r.id, NULL
   FROM setups s JOIN runs r ON s.run_id = r.id
   WHERE r.assignment = 'standard' AND s.model IS NOT NULL
-ORDER BY at, sid`,
+`,
 	DimHarness: `
-SELECT coalesce(s.harness, ''), s.harness_version, r.started_at AS at, s.id AS sid, r.id, NULL
+SELECT s.harness, s.harness_version, r.started_at AS at, s.id AS sid, r.id, NULL
   FROM setups s JOIN runs r ON s.run_id = r.id
-  WHERE r.assignment = 'standard' AND s.harness_version IS NOT NULL
+  WHERE r.assignment = 'standard' AND s.harness_version IS NOT NULL AND s.harness IS NOT NULL
 UNION ALL
-SELECT coalesce(s.harness, ''), s.harness_version, x.started_at, s.id, NULL, x.id
+SELECT s.harness, s.harness_version, x.started_at, s.id, NULL, x.id
   FROM setups s JOIN sessions x ON s.session_id = x.id
-  WHERE x.assignment = 'standard' AND s.harness_version IS NOT NULL
-ORDER BY at, sid`,
+  WHERE x.assignment = 'standard' AND s.harness_version IS NOT NULL AND s.harness IS NOT NULL
+`,
 }
 
 // VersionChanges derives the version switches from setups, per dimension and series, in the order
@@ -97,19 +97,45 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 	}
 	defer func() { _ = rows.Close() }()
 
+	type row struct {
+		series, val string
+		at          time.Time
+		sid         int64
+		runID, sess sql.NullInt64
+	}
+	var all []row
+	for rows.Next() {
+		var r row
+		var at string
+		if err := rows.Scan(&r.series, &r.val, &at, &r.sid, &r.runID, &r.sess); err != nil {
+			return nil, fmt.Errorf("telemetry: version changes (%s): %w", dim, err)
+		}
+		ts, err := time.Parse(time.RFC3339Nano, at)
+		if err != nil {
+			return nil, fmt.Errorf("telemetry: version changes (%s): started_at %q: %w", dim, at, err)
+		}
+		r.at = ts
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("telemetry: version changes (%s): %w", dim, err)
+	}
+	// Sort on the parsed time: RFC3339Nano text does not sort chronologically (trailing zeros dropped).
+	sort.SliceStable(all, func(i, j int) bool {
+		if !all[i].at.Equal(all[j].at) {
+			return all[i].at.Before(all[j].at)
+		}
+		return all[i].sid < all[j].sid
+	})
+
 	type seen struct {
 		last   string
 		values map[string]bool
 	}
 	bySeries := map[string]*seen{}
 	var out []VersionChange
-	for rows.Next() {
-		var series, val, at string
-		var sid int64
-		var runID, sessID sql.NullInt64
-		if err := rows.Scan(&series, &val, &at, &sid, &runID, &sessID); err != nil {
-			return nil, fmt.Errorf("telemetry: version changes (%s): %w", dim, err)
-		}
+	for _, r := range all {
+		series, val := r.series, r.val
 		s := bySeries[series]
 		if s == nil {
 			bySeries[series] = &seen{last: val, values: map[string]bool{val: true}}
@@ -118,19 +144,12 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 		if val == s.last || s.values[val] {
 			continue
 		}
-		ts, err := time.Parse(time.RFC3339Nano, at)
-		if err != nil {
-			return nil, fmt.Errorf("telemetry: version changes (%s): started_at %q: %w", dim, at, err)
-		}
 		out = append(out, VersionChange{
 			Dimension: dim, Series: series, Old: s.last, New: val,
-			RunID: runID, SessionID: sessID, At: ts,
+			RunID: r.runID, SessionID: r.sess, At: r.at,
 		})
 		s.last = val
 		s.values[val] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("telemetry: version changes (%s): %w", dim, err)
 	}
 	return out, nil
 }

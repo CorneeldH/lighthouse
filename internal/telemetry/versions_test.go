@@ -18,6 +18,7 @@ type setupRow struct {
 	harness    any
 	harnessVer any
 	superpower any
+	setupID    int64 // 0 = automatic
 }
 
 var seq int
@@ -52,9 +53,13 @@ func insertSetup(t *testing.T, db *sql.DB, r setupRow) int64 {
 		}
 		runID, _ = res.LastInsertId()
 	}
-	res, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, run_id, session_id, model, harness,
-		harness_version, superpowers_version, lane) VALUES ('t', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		seq, rec, runID, sessID, r.model, r.harness, r.harnessVer, r.superpower, r.lane)
+	var setupID any
+	if r.setupID != 0 {
+		setupID = r.setupID
+	}
+	res, err := db.Exec(`INSERT INTO setups (id, source, source_id, recorded_at, run_id, session_id, model, harness,
+		harness_version, superpowers_version, lane) VALUES (?, 't', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		setupID, seq, rec, runID, sessID, r.model, r.harness, r.harnessVer, r.superpower, r.lane)
 	if err != nil {
 		t.Fatalf("insert setup: %v", err)
 	}
@@ -159,10 +164,37 @@ func TestVersionChanges_OrdersByStartedAtNotRecordedAt(t *testing.T) {
 
 func TestVersionChanges_EqualStartedAtOrdersBySetupsID(t *testing.T) {
 	db := openDB(t)
-	insertSetup(t, db, sp(0, "first"))
-	insertSetup(t, db, sp(0, "second"))
+	// Inserted "second" first, but with the higher setups id: the id decides, not insertion order.
+	b := sp(0, "second")
+	b.setupID = 20
+	a := sp(0, "first")
+	a.setupID = 10
+	insertSetup(t, db, b)
+	insertSetup(t, db, a)
 	got := changes(t, db)
 	if len(got) != 1 || got[0].Old != "first" || got[0].New != "second" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestVersionChanges_FractionalAndWholeSecondsSortChronologically(t *testing.T) {
+	db := openDB(t)
+	// As text "...:00.5Z" sorts before "...:00Z", chronologically it is the other way round.
+	whole := setupRow{startedAt: t0, superpower: "old"}
+	frac := setupRow{startedAt: t0.Add(500 * time.Millisecond), superpower: "new"}
+	insertSetup(t, db, frac)
+	insertSetup(t, db, whole)
+	got := changes(t, db)
+	if len(got) != 1 || got[0].Old != "old" || got[0].New != "new" {
+		t.Fatalf("got %+v", got)
+	}
+}
+
+func TestVersionChanges_NullHarnessNotCounted(t *testing.T) {
+	db := openDB(t)
+	insertSetup(t, db, setupRow{startedAt: t0, harness: "claude", harnessVer: "2.1"})
+	insertSetup(t, db, setupRow{startedAt: t0.Add(time.Minute), harness: nil, harnessVer: "9.9"})
+	if got := changes(t, db); len(got) != 0 {
 		t.Fatalf("got %+v", got)
 	}
 }
