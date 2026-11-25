@@ -204,6 +204,7 @@ func TestSafeHookPath(t *testing.T) {
 		".claude/hooks/x.sh":           ".claude/hooks/x.sh",
 		"~/bin/x.sh":                   "~/bin/x.sh",
 		"/home/alice/x.sh":             "x.sh",
+		"~alice/x.sh":                  "x.sh",
 		`C:\Users\alice\x.ps1`:         "x.ps1",
 		"curl http://u:pw@h/x --k=abc": "curl",
 	} {

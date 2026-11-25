@@ -41,7 +41,9 @@ func OverlapFromAudit(env agentaudit.Env, guards []packs.Guard) ([]HookOverlap, 
 func safeHookPath(path string) string {
 	absolute := strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) ||
 		(len(path) >= 2 && path[1] == ':' && isLetter(path[0]))
-	if absolute || strings.ContainsAny(path, " \t\n\"'$`;&|<>=\\") {
+	// `~user/...` names a user; only `~` alone or `~/` is the caller's own home.
+	otherHome := strings.HasPrefix(path, "~") && !strings.HasPrefix(path, "~/")
+	if absolute || otherHome || strings.ContainsAny(path, " \t\n\"'$`;&|<>=\\") {
 		return hookBasename(path)
 	}
 	return path
