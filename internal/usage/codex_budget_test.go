@@ -151,7 +151,8 @@ func TestBudgetWeekIsJudgedBeforeSession(t *testing.T) {
 	}
 }
 
-// pytest: NINE_KEYS (the JSON is a contract: the review skills read these keys through lighthouse review-run).
+// pytest: NINE_KEYS (the JSON is a contract: the review skills read these keys through lighthouse review-run);
+// reset_credits (#585) is a tenth key, added after that provenance.
 func TestBudgetOutcomeJSONKeyOrder(t *testing.T) {
 	data, err := json.Marshal(decide(rd(92, 41)))
 	if err != nil {
