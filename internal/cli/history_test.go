@@ -189,7 +189,7 @@ func TestHistory_WSLHint(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut)
 	}
-	if hint, _ := histDecode(t, out)["hint"].(string); !strings.Contains(hint, "/mnt/c/Users/<naam>/.claude/projects") {
+	if hint, _ := histDecode(t, out)["hint"].(string); !strings.Contains(hint, "/mnt/c/Users/<name>/.claude/projects") {
 		t.Errorf("hint = %q", hint)
 	}
 }

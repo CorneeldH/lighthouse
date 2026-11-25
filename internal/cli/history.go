@@ -133,7 +133,7 @@ func runHistory(ctx context.Context, env historyEnv, sources bool, since, projec
 	rep := hist.Analyze(files, henv, opts)
 	if len(files) == 0 && isWSL(env.ProcVersion) {
 		rep.Hint = "No sessions found. On WSL the transcripts of a native Windows Claude Code may lie under " +
-			"/mnt/c/Users/<naam>/.claude/projects; ask the user before running again with --projects-dir."
+			"/mnt/c/Users/<name>/.claude/projects; ask the user before running again with --projects-dir."
 	}
 	data, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
