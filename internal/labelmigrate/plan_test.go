@@ -27,6 +27,8 @@ type fakeForge struct {
 	relabels int
 	// failRelabel is the 1-based relabel call that applies its add and then fails; 0 is never.
 	failRelabel int
+	// noBoard makes IssueItem fail like a forge without [forge.board].
+	noBoard bool
 }
 
 func (f *fakeForge) Planning(context.Context) (forge.Planning, error) {
@@ -75,6 +77,9 @@ func (f *fakeForge) EditIssue(_ context.Context, n int, e forge.IssueEdit) (forg
 }
 
 func (f *fakeForge) IssueItem(_ context.Context, n int) (forge.BoardItem, bool, error) {
+	if f.noBoard {
+		return forge.BoardItem{}, false, errors.New("forge: Owner/repo: missing [forge.board]")
+	}
 	s, ok := f.status[n]
 	return forge.BoardItem{Issue: n, Status: s}, ok, nil
 }
@@ -107,7 +112,7 @@ func newFake(issues ...forge.PlanIssue) *fakeForge {
 
 func build(t *testing.T, f *fakeForge, runs RunLookup) []Step {
 	t.Helper()
-	steps, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, runs)
+	steps, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, runs, true)
 	if err != nil {
 		t.Fatalf("BuildPlan: %v", err)
 	}
@@ -195,6 +200,22 @@ func TestBuildPlanBlockReplacesBlockedExternal(t *testing.T) {
 	}
 }
 
+func TestBuildPlanWithoutBoardSkipsStatusStep(t *testing.T) {
+	is := issue(1, "blocked-external")
+	f := newFake(is)
+	f.noBoard = true
+	steps, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, nil, false)
+	if err != nil {
+		t.Fatalf("BuildPlan without a board: %v", err)
+	}
+	if st := find(steps, "status"); len(st) != 0 {
+		t.Fatalf("status = %+v, want none", st)
+	}
+	if _, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, nil, true); err == nil {
+		t.Fatal("with a board the missing-board error must surface")
+	}
+}
+
 func TestBuildPlanInProgressBlockedNoRun(t *testing.T) {
 	mk := func(status string) *fakeForge {
 		is := issue(1, "blocked-external")
@@ -216,7 +237,7 @@ func TestBuildPlanInProgressBlockedNoRun(t *testing.T) {
 	if st := find(build(t, mk("Controller"), lookup("done")), "status"); len(st) != 0 {
 		t.Errorf("Controller: status = %+v, want none", st)
 	}
-	if _, err := BuildPlan(t.Context(), mk("In progress"), OldDefaults, newLabels, nil); err == nil ||
+	if _, err := BuildPlan(t.Context(), mk("In progress"), OldDefaults, newLabels, nil, true); err == nil ||
 		!strings.Contains(err.Error(), "step 3 needs the runs database") {
 		t.Errorf("nil RunLookup err = %v", err)
 	}
@@ -267,7 +288,7 @@ func TestExecuteResumesAfterFailure(t *testing.T) {
 		return newFake(issue(1, "needs-shaping"), issue(2, "needs-decision", "needs-shaping"), issue(3, "needs-testing"))
 	}
 	run := func(f *fakeForge) error {
-		steps, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, nil)
+		steps, err := BuildPlan(t.Context(), f, OldDefaults, newLabels, nil, true)
 		if err != nil {
 			t.Fatal(err)
 		}

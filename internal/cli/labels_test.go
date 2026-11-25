@@ -111,7 +111,7 @@ func newLabelsHarness(t *testing.T, paused bool) *labelsHarness {
 	dir := t.TempDir()
 	h := &labelsHarness{t: t, dir: dir, toml: filepath.Join(dir, "lighthouse.toml"), fake: newLabelsFake(), haveDB: true,
 		env: map[string]string{"XDG_RUNTIME_DIR": t.TempDir(), "LIGHTHOUSE_CONTROLLER_STATE": t.TempDir()}}
-	text := "[forge]\nrepo = \"Owner/repo\"\n\n[paths]\nlabels = \"labels.md\"\n\n[labels]\nneeds_shaping = \"needs-shaping\"\nneeds_decision = \"needs-decision\"\nneeds_testing = \"needs-testing\"\nneeds_mind = \"3-needs-mind\"\nneeds_hands = \"3-needs-hands\"\n"
+	text := "[forge]\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"P\"\nstatus_field_id = \"F\"\n\n[forge.board.status_options]\n\"To do\" = \"a\"\n\"In progress\" = \"b\"\nDone = \"c\"\n\n[paths]\nlabels = \"labels.md\"\n\n[labels]\nneeds_shaping = \"needs-shaping\"\nneeds_decision = \"needs-decision\"\nneeds_testing = \"needs-testing\"\nneeds_mind = \"3-needs-mind\"\nneeds_hands = \"3-needs-hands\"\n"
 	if err := os.WriteFile(h.toml, []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -435,5 +435,20 @@ func TestLabelsMigrateOldFlagOverridesToml(t *testing.T) {
 	code, out := h.run("", "--stage", "forge", "--yes", "--old", "needs_shaping=legacy-shaping")
 	if code != 0 || !slices.Equal(h.fake.issues[0].Labels, []string{"3-needs-mind"}) || slices.Contains(h.fake.labels, "legacy-shaping") {
 		t.Fatalf("code=%d out=%q labels=%v issue=%v", code, out, h.fake.labels, h.fake.issues[0].Labels)
+	}
+}
+
+func TestLabelsMigrateWithoutBoardSkipsStep3(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	text := "[forge]\nrepo = \"Owner/repo\"\n\n[paths]\nlabels = \"labels.md\"\n\n[labels]\nneeds_shaping = \"needs-shaping\"\nneeds_decision = \"needs-decision\"\nneeds_testing = \"needs-testing\"\n"
+	if err := os.WriteFile(h.toml, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.haveDB = false
+	h.fake.issues = []forge.PlanIssue{{Number: 5, Labels: []string{"needs-shaping"},
+		BlockedBy: []forge.Blocker{{Issue: 2, State: "OPEN"}}}}
+	code, out := h.run("", "--stage", "forge", "--yes")
+	if code != 0 || strings.Contains(out, "status #") {
+		t.Fatalf("code=%d out=%q, want 0 and no status step", code, out)
 	}
 }

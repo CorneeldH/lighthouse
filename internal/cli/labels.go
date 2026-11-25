@@ -210,7 +210,7 @@ func runLabelsMigrate(cmd *cobra.Command, env labelsEnv, stage string, olds []st
 			return "", nil
 		}
 	}
-	plan, err := labelmigrate.BuildPlan(cmd.Context(), f, old, l, lookup)
+	plan, err := labelmigrate.BuildPlan(cmd.Context(), f, old, l, lookup, repo.Board != nil)
 	if err != nil {
 		return err
 	}
@@ -231,7 +231,7 @@ func runLabelsMigrate(cmd *cobra.Command, env labelsEnv, stage string, olds []st
 			return errors.New("aborted: nothing was written")
 		}
 		// Read the forge again: it may have changed since the preview, and the lock holds from here.
-		if plan, err = labelmigrate.BuildPlan(cmd.Context(), f, old, l, lookup); err != nil {
+		if plan, err = labelmigrate.BuildPlan(cmd.Context(), f, old, l, lookup, repo.Board != nil); err != nil {
 			return err
 		}
 	}

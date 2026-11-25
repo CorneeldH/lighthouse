@@ -43,8 +43,9 @@ type RunLookup func(issue int) (state string, err error)
 // BuildPlan reads the forge and returns the steps still needed to move it from the old labels
 // to l, in execution order. A step whose result is already on the forge is not in the plan, so
 // a second plan after a failed run only holds what is left. Planning lists open issues only;
-// closed issues lose their old labels by the delete-label steps.
-func BuildPlan(ctx context.Context, f forge.Forge, old OldNames, l repoconfig.Labels, runs RunLookup) ([]Step, error) {
+// closed issues lose their old labels by the delete-label steps. Without a board (board false,
+// no [forge.board]) there is no status to move, so step 3 is skipped.
+func BuildPlan(ctx context.Context, f forge.Forge, old OldNames, l repoconfig.Labels, runs RunLookup, board bool) ([]Step, error) {
 	existing, err := f.Labels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("labelmigrate: labels: %w", err)
@@ -90,7 +91,7 @@ func BuildPlan(ctx context.Context, f forge.Forge, old OldNames, l repoconfig.La
 			labels = append(slices.DeleteFunc(labels, func(s string) bool { return slices.Contains(rm, s) }), l.BlockedIssue)
 		}
 		blocked := open || slices.Contains(labels, l.BlockedIssue) || slices.Contains(labels, l.BlockedExternal)
-		if !blocked {
+		if !blocked || !board {
 			continue
 		}
 		st, err := stuckInProgress(ctx, f, is.Number, runs)
