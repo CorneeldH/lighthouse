@@ -1061,7 +1061,7 @@ export function renderFlowMap(root, data, detail) {
             ["Status", statusText(chip)],
           ]),
         ),
-        box("How it works", "", steps(chip.how)),
+        box("How it works", "", steps(chipDetail(chip).how)),
         box("In the chain", "", facts(routeFacts(chip))),
         ...definition(chip.source),
       ],

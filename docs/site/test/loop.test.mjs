@@ -384,6 +384,7 @@ test("fieldTableProblems checks the table against the object", () => {
 test("labels.md field table matches loop.json", () => {
   const md = fs.readFileSync(path.join(ROOT, "docs", "developer", "labels.md"), "utf-8");
   assert.deepEqual(fieldTableProblems(md, load("loop.json")), []);
-  assert.ok(md.includes("(`chips`)"), "the table lacks the row for chips");
-  assert.ok(md.includes("(`handoffs`)"), "the table lacks the row for handoffs");
+  assert.ok(md.includes("| Label | Item | Place | From issue |"), "the field table lacks its header row");
+  assert.ok(/^\| `loop` \| stap \(`chips`\) \|/m.test(md), "the table lacks the row for chips");
+  assert.ok(/^\| `loop` \| handoff \(`handoffs`\) \|/m.test(md), "the table lacks the row for handoffs");
 });
