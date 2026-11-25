@@ -162,6 +162,13 @@ func scanOf(ctx context.Context, f forge.Forge, is forge.Issue) (*corpusScan, er
 	return s, nil
 }
 
+// newestClosed is the scan issue of closed that closed last; closed is not empty.
+func newestClosed(closed []forge.Issue) forge.Issue {
+	return slices.MaxFunc(closed, func(a, b forge.Issue) int {
+		return cmp.Or(a.ClosedAt.Compare(b.ClosedAt), cmp.Compare(a.Number, b.Number))
+	})
+}
+
 // buildCorpus reads the forge and the work tree in env.Dir into the corpus.
 func (j *Job) buildCorpus(ctx context.Context, env scheduled.Env) (corpus, error) {
 	c := corpus{Language: env.Repo.Language, Paths: []string{}, Issues: []corpusIssue{}}
@@ -206,10 +213,7 @@ func (j *Job) buildCorpus(ctx context.Context, env scheduled.Env) (corpus, error
 		return c, err
 	}
 	if len(closed) > 0 {
-		last := slices.MaxFunc(closed, func(a, b forge.Issue) int {
-			return cmp.Or(a.ClosedAt.Compare(b.ClosedAt), cmp.Compare(a.Number, b.Number))
-		})
-		if c.LastClosed, err = scanOf(ctx, env.Forge, last); err != nil {
+		if c.LastClosed, err = scanOf(ctx, env.Forge, newestClosed(closed)); err != nil {
 			return c, err
 		}
 	}

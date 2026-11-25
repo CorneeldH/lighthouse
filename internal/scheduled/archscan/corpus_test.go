@@ -27,7 +27,7 @@ import (
 
 const (
 	jobLogin   = "lh-bot"
-	scanLabel  = "needs-decision"
+	scanLabel  = "3-needs-decision" // deliberately not the key needs_decision
 	defaultTOM = "[project]\nlanguage = \"nl\"\n"
 )
 
