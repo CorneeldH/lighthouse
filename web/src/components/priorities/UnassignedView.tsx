@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { MilestoneTitle } from './MilestoneTitle'
 import { withoutMilestone, type UnassignedRow } from '@/lib/priorities/derive'
 import type { ViewProps } from './types'
 
@@ -26,7 +27,7 @@ function Row({ row }: { row: UnassignedRow }): JSX.Element {
       </a>
       <span className="min-w-0 flex-1 truncate">{node.title}</span>
       {row.closedMilestone !== null && (
-        <span className="shrink-0 text-xs text-muted-foreground">{row.closedMilestone} · closed</span>
+        <span className="shrink-0 text-xs text-muted-foreground"><MilestoneTitle title={row.closedMilestone.title} url={row.closedMilestone.url} /> · closed</span>
       )}
       {relation !== null && (
         <span

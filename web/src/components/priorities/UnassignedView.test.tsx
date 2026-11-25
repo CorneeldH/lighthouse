@@ -44,6 +44,24 @@ describe('UnassignedView', () => {
     expect(screen.getByText('title-5')).toBeTruthy()
   })
 
+  it('links the title of a closed milestone and names it closed; no milestone link without one', () => {
+    view([
+      repo(A, [
+        iss(5, [], { number: 2, state: 'closed', title: 'Old', url: 'https://forge/m2' }),
+        iss(6),
+        iss(7, [], { number: 3, state: 'closed', title: 'NoUrl', url: '' }),
+      ]),
+    ])
+    const byNr = (n: number) => rows().find((r) => within(r).queryByText(`title-${n}`))!
+    const link = within(byNr(5)).getByRole('link', { name: 'Old' })
+    expect(link.getAttribute('href')).toBe('https://forge/m2')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(byNr(5).textContent).toContain('Old · closed')
+    expect(within(byNr(6)).getAllByRole('link')).toHaveLength(1)
+    expect(within(byNr(7)).queryByRole('link', { name: 'NoUrl' })).toBeNull()
+    expect(byNr(7).textContent).toContain('NoUrl · closed')
+  })
+
   it('names the relation with the related number', () => {
     view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 44]]), iss(44)])])
     const byNr = (n: number) => rows().find((r) => within(r).queryByText(`title-${n}`))!
@@ -69,7 +87,7 @@ describe('UnassignedView', () => {
   it('marks an open issue in a closed milestone with the title and the word closed', () => {
     view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one', url: 'u-old' })])])
     const r = rows()[0]
-    expect(within(r).getByText('Old one · closed')).toBeTruthy()
+    expect(r.textContent).toContain('Old one · closed')
   })
 
   it('shows no milestone label for an issue without any milestone', () => {

@@ -131,6 +131,15 @@ describe('MilestonesView', () => {
     expect(blocks(`${A}#m1`).every((x) => !x.hasAttribute('data-needs-human'))).toBe(true)
   })
 
+  it('links the row title to the milestone url, and shows plain text when the url is empty', () => {
+    view([repo(A, [], [ms(1, 0, 0), { ...ms(2, 0, 0), url: '' }])])
+    const link = within(row(`${A}#m1`)).getByRole('link', { name: 'M1' })
+    expect(link.getAttribute('href')).toBe('u-m1')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(within(row(`${A}#m2`)).queryByRole('link', { name: 'M2' })).toBeNull()
+    expect(within(row(`${A}#m2`)).getByText('M2')).toBeTruthy()
+  })
+
   it('opens the issue url in a new tab on click', () => {
     view([repo(A, [iss(7, 1)], [ms(1, 0, 1)])])
     const b = blocks(`${A}#m1`)[0]

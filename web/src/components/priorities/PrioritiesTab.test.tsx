@@ -8,7 +8,7 @@ import { PrioritiesTab } from './PrioritiesTab'
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
-const M = { number: 1, state: 'open', title: 'Alpha' }
+const M = { number: 1, state: 'open', title: 'Alpha', url: 'https://forge/m1' }
 const PRIORITIES = {
   repos: [
     {
@@ -18,7 +18,7 @@ const PRIORITIES = {
         { number: 2, title: 't2', url: 'u2', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
         { number: 3, title: 't3', url: 'u3', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null },
       ],
-      milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2 }],
+      milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2, url: 'https://forge/m1', closed: [] }],
     },
     { slug: 'a/y', issues: [], milestones: [] },
   ],
@@ -135,9 +135,9 @@ describe('PrioritiesTab', () => {
   describe('legend and colours', () => {
     const iss = (n: number, ms: { number: number; title: string } | null) => ({
       number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null,
-      ...(ms ? { milestone: { ...ms, state: 'open' } } : {}),
+      ...(ms ? { milestone: { ...ms, state: 'open', url: `https://forge/m${ms.number}` } } : {}),
     })
-    const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1 })
+    const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1, url: `https://forge/m${number}`, closed: [] })
     const TWO = {
       repos: [
         { slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' })], milestones: [ms(1, 'Alpha'), ms(2, 'Empty')] },
@@ -152,6 +152,21 @@ describe('PrioritiesTab', () => {
     const swatches = () =>
       Array.from(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li'))
         .map((li) => [li.textContent, (li.querySelector('i') as HTMLElement).style.background])
+
+    it('makes the legend label a link to the milestone; Without milestone has no link', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const link = legend().getByRole('link', { name: 'a/x · Alpha' })
+      expect(link.getAttribute('href')).toBe('https://forge/m1')
+      expect(link.getAttribute('target')).toBe('_blank')
+      cleanup()
+      stub(() => json({ repos: [{ slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' }), { ...iss(2, null) }], milestones: [ms(1, 'Alpha')] }], runs: [] }))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const none = legend().getByText('Without milestone').closest('li') as HTMLElement
+      expect(none.querySelector('a')).toBeNull()
+    })
 
     it('lists only milestones with a node in the deps view, with repo prefix for >1 repo', async () => {
       stub(() => json(TWO))

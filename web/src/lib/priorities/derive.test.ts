@@ -281,6 +281,12 @@ describe('milestoneRows', () => {
     expect(row).toMatchObject({ open: 2, done: 2, total: 4, percent: 0.5, empty: false })
   })
 
+  it('takes the url from the Milestone of repo.milestones, also without issues', () => {
+    const rs = [repo(R, [], [m(1, 0)])]
+    const [row] = milestoneRows(rs, buildGraph(rs, []))
+    expect(row.url).toBe('u-m1')
+  })
+
   it('outside holds transitive external blockers, two layers deep, not own issues', () => {
     const rs = [
       repo(
@@ -482,7 +488,7 @@ describe('withoutMilestone', () => {
     expect(rows.map((r) => r.node.number)).toEqual([7, 5, 30, 20, 10])
     expect(rows[0]).toMatchObject({ relation: 'blocks', relatedNumber: 5 })
     expect(rows[1]).toMatchObject({ relation: 'waits', relatedNumber: 7 })
-    expect(rows[2].closedMilestone).toBe('Old')
+    expect(rows[2].closedMilestone).toEqual({ title: 'Old', url: 'u-old' })
     expect(rows[3].closedMilestone).toBeNull()
   })
 })
