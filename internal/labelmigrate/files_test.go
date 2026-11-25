@@ -138,3 +138,15 @@ func TestRewriteLabelsTableHeaderWithCommentKeepsExistingMind(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestRewriteLabelsTableHandsWithExistingMind(t *testing.T) {
+	src := "[labels]\nneeds_mind = \"9-needs-mind\"\nneeds_testing = \"9-needs-testing\"\n"
+	got, _ := RewriteLabelsTableHands([]byte(src), "9-needs-mind", "9-needs-hands")
+	if want := "[labels]\nneeds_mind = \"9-needs-mind\"\nneeds_hands = \"9-needs-hands\"\n"; string(got) != want {
+		t.Fatalf("got %q", got)
+	}
+	again, _ := RewriteLabelsTableHands(got, "9-needs-mind", "9-needs-hands")
+	if string(again) != string(got) {
+		t.Fatalf("not idempotent: %q", again)
+	}
+}

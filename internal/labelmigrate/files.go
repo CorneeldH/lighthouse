@@ -149,7 +149,7 @@ func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
 }
 
 // RewriteLabelsTableHands is RewriteLabelsTable that, when hands is not empty and [labels] has no
-// needs_hands, also writes needs_hands = "<hands>" after the needs_mind line it places.
+// needs_hands, also writes needs_hands = "<hands>" at the first old line it removes.
 func RewriteLabelsTableHands(src []byte, mind, hands string) ([]byte, error) {
 	lines := strings.Split(string(src), "\n")
 	inLabels := false
@@ -177,10 +177,11 @@ func RewriteLabelsTableHands(src []byte, mind, hands string) ([]byte, error) {
 		} else if inLabels && oldKeyRE.MatchString(l) {
 			if !placed {
 				out = append(out, fmt.Sprintf("needs_mind = %q", mind))
-				if hands != "" && !hasHands {
-					out = append(out, fmt.Sprintf("needs_hands = %q", hands))
-				}
 				placed = true
+			}
+			if hands != "" && !hasHands {
+				out = append(out, fmt.Sprintf("needs_hands = %q", hands))
+				hasHands = true
 			}
 			continue
 		}
