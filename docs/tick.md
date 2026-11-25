@@ -1146,9 +1146,10 @@ met de machineregel `<!-- lighthouse-version-change: <dimensie> [<reeks>] →<ni
 in een issue, open of gesloten, dan komt er geen tweede. De taal volgt `[project] language` van de repo. Een
 mislukte wissel geeft een logregel en de andere gaan door.
 
-**De markering.** `telemetry.VersionMarkers` geeft dezelfde wissels als punten met een week
-(`VersionMarker.Week`, een `time.Time` op de maandag van de ISO-week); #379 leest dit als `markers` op de
-tijdlijn. Is #379 nog niet gemerged, dan is de koppeling er nog niet: wie als laatste merget, legt haar. Controleer met
+**De markering.** `telemetry.VersionMarkers` geeft elke wissel, ook de overgeslagen (`Skip`), als punt met een
+week (`VersionMarker.Week`, een `time.Time` op de maandag van de ISO-week); de issues gebruiken alleen de
+deelverzameling van `LatestProposals`. #379 leest dit als `markers` op de tijdlijn. Is #379 nog niet
+gemerged, dan is de koppeling er nog niet: wie als laatste merget, legt haar. Controleer met
 `git fetch && git grep -n 'Markers' origin/main -- internal/telemetry`; zet dan `Week` om naar de string
 `2006-01-02` van `Marker.Week` van #379 en voeg de test toe dat een wissel in de juiste week verschijnt.
 

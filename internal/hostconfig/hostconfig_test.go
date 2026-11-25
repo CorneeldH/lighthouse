@@ -522,6 +522,7 @@ func TestLoadTelemetry(t *testing.T) {
 		{"no path", "", ""},
 		{"missing file", filepath.Join(t.TempDir(), "nope.toml"), ""},
 		{"no table", writeHost(t, "[dispatch]\nslots = 2\n"), ""},
+		{"table without key", writeHost(t, "[telemetry]\n"), ""},
 		{"set", writeHost(t, "[telemetry]\nproposals_repo = \"o/r\"\n"), "o/r"},
 	}
 	for _, c := range cases {

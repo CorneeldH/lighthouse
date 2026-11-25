@@ -135,6 +135,17 @@ func TestVersionChanges_ABABIsOneChange(t *testing.T) {
 	}
 }
 
+func TestVersionChanges_OldIsPrecedingRowValue(t *testing.T) {
+	db := openDB(t)
+	for i, v := range []string{"A", "B", "A", "C"} {
+		insertSetup(t, db, sp(i, v))
+	}
+	got := changes(t, db)
+	if len(got) != 2 || got[1].Old != "A" || got[1].New != "C" {
+		t.Fatalf("got %+v, want second change A->C", got)
+	}
+}
+
 func TestVersionChanges_FirstValueNoChange(t *testing.T) {
 	db := openDB(t)
 	insertSetup(t, db, sp(0, "A"))
@@ -369,6 +380,15 @@ func TestLatestProposals_PerSeries(t *testing.T) {
 	})
 	if len(got) != 3 {
 		t.Fatalf("got %+v", got)
+	}
+	got = LatestProposals([]VersionChange{
+		{Dimension: DimHarness, Series: "claude", Old: "1", New: "2"},
+		{Dimension: DimHarness, Series: "codex", Old: "1", New: "2"},
+		{Dimension: DimHarness, Series: "claude", Old: "2", New: "3"},
+		{Dimension: DimHarness, Series: "codex", Old: "2", New: "3", Skip: true},
+	})
+	if len(got) != 1 || got[0].Series != "claude" || got[0].New != "3" {
+		t.Fatalf("want only claude 3 (codex last is skipped): %+v", got)
 	}
 }
 

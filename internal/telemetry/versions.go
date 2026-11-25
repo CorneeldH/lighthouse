@@ -132,6 +132,7 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 
 	type seen struct {
 		last   string
+		prev   string // value of the previous row of the series
 		values map[string]bool
 		max    *pins.Version // highest parseable value seen so far
 	}
@@ -141,13 +142,15 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 		series, val := r.series, r.val
 		s := bySeries[series]
 		if s == nil {
-			s = &seen{last: val, values: map[string]bool{val: true}}
+			s = &seen{last: val, prev: val, values: map[string]bool{val: true}}
 			if v, err := pins.ParseVersion(val); err == nil {
 				s.max = &v
 			}
 			bySeries[series] = s
 			continue
 		}
+		before := s.prev
+		s.prev = val
 		if val == s.last || s.values[val] {
 			continue
 		}
@@ -161,7 +164,7 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 			}
 		}
 		out = append(out, VersionChange{
-			Dimension: dim, Series: series, Old: s.last, New: val,
+			Dimension: dim, Series: series, Old: before, New: val,
 			RunID: r.runID, SessionID: r.sess, At: r.at, Skip: skip,
 		})
 		s.last = val
