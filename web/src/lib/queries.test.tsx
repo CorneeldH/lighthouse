@@ -12,6 +12,9 @@ import {
   usePriorities,
   useQuestions,
   useReturned,
+  useTelemetryComponents,
+  useTelemetryTrajectories,
+  useTelemetryTrajectory,
   useMilestoneRanks,
   useUsage,
 } from './queries'
@@ -412,6 +415,44 @@ describe('useMilestoneRanks', () => {
     gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/r': 'Priority: 1' }))))
     await act(async () => posts[0].resolve(json({ written: [6] })))
     await vi.waitFor(() => expect(result.current.ranks.isPending('o/r')).toBe(false))
+    client.clear()
+  })
+})
+
+describe('telemetry hooks', () => {
+  function setup(body: string) {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const client = newQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    return { fetchMock, client, wrapper }
+  }
+
+  it('useTelemetryComponents encodes the filter and omits empty values', async () => {
+    const { fetchMock, client, wrapper } = setup('{"blocks":null,"options":{}}')
+    renderHook(() => useTelemetryComponents({ repo: 'a/b', route: '2', size: '' }), { wrapper })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/telemetry/components?repo=a%2Fb&route=2')
+    client.clear()
+  })
+
+  it('useTelemetryTrajectories turns a null list into []', async () => {
+    const { fetchMock, client, wrapper } = setup('{"trajectories":null}')
+    const { result } = renderHook(() => useTelemetryTrajectories({}), { wrapper })
+    await vi.waitFor(() => expect(result.current.data).toEqual([]))
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/telemetry/trajectories')
+    client.clear()
+  })
+
+  it('useTelemetryTrajectory fetches one trajectory by id', async () => {
+    const { fetchMock, client, wrapper } = setup('{"id":7}')
+    renderHook(() => useTelemetryTrajectory(7), { wrapper })
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/telemetry/trajectories/7')
     client.clear()
   })
 })
