@@ -81,7 +81,8 @@ Per soort item geldt:
   Een stap die hetzelfde issue nieuw toevoegt, telt mee met zijn `label`, dat zijn `id` wordt.
 - **Route.** Krijgt nog geen gepland item.
 - **Vorm.** Eén regel per item onder `### Op de kaart`: `<item>: <veld> <waarde>, <veld> <waarde>`,
-  bijvoorbeeld `handoff: from close-issue, to close-followup`. Een issue met een nieuwe stap en een
+  bijvoorbeeld `stap: phase close, after close-issue, kind lighthouse, trigger skill, label close-followup`
+  of `handoff: from close-issue, to close-followup`. Een issue met een nieuwe stap en een
   handoff ernaartoe heeft twee regels; elke regel is compleet.
 
 De test `docs/site/test/loop.test.mjs` houdt de tabel tegen `loop.json`: een array die er niet is,
