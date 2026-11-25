@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // The tests here run Pre against real git repositories: which root a commit lands in,
@@ -84,17 +86,14 @@ func stubGit(t *testing.T, pattern, message string) {
 	if err != nil {
 		t.Skip("no git")
 	}
+	stubbin.RequirePOSIX(t, "case on $* and exec of the real git")
 	dir := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"case \"$*\" in\n" +
+	script := "case \"$*\" in\n" +
 		"  " + pattern + ") echo '" + message + "' >&2; exit 128 ;;\n" +
 		"esac\n" +
 		"exec '" + real + "' \"$@\"\n"
-	write(t, filepath.Join(dir, "git"), script)
-	if err := os.Chmod(filepath.Join(dir, "git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, dir, "git", script)
+	stubbin.Prepend(t, dir)
 }
 
 // markerHeads is the `heads` of the marker that Pre recorded for session s1; ok is false without one.
@@ -274,16 +273,14 @@ func TestPreReadsGitInTheCLocale(t *testing.T) {
 	if err != nil {
 		t.Skip("no git")
 	}
+	stubbin.RequirePOSIX(t, "$LC_ALL test, case on $* and exec of the real git")
 	stub := t.TempDir()
-	write(t, filepath.Join(stub, "git"), "#!/bin/sh\n"+
+	stubbin.MakeScript(t, stub, "git",
 		"if [ \"$LC_ALL\" != C ]; then\n"+
-		"  case \"$*\" in *--show-toplevel*) echo 'fatal: kein Git-Repository (oder irgendein Elternverzeichnis): .git' >&2; exit 128 ;; esac\n"+
-		"fi\n"+
-		"exec '"+real+"' \"$@\"\n")
-	if err := os.Chmod(filepath.Join(stub, "git"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", stub+string(os.PathListSeparator)+os.Getenv("PATH"))
+			"  case \"$*\" in *--show-toplevel*) echo 'fatal: kein Git-Repository (oder irgendein Elternverzeichnis): .git' >&2; exit 128 ;; esac\n"+
+			"fi\n"+
+			"exec '"+real+"' \"$@\"\n")
+	stubbin.Prepend(t, stub)
 	h, _ := projectHarness(t, testGate)
 	plain := t.TempDir()
 	res := h.pre("cd "+plain+" && git commit -m x", plain)
