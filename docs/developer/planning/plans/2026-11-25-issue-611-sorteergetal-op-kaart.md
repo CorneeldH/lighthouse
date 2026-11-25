@@ -26,7 +26,7 @@
 - Een externe knoop heeft `prioWeight` 0 (`derive.ts`): bij *Prio-weight* geen pil, geen crash.
 - Een kaart in het blok *No open dependencies* (`loose-…`) heeft 0 wachtenden en gewicht 0, maar kan een `prio_weight` > 0 hebben: bij *Prio-weight* toont hij toch de pil.
 - Wisselen van sortering met dezelfde graaf (re-render met andere `depsOrder`) wisselt het getal zonder nieuwe data.
-- Bij `weight` > 0 maar `waiting` < 2 (kan niet bij een waiting-graaf, wel bij een cyclus) verdwijnt de pil niet bij *Weight*.
+- Bij `weight` > 0 maar `waiting` < 2 (een blokkade met één directe afhankelijke: waiting 1, weight 1) verdwijnt de pil niet bij *Weight*.
 - Een vreemde of ontbrekende `depsOrder` valt terug op de wachtenden-pil, geen lege pil.
 
 ---
@@ -48,9 +48,9 @@
   - `bij Prio-weight toont de kaart het prio-gewicht, en geen pil bij 0`: één issue met `prio_weight: 10`, één met 0 → pil `'10'` resp. geen `card-pill`.
   - `bij Weight toont de kaart het gewicht, en geen pil bij 0`: keten `iss(1), iss(2,[[A,1]])` → #1 pil `'1'`, #2 geen pil.
   - `bij Fewest crossings blijft de pil het aantal wachtenden vanaf 2` (expliciet `'crossings'`).
-  - `een kaart heeft in elke stand hoogstens één pil`: voor elk van de drie standen `within(node(...)).queryAllByTestId('card-pill').length <= 1`, op een kaart met 3 wachtenden en `prio_weight` > 0.
+  - `een kaart heeft in elke stand hoogstens één pil`: voor elk van de drie standen `within(node(...)).queryAllByTestId('card-pill').length <= 1` én `queryByTestId('waiting-pill')` is null, op een kaart met 3 wachtenden en `prio_weight` > 0.
   - `de tooltip noemt in elke stand wachtenden, gewicht, factor en prio-gewicht`: titel gelijk aan `3 wait · weight 3 · factor 3 · prio-weight 10` in alle drie de standen.
-  - `wisselen van sortering wisselt het getal zonder herladen`: `rerender` met een andere `depsOrder`, pilTekst van #1 wisselt van `'10'` (prio) naar `'3'` (weight).
+  - `wisselen van sortering wisselt het getal zonder herladen`: laat `view()` naast het render-resultaat de `graph`, `colors` en `selected` teruggeven en roep `rerender(<DepsView … depsOrder="weight" />)` aan met dezelfde waarden (niet `view()` twee keer, dat mount een nieuwe boom); pilTekst van #1 wisselt van `'10'` (prio) naar `'3'` (weight).
   - `een kaart in No open dependencies toont het prio-gewicht bij Prio-weight`: testid `loose-${A}#1`, `prio_weight: 7` → pil `'7'`.
 
 - [ ] **Stap 2: Draai de tests, controleer dat ze falen**
@@ -97,7 +97,7 @@
   ---
   type: added
   ---
-  Each card in the Dependencies view shows the number of the chosen sort (prio-weight, weight, or the waiting count from 2), so it is visible why a card sits above another (#611).
+  Elke kaart in de Dependencies-weergave toont het getal van de gekozen sortering (prio-weight, weight, of het aantal wachtenden vanaf 2), zodat zichtbaar is waarom een kaart boven een andere staat (#611).
   ```
 
 - [ ] **Stap 3: Controleer links en commit**
