@@ -16,17 +16,20 @@ volle filter geldt voor Components en Trajectories; Timeline en Coverage nemen a
 - **Components.** Eén vergelijkingsblok per onderdeel: `plan_review` en `spec_review` (met en
   zonder review), `lane` (`sdd` tegen `native`), `model` en `harness` (een groep per waarde). Per
   groep: *Found* (aandeel reviews met minstens één bevinding), *Adopted* (overgenomen bevindingen
-  van die met een besluit), *Cost* (mediaan van de trajectkosten, met `cost_kind`), *Recovered*,
-  *Questions*, *Active* en *Human wait*. Kosten en afloop tellen alleen over afgeronde trajecten:
-  minstens één herstelmeting en geen met een open venster. Elk blok draagt een label: *Observed,
-  not caused* (correlatie: de groepen zijn niet door lighthouse ingedeeld) of *Assigned by
-  lighthouse* (elke groep is zuiver ingedeeld en minstens één is een `variant:`). Onder het blok
-  staat hoeveel trajecten buiten de vergelijking vallen en waarom. `task_review`, `final_review`,
-  `pr_review` en `test_gate` hebben (nog) geen bron en staan er met hun reden.
+  van die met een besluit), *Cost* (mediaan van de trajectkosten, met `cost_kind`), *Recovered*
+  (aandeel hersteld), *Questions*, *Active* en *Human wait* (in uren; de API levert seconden).
+  Kosten en afloop tellen alleen over afgeronde trajecten: minstens één herstelmeting en geen met
+  een open venster. Elk vergelijkingsblok draagt een label: *Observed, not caused* (correlatie: de
+  groepen zijn niet door lighthouse ingedeeld) of *Assigned by lighthouse* (elke groep is zuiver
+  ingedeeld en minstens één is een `variant:`). De reviewblokken zeggen onder de tabel dat de
+  reviewkosten niet gemeten zijn. Onder het blok staat hoeveel trajecten buiten de vergelijking
+  vallen en waarom. `task_review`, `final_review`, `pr_review` en `test_gate` hebben (nog) geen
+  bron: zij staan er zonder label, alleen met hun reden.
 - **Timeline.** Per ISO-week de kosten (staven) en de mensvragen (lijn), en de trajecten die die
   week afrondden met hoeveel daarvan hersteld moesten worden. Een week vóór de eerste meting van
   een reeks is leeg, niet 0. De kosten vallen in de week van `usage.recorded_at`: de week waarin
-  `telemetry collect` ze vastlegde.
+  `telemetry collect` ze vastlegde, niet de week waarin het werk gebeurde. Een eerste `collect`
+  over oude transcripten zet dus alle eerdere kosten in één week; dat is een bekende beperking.
 - **Trajectories.** Alle trajecten, sorteerbaar op repo, issue, grootte, kosten en herstel, en te
   filteren op onderdeel. Een regel opent het detail (`#telemetry/trajectory/<id>`): runs en
   sessies met tokens en kosten per model, reviews met hun bevindingen (alleen sleutel, ernst,
