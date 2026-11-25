@@ -214,6 +214,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("PATCH /repos/{owner}/{name}/milestones/{number}", s.patchMilestone)
 	mux.HandleFunc("GET /repos/{owner}/{name}/labels", s.labels)
 	mux.HandleFunc("POST /repos/{owner}/{name}/labels", s.createLabel)
+	mux.HandleFunc("DELETE /repos/{owner}/{name}/labels/{label}", s.deleteLabel)
 	mux.HandleFunc("GET /repos/{owner}/{name}/commits/{sha}", s.commit)
 	mux.HandleFunc("GET /repos/{owner}/{name}/compare/{spec...}", s.compare)
 	mux.HandleFunc("PATCH /repos/{owner}/{name}/pulls/{number}", s.patchPull)

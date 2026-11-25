@@ -40,12 +40,10 @@ e78d8910
 2-area:server
 2-area:dispatcher
 2-area:usage
-3-needs-shaping
 3-blocked-external
 3-needs-hands
-3-needs-decision
+3-needs-mind
 3-blocked-issue
-3-needs-testing
 1-loc:mac
 1-loc:beelink
 1-loc:container

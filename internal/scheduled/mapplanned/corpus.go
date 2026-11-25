@@ -146,7 +146,7 @@ func readResult(dir string) (*result, error) {
 }
 
 // post is one comment Cleanup posts: its issue, its body, and whether it is a wish question
-// (which also sets labels.needs_decision).
+// (which also sets labels.needs_mind).
 type post struct {
 	issue int
 	body  string

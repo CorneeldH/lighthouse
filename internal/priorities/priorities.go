@@ -35,9 +35,10 @@ type Blocker struct {
 	Issue int    `json:"issue"`
 }
 
-// Issue is one open issue. Status is its board Status, "" when it has none. Label is the
-// `[labels]` key of its blocking label with the lowest rank (for example "needs_shaping"), ""
-// without one. OpenQuestion is true when the issue has an open question for the human.
+// Issue is one open issue. Status is its board Status, "" when it has none. Labels are the
+// `[labels]` keys of its blocking and human labels (for example "needs_mind",
+// "blocked_external"), in issuestate.Keys order; never nil. OpenQuestion is true when the issue
+// has an open question for the human.
 type Issue struct {
 	Number    int           `json:"number"`
 	Title     string        `json:"title"`
@@ -45,12 +46,9 @@ type Issue struct {
 	Milestone *MilestoneRef `json:"milestone,omitempty"`
 	BlockedBy []Blocker     `json:"blocked_by"`
 	Status    string        `json:"status"`
-	Label     string        `json:"label"`
+	Labels    []string      `json:"labels"`
 	// OpenQuestion is true when the overview holds a question for this issue.
 	OpenQuestion bool `json:"open_question"`
-	// NeedsLabel is true when the issue carries any needs_* label, not only the one in Label: it
-	// drives the needs_human row for an active issue.
-	NeedsLabel bool `json:"needs_label"`
 	// PrioWeight is the priority weight of the issue (rule of #445), see package prioweight.
 	PrioWeight int `json:"prio_weight"`
 	// Factor is the own milestone factor of the issue, 0 without a ranked milestone.
@@ -121,8 +119,8 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 		r := Repo{Slug: s.Slug, Issues: make([]Issue, 0, len(p.Issues)), Milestones: make([]Milestone, 0, len(p.Milestones))}
 		for _, pi := range p.Issues {
 			i := Issue{Number: pi.Number, Title: pi.Title, URL: pi.URL, BlockedBy: make([]Blocker, 0, len(pi.BlockedBy)),
-				Status: status[key(s.Slug, pi.Number)], Label: issuestate.BlockingKey(pi.Labels, s.Labels),
-				OpenQuestion: asked[key(s.Slug, pi.Number)], NeedsLabel: issuestate.HasNeedsLabel(pi.Labels, s.Labels)}
+				Status: status[key(s.Slug, pi.Number)], Labels: marks(pi.Labels, s.Labels),
+				OpenQuestion: asked[key(s.Slug, pi.Number)]}
 			if m := pi.Milestone; m != nil {
 				i.Milestone = &MilestoneRef{Number: m.Number, Title: m.Title, State: m.State, URL: m.URL}
 			}
@@ -182,3 +180,12 @@ func applyWeights(r *Repo) {
 }
 
 func key(repo string, issue int) string { return fmt.Sprintf("%s#%d", repo, issue) }
+
+// marks is the keys of issuestate.Marks, never nil. Planning lists only open issues, so a
+// closed issue never reaches it and carries no labels.
+func marks(names []string, l repoconfig.Labels) []string {
+	if m := issuestate.Marks(names, l); m != nil {
+		return m
+	}
+	return []string{}
+}

@@ -2,6 +2,7 @@ package priorities
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"strings"
@@ -106,11 +107,11 @@ func TestBuildOpenBlockerInOtherRepoKeepsItsRepo(t *testing.T) {
 }
 
 func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
-	labels := repoconfig.Labels{NeedsShaping: "needs-shaping", NeedsDecision: "needs-decision", BlockedIssue: "blocked"}
+	labels := repoconfig.Labels{NeedsMind: "needs-mind", BlockedIssue: "blocked"}
 	src := &fakeForge{t: t, planning: forge.Planning{
 		Issues: []forge.PlanIssue{
-			{Number: 1, Labels: []string{"needs-shaping"}},
-			{Number: 2, Labels: []string{"blocked", "needs-decision"}}, // the rank of labels.md: needs_decision wins
+			{Number: 1, Labels: []string{"needs-mind"}},
+			{Number: 2, Labels: []string{"blocked", "needs-mind"}}, // Keys order: needs_mind first
 			{Number: 3, Labels: []string{"unrelated"}},
 			{Number: 4, Labels: []string{""}},
 			{Number: 5},
@@ -124,19 +125,15 @@ func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	var keys []string
-	var questions, needs []bool
+	var keys [][]string
+	var questions []bool
 	for _, i := range got[0].Issues {
-		keys = append(keys, i.Label)
+		keys = append(keys, i.Labels)
 		questions = append(questions, i.OpenQuestion)
-		needs = append(needs, i.NeedsLabel)
 	}
-	if want := []string{"needs_shaping", "needs_decision", "", "", ""}; !reflect.DeepEqual(keys, want) {
-		t.Errorf("labels = %q, want %q", keys, want)
-	}
-	// Issue 2 carries blocked and needs-decision: Label is the winner, NeedsLabel is true anyway.
-	if want := []bool{true, true, false, false, false}; !reflect.DeepEqual(needs, want) {
-		t.Errorf("needs labels = %v, want %v", needs, want)
+	// Never nil, so the JSON holds [] and not null.
+	if want := [][]string{{"needs_mind"}, {"needs_mind", "blocked_issue"}, {}, {}, {}}; !reflect.DeepEqual(keys, want) {
+		t.Errorf("labels = %#v, want %#v", keys, want)
 	}
 	if want := []bool{false, false, false, false, true}; !reflect.DeepEqual(questions, want) {
 		t.Errorf("open questions = %v, want %v (only o/a#5; o/other#1 is another repo)", questions, want)
@@ -146,60 +143,49 @@ func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
 	}
 }
 
+// Every axis shows: a blockade next to needs_mind does not hide the needs_mind key.
+func TestBuildLabelsNeedsMindBesideBlockedExternal(t *testing.T) {
+	labels := repoconfig.Labels{NeedsMind: "needs-mind", BlockedExternal: "blocked-external"}
+	src := &fakeForge{t: t, planning: forge.Planning{Issues: []forge.PlanIssue{
+		{Number: 1, Labels: []string{"needs-mind", "blocked-external"}},
+	}}}
+	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: src, Labels: labels}}, overview.Overview{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if want := []string{"needs_mind", "blocked_external"}; !reflect.DeepEqual(got[0].Issues[0].Labels, want) {
+		t.Errorf("labels = %v, want %v", got[0].Issues[0].Labels, want)
+	}
+}
+
 func TestBuildEmptyLabelNameNeverMatches(t *testing.T) {
 	src := &fakeForge{t: t, planning: forge.Planning{Issues: []forge.PlanIssue{{Number: 1, Labels: []string{""}}}}}
 	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: src}}, overview.Overview{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if l := got[0].Issues[0].Label; l != "" {
-		t.Errorf("label = %q, want empty: an empty configured name matches nothing", l)
+	if l := got[0].Issues[0].Labels; l == nil || len(l) != 0 {
+		t.Errorf("labels = %#v, want empty non-nil: an empty configured name matches nothing", l)
 	}
 }
 
-func prioWeightSource(t *testing.T) *fakeForge {
-	return &fakeForge{t: t, planning: forge.Planning{
-		Issues: []forge.PlanIssue{
-			{Number: 1, Milestone: &forge.Milestone{Number: 10}},
-			{Number: 2, Milestone: &forge.Milestone{Number: 20}, BlockedBy: []forge.Blocker{{Repo: "o/a", Issue: 1}, {Repo: "o/other", Issue: 3}}},
-			{Number: 3},
-		},
-		Milestones: []forge.MilestoneCount{
-			{Milestone: forge.Milestone{Number: 10, Description: "Priority: 1"}},
-			{Milestone: forge.Milestone{Number: 20, Description: "Priority: 2"}},
-		},
+// A closed issue (Review Focus 5) reaches the API only as a ClosedIssue of a milestone, which
+// carries no labels and no blocked_by, whatever labels the closed issue had.
+func TestBuildClosedIssueCarriesNoLabels(t *testing.T) {
+	src := &fakeForge{t: t, planning: forge.Planning{
+		Milestones: []forge.MilestoneCount{{Milestone: forge.Milestone{Number: 7, Title: "M"}, Done: 1,
+			Closed: []forge.ClosedIssue{{Number: 9, Title: "nine", URL: "u9"}}}},
 	}}
-}
-
-func TestBuildPrioWeight(t *testing.T) {
-	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: prioWeightSource(t)}}, overview.Overview{})
+	labels := repoconfig.Labels{BlockedIssue: "blocked"}
+	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: src, Labels: labels}}, overview.Overview{})
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	// Factors: rank 1 -> 2, rank 2 -> 1. Issue 1 waited on by 2: 2 + 1*2^0 = 3. The blocker in
-	// another repo (number 3 collides with local issue 3) is dropped, so issue 3 stays at 0.
-	want := map[int][2]int{1: {3, 2}, 2: {1, 1}, 3: {0, 0}}
-	for _, i := range got[0].Issues {
-		if w := want[i.Number]; i.PrioWeight != w[0] || i.Factor != w[1] {
-			t.Errorf("issue %d: PrioWeight, Factor = %d, %d, want %d, %d", i.Number, i.PrioWeight, i.Factor, w[0], w[1])
-		}
-	}
-}
-
-func TestWithDescriptionRecomputesWeight(t *testing.T) {
-	repos, err := Build(context.Background(), []Source{{Slug: "o/a", Src: prioWeightSource(t)}}, overview.Overview{})
+	raw, err := json.Marshal(got[0].Milestones[0].Closed)
 	if err != nil {
-		t.Fatalf("Build: %v", err)
+		t.Fatal(err)
 	}
-	got := WithDescription(repos, "o/a", 20, "Priority: 0")
-	// Rank 0 is not a valid rank: milestone 20 loses its factor, milestone 10 stays at 1.
-	want := map[int][2]int{1: {1, 1}, 2: {0, 0}, 3: {0, 0}}
-	for _, i := range got[0].Issues {
-		if w := want[i.Number]; i.PrioWeight != w[0] || i.Factor != w[1] {
-			t.Errorf("issue %d: PrioWeight, Factor = %d, %d, want %d, %d", i.Number, i.PrioWeight, i.Factor, w[0], w[1])
-		}
-	}
-	if repos[0].Issues[0].PrioWeight != 3 {
-		t.Errorf("input mutated: PrioWeight = %d, want 3", repos[0].Issues[0].PrioWeight)
+	if strings.Contains(string(raw), "labels") || strings.Contains(string(raw), "blocked_by") {
+		t.Errorf("closed = %s, want no labels and no blocked_by", raw)
 	}
 }

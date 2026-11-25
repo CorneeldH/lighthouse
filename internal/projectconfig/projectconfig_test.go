@@ -239,7 +239,7 @@ func TestParseFragmentRejects(t *testing.T) {
 
 func TestLabelTables(t *testing.T) {
 	tables := LabelTables("a/b.md")
-	if len(tables) != 2 || tables[0].Name != "paths" || len(tables[0].Keys) != 1 || tables[1].Name != "labels" || len(tables[1].Keys) != 7 {
+	if len(tables) != 2 || tables[0].Name != "paths" || len(tables[0].Keys) != 1 || tables[1].Name != "labels" || len(tables[1].Keys) != 5 {
 		t.Fatalf("tables = %+v", tables)
 	}
 	if tables[0].Keys[0] != (KV{Key: "labels", Value: `"a/b.md"`}) {
@@ -341,6 +341,27 @@ func TestSetTopLevelAfterLeadingComments(t *testing.T) {
 		}
 		if string(out) != c[1] {
 			t.Errorf("%s: got:\n%s\nwant:\n%s", name, out, c[1])
+		}
+	}
+}
+
+func TestLabelTablesUseNewKeys(t *testing.T) {
+	var labels []KV
+	for _, tb := range LabelTables("a/b.md") {
+		if tb.Name == "labels" {
+			labels = tb.Keys
+		}
+	}
+	got := map[string]string{}
+	for _, kv := range labels {
+		got[kv.Key] = kv.Value
+	}
+	if got["needs_mind"] != `"needs-mind"` || got["needs_hands"] != `"needs-hands"` {
+		t.Errorf("labels = %v, want needs_mind and needs_hands", got)
+	}
+	for _, old := range []string{"needs_shaping", "needs_decision", "needs_testing"} {
+		if _, ok := got[old]; ok {
+			t.Errorf("labels still has %s", old)
 		}
 	}
 }

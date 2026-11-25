@@ -446,6 +446,20 @@ func (g *GitLab) CreateLabel(ctx context.Context, name, color string) error {
 	return err
 }
 
+// DeleteLabel deletes the label name; GitLab removes it from every issue too. A 404 means the
+// label does not exist and is no error.
+func (g *GitLab) DeleteLabel(ctx context.Context, name string) error {
+	if err := g.configured(); err != nil {
+		return err
+	}
+	_, err := g.do(ctx, http.MethodDelete, g.projectPath("/labels/"+neturl.PathEscape(name)), nil, nil, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
 // CommitKnown reports whether GitLab knows the commit sha. A 404 or 422 is false, nil.
 func (g *GitLab) CommitKnown(ctx context.Context, sha string) (bool, error) {
 	if err := g.configured(); err != nil {

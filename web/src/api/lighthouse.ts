@@ -299,9 +299,9 @@ export interface Issue {
   /** @nullable */
   blocked_by: Blocker[] | null;
   factor: number;
-  label: string;
+  /** @nullable */
+  labels: string[] | null;
   milestone?: MilestoneRef;
-  needs_label: boolean;
   number: number;
   open_question: boolean;
   prio_weight: number;

@@ -558,14 +558,17 @@
             "format": "int64",
             "type": "integer"
           },
-          "label": {
-            "type": "string"
+          "labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           },
           "milestone": {
             "$ref": "#/components/schemas/MilestoneRef"
-          },
-          "needs_label": {
-            "type": "boolean"
           },
           "number": {
             "format": "int64",
@@ -594,9 +597,8 @@
           "url",
           "blocked_by",
           "status",
-          "label",
+          "labels",
           "open_question",
-          "needs_label",
           "prio_weight",
           "factor"
         ],

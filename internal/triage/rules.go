@@ -15,7 +15,7 @@ type Gate0 struct {
 }
 
 // FixedGate0 reports the gate 0 stop: the issue carries a blocked label, or has an open
-// blocked_by without needs_shaping, needs_decision or blocked_issue. The rule is
+// blocked_by. An issue with needs_mind never stops here: it routes on to 4c. The rule is
 // issuestate.GateZero.
 func FixedGate0(f Facts, l repoconfig.Labels) (Gate0, bool) {
 	s, ok := issuestate.GateZero(f.Labels, f.Blockers, l)
@@ -53,9 +53,11 @@ func Invariant(labels []string, l repoconfig.Labels) []Deviation {
 			out = append(out, Deviation{Kind: "many", Prefix: prefix, Found: found})
 		}
 	}
+	// The blocking axis: blocked_issue and blocked_external together are the only deviation.
+	// needs_mind and needs_hands are the human axis and count for nothing here.
 	var blocking []string
-	for _, name := range labels {
-		if name != "" && slices.Contains(l.Blocking(), name) {
+	for _, name := range []string{l.BlockedIssue, l.BlockedExternal} {
+		if name != "" && slices.Contains(labels, name) {
 			blocking = append(blocking, name)
 		}
 	}

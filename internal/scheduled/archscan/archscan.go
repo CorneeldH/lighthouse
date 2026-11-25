@@ -83,9 +83,9 @@ func (j *Job) Gate(ctx context.Context, env scheduled.Env) (scheduled.Verdict, e
 	if env.Forge == nil {
 		return scheduled.Verdict{}, fmt.Errorf("%s: the repo has no forge", Name)
 	}
-	label := env.Repo.Labels.NeedsDecision
+	label := env.Repo.Labels.NeedsMind
 	if label == "" {
-		return scheduled.Verdict{}, fmt.Errorf("%s: labels.needs_decision is not set", Name)
+		return scheduled.Verdict{}, fmt.Errorf("%s: labels.needs_mind is not set", Name)
 	}
 	branch := defaultBranch(env)
 	if _, err := git(ctx, env, env.Repo.Dir, fetchLimit, "fetch", "--quiet", "origin", branch); err != nil {
@@ -264,7 +264,7 @@ func publishedBy(ctx context.Context, env scheduled.Env, run string) (bool, erro
 	if env.Forge == nil {
 		return false, fmt.Errorf("%s: the repo has no forge", Name)
 	}
-	open, err := scheduled.FindDecisionIssue(ctx, env.Forge, Name, env.Repo.Labels.NeedsDecision, "open")
+	open, err := scheduled.FindDecisionIssue(ctx, env.Forge, Name, env.Repo.Labels.NeedsMind, "open")
 	if err != nil {
 		return false, err
 	}
@@ -299,7 +299,7 @@ type reference struct {
 // liveReference reads the reference scan issue from the forge, its body fetched again.
 func liveReference(ctx context.Context, env scheduled.Env) (reference, error) {
 	var ref reference
-	label := env.Repo.Labels.NeedsDecision
+	label := env.Repo.Labels.NeedsMind
 	open, err := scheduled.FindDecisionIssue(ctx, env.Forge, Name, label, "open")
 	if err != nil {
 		return ref, err
@@ -478,9 +478,9 @@ func (j *Job) Finish(ctx context.Context, env scheduled.Env, dir string, v sched
 	if v.RunID == "" {
 		return fmt.Errorf("%s: the verdict has no run id", Name)
 	}
-	label := env.Repo.Labels.NeedsDecision
+	label := env.Repo.Labels.NeedsMind
 	if label == "" {
-		return fmt.Errorf("%s: labels.needs_decision is not set", Name)
+		return fmt.Errorf("%s: labels.needs_mind is not set", Name)
 	}
 	open, err := scheduled.FindDecisionIssue(ctx, env.Forge, Name, label, "open")
 	if err != nil {

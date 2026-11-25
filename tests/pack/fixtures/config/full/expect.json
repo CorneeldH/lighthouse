@@ -105,18 +105,10 @@
  },
  {
   "args": [
-   "labels.needs_shaping"
+   "labels.needs_mind"
   ],
   "rc": 0,
-  "stdout": "ns\n",
-  "stderr": ""
- },
- {
-  "args": [
-   "labels.needs_decision"
-  ],
-  "rc": 0,
-  "stdout": "nd\n",
+  "stdout": "nm\n",
   "stderr": ""
  },
  {
@@ -125,14 +117,6 @@
   ],
   "rc": 0,
   "stdout": "nh\n",
-  "stderr": ""
- },
- {
-  "args": [
-   "labels.needs_testing"
-  ],
-  "rc": 0,
-  "stdout": "nt\n",
   "stderr": ""
  },
  {

@@ -74,8 +74,8 @@ func postPaths(r *rig) []string {
 }
 
 func TestFinishCreatesIssue(t *testing.T) {
-	// Fails if Finish without an open scan issue creates none, uses the key needs_decision or
-	// another label than labels.needs_decision of the repo, drops params.labels, or writes
+	// Fails if Finish without an open scan issue creates none, uses the key needs_mind or
+	// another label than labels.needs_mind of the repo, drops params.labels, or writes
 	// another marker than scans 1 with this run, the base and today, or a warning on a first scan.
 	r := scanRig(t)
 	head := gitIn(t, r.repo, nil, "rev-parse", "HEAD")
@@ -91,8 +91,8 @@ func TestFinishCreatesIssue(t *testing.T) {
 	for _, it := range r.srv.Issues {
 		created = it
 	}
-	if got := labelsOf(created); !slices.Equal(got, []string{"3-needs-decision", "2-area:core"}) {
-		t.Fatalf("labels = %v, want [3-needs-decision 2-area:core]", got)
+	if got := labelsOf(created); !slices.Equal(got, []string{"3-needs-mind", "2-area:core"}) {
+		t.Fatalf("labels = %v, want [3-needs-mind 2-area:core]", got)
 	}
 	body := fmt.Sprint(created["body"])
 	m, ok := scheduled.ParseMarker(body)

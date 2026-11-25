@@ -115,7 +115,7 @@ func (r *rig) env() scheduled.Env {
 	return scheduled.Env{
 		Repo: repoconfig.Repo{Dir: r.repo, DefaultBranch: "main", Slug: "o/r", Kind: "github", Language: "nl",
 			Paths:  repoconfig.Paths{Labels: r.labels, Tenets: r.tenets, Areas: r.areas, Strategy: r.strategy},
-			Labels: repoconfig.Labels{NeedsDecision: "needs-decision", AreaPrefix: r.areaPrefix}},
+			Labels: repoconfig.Labels{NeedsMind: "needs-mind", AreaPrefix: r.areaPrefix}},
 		Now:     time.Date(2026, 11, 22, 5, 0, 0, 0, time.UTC),
 		Run:     workplace.ExecRunner(),
 		Forge:   c,
@@ -535,7 +535,7 @@ func TestCleanupPostsQuestionsAndDecisions(t *testing.T) {
 }
 
 func TestCleanupLabelsAWishQuestion(t *testing.T) {
-	// Fails if a wish question does not set labels.needs_decision on its issue.
+	// Fails if a wish question does not set labels.needs_mind on its issue.
 	r := loopRig(t, "[]")
 	j := bind(t)
 	env := stagedEnv(t, r, j)
@@ -550,15 +550,15 @@ func TestCleanupLabelsAWishQuestion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(is.Labels, "needs-decision") {
-		t.Errorf("labels of #12 = %v, want needs-decision", is.Labels)
+	if !slices.Contains(is.Labels, "needs-mind") {
+		t.Errorf("labels of #12 = %v, want needs-mind", is.Labels)
 	}
 }
 
 const wishQ12 = `{"issue":12,"topic":"wish","text":"Willen we dit?","options":["ja, op de kaart","nee, niet op de kaart"],"recommended":"a","off":"b"}`
 
 func TestCleanupLabelsAWishBeforeItsQuestion(t *testing.T) {
-	// Fails if Cleanup posts the wish question before labels.needs_decision is set: a label
+	// Fails if Cleanup posts the wish question before labels.needs_mind is set: a label
 	// that then fails leaves an open question without the label, which nothing ever repairs.
 	t.Run("label fails", func(t *testing.T) {
 		r := loopRig(t, "[]")
@@ -594,8 +594,8 @@ func TestCleanupLabelsAWishBeforeItsQuestion(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !slices.Contains(is.Labels, "needs-decision") {
-			t.Errorf("labels of #12 = %v, want needs-decision", is.Labels)
+		if !slices.Contains(is.Labels, "needs-mind") {
+			t.Errorf("labels of #12 = %v, want needs-mind", is.Labels)
 		}
 		if v := gate(t, r); v.Skip == "" {
 			t.Errorf("Gate after the question = %+v, want a skip", v)

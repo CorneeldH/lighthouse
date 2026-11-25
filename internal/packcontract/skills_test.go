@@ -190,7 +190,7 @@ func TestConfigKeysKnown(t *testing.T) {
 	for _, m := range configRe.FindAllStringSubmatch(joinedText(t, "core/skills/route-issue"), -1) {
 		seen[m[1]] = true
 	}
-	for _, want := range []string{"labels.blocked_issue", "labels.needs_shaping", "forge.kind"} {
+	for _, want := range []string{"labels.blocked_issue", "labels.needs_mind", "forge.kind"} {
 		if !seen[want] {
 			t.Errorf("route-issue: pattern does not see `lighthouse config %s`", want)
 		}

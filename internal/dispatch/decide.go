@@ -292,16 +292,13 @@ func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
 
 // ReturnLabelKey is the blocking label key a 🤖 Returned with reason (a headings key) sets on
 // the issue it gives back: blocked_issue for the return of rule 13 while a blocker is active
-// (blocked), needs_shaping for a handoff that wants a brainstorm, needs_decision for one that
-// wants an interactive skill, and needs_hands for every other reason, a passing one included.
+// (blocked), needs_mind for a handoff that wants a brainstorm or an interactive skill, and needs_hands for every other reason, a passing one included.
 func ReturnLabelKey(reason string, blocked bool) string {
 	switch {
 	case blocked:
 		return "blocked_issue"
-	case reason == "reason_needs_brainstorm":
-		return "needs_shaping"
-	case reason == "reason_interactive":
-		return "needs_decision"
+	case reason == "reason_needs_brainstorm", reason == "reason_interactive":
+		return "needs_mind"
 	}
 	return "needs_hands"
 }
@@ -523,7 +520,7 @@ func hasOpenRun(history []runs.Row, issue int) bool {
 // heldByHuman reports whether labels hold a needs_* or the blocked_external label of l: a human
 // owns such an issue, so the tick neither unparks it nor reads it as parked.
 func heldByHuman(labels []string, l repoconfig.Labels) bool {
-	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting, l.BlockedExternal} {
+	for _, name := range []string{l.NeedsMind, l.NeedsHands, l.BlockedExternal} {
 		if name != "" && slices.Contains(labels, name) {
 			return true
 		}
@@ -1463,10 +1460,10 @@ func (c issueCtx) retry() (planned, bool) {
 // write failed, or the Returned came from a path that wrote neither. It holds when the last
 // protocol comment (Rebased does not count) is a Returned of the token login, the issue has no
 // open run (settle closes the run of its own Returned first) and no blocking label but
-// blocked_issue (a rule-13 Returned stuck on Controller; the rank rule keeps that label), and retry
+// blocked_issue (a rule-13 Returned stuck on Controller; the label stays and the reason adds none), and retry
 // planned nothing before it in next: the first refused launch of a trigger keeps its Returned
 // without a label until retry starts the second attempt. The label comes from the reason the
-// Returned names (protocol.ReasonKey); an unreadable one gives needs_hands.
+// Returned names (protocol.ReasonKey); an unreadable one gives needs_hands, and blocked_issue on the issue gives no human label.
 func (c issueCtx) finishReturn() (planned, bool) {
 	last := lastProtocol(c.hs)
 	if last == nil || last.Header.Kind != protocol.KindReturned || last.Comment.Author != c.repo.Snapshot.TokenLogin {
@@ -1476,7 +1473,7 @@ func (c issueCtx) finishReturn() (planned, bool) {
 		return planned{}, false
 	}
 	// blocked_issue alone is the label of a rule-13 Returned whose board write failed: it
-	// stays, the rank rule keeps it over the label of the reason. Any other blocking label is a
+	// stays and the reason adds no label to it. Any other blocking label is a
 	// finished give-back or a human's.
 	for _, name := range c.repo.Labels.Blocking() {
 		if name != "" && name != c.repo.Labels.BlockedIssue && slices.Contains(c.it.Labels, name) {
@@ -1486,6 +1483,9 @@ func (c issueCtx) finishReturn() (planned, bool) {
 	a := c.base
 	a.Kind = KindFinishReturn
 	a.Reason, _ = protocol.ReasonKey(last.Header.Fields["reason"])
+	// blocked_issue on the issue makes this the finish of a blocked Returned: the label stays and
+	// no human label comes next to it.
+	a.Blocked = c.repo.Labels.BlockedIssue != "" && slices.Contains(c.it.Labels, c.repo.Labels.BlockedIssue)
 	return planned{Action: a}, true
 }
 

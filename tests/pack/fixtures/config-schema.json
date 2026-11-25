@@ -53,19 +53,11 @@
    "str"
   ],
   [
-   "labels.needs_shaping",
-   "str"
-  ],
-  [
-   "labels.needs_decision",
+   "labels.needs_mind",
    "str"
   ],
   [
    "labels.needs_hands",
-   "str"
-  ],
-  [
-   "labels.needs_testing",
    "str"
   ],
   [
@@ -270,10 +262,8 @@
   ],
   "labels.blocked_issue": "blocked-issue",
   "labels.blocked_external": "blocked-external",
-  "labels.needs_shaping": "needs-shaping",
-  "labels.needs_decision": "needs-decision",
+  "labels.needs_mind": "needs-mind",
   "labels.needs_hands": "needs-hands",
-  "labels.needs_testing": "needs-testing",
   "test_gate.on": "commit",
   "test_gate.deadline_seconds": 270,
   "test_gate.slots": 2,

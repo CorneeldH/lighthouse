@@ -183,6 +183,7 @@ var Cases = []Case{
 	{"CommitKnown", commitKnown},
 	{"BranchContains", branchContains},
 	{"CreateLabel", createLabel},
+	{"DeleteLabel", deleteLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
@@ -1543,6 +1544,30 @@ func createLabel(t *testing.T, f Fixture) {
 	want := f.LabelColor(t, "area:new")
 	if want != "0e8a16" && want != "#0e8a16" {
 		t.Errorf("stored colour = %q, want 0e8a16 (GitHub) or #0e8a16 (GitLab)", want)
+	}
+}
+
+func deleteLabel(t *testing.T, f Fixture) {
+	const odd = "3-needs mind:x"
+	f.SetLabels(t, "bug")
+	if err := f.Forge().CreateLabel(t.Context(), odd, "fbca04"); err != nil {
+		t.Fatalf("CreateLabel(%q): %v", odd, err)
+	}
+	carrier := openIssue(5)
+	carrier.Labels = []string{odd, "bug"}
+	f.AddIssue(t, carrier)
+	if err := f.Forge().DeleteLabel(t.Context(), odd); err != nil {
+		t.Fatalf("DeleteLabel(%q): %v", odd, err)
+	}
+	if is, err := f.Forge().Issue(t.Context(), 5); err != nil || !slices.Equal(is.Labels, []string{"bug"}) {
+		t.Errorf("issue labels after DeleteLabel = %v, %v; want [bug]", is.Labels, err)
+	}
+	got, err := f.Forge().Labels(t.Context())
+	if err != nil || !slices.Equal(sorted(got), []string{"bug"}) {
+		t.Errorf("Labels after DeleteLabel = %v, %v; want [bug]", got, err)
+	}
+	if err := f.Forge().DeleteLabel(t.Context(), odd); err != nil {
+		t.Errorf("DeleteLabel of a missing label = %v, want nil", err)
 	}
 }
 

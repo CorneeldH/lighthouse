@@ -793,7 +793,7 @@ krijgt geen item). Toolset: `Read Write Edit Glob Grep`; `max_runtime` is `30m`.
 run en de forge en plaatst de vragen en beslissingen als comment met de kop `🗺 Kaart · map-planned`
 (`nl`; anders `🗺 Map · map-planned`) en de machineregel
 `<!-- lighthouse:map-planned kind=<question|decision> topic=<place|wish> off=<letter> -->`. Een vraag over
-een wens zet ook het label `needs_decision`. Een issue met al een open of afgehandelde vraag krijgt geen
+een wens zet ook het label `needs_mind`. Een issue met al een open of afgehandelde vraag krijgt geen
 tweede comment, dus een herhaalde `Cleanup` post niets dubbel. Een antwoord telt alleen van een login met
 een rol uit `answer_permissions`; een andere heropent niets en sluit niets af. Daarna worden corpus en
 resultbestand verwijderd, zodat ze nooit op de branch komen.
@@ -818,7 +818,7 @@ schedule meedraait (zie [install.md](install.md)).
 |---|---|---|
 | `command` | `/lighthouse-architecture-scan` | Het slash-commando; de job voegt `--corpus` en `--out` toe |
 | `window` | `3 months` | Het venster waarover de hotspots worden geteld (`git log --since`) |
-| `labels` | geen | Extra labels op het scanissue, naast `needs_decision` |
+| `labels` | geen | Extra labels op het scanissue, naast `needs_mind` |
 | `tools` | `Read Glob Grep Write` | De toolset van de agent; elke tool buiten die lijst (nooit `Bash` of `Agent`) is een configfout |
 | `max_runtime` | `60m` | De maximale looptijd van de sessie |
 
@@ -826,7 +826,7 @@ Een onbekende sleutel in `[schedule.params]` is een configfout.
 
 **De poort.** Na een fetch vergelijkt de poort `origin/<standaardbranch>` met de `base` in de marker van
 het open scanissue. Zijn ze gelijk, dan `skip` (er is niets nieuws om te scannen); anders start de run met
-een run-id `scan-<tijdstempel>`. Elke fout van de poort (fetch, forge, geen `labels.needs_decision`) is een
+een run-id `scan-<tijdstempel>`. Elke fout van de poort (fetch, forge, geen `labels.needs_mind`) is een
 fout, nooit een skip: er komt geen run-rij, de tick eindigt met exitcode 1 en de volgende tick probeert het
 opnieuw, zoals bij `map-planned`.
 
@@ -849,7 +849,7 @@ referentie-issue zonder vinkje komt bijgewerkt terug onder dezelfde sleutel; een
 gezocht dan dat issue. Een afgewezen kandidaat die met nieuw bewijs terugkomt, krijgt een gewone regel (geen
 bullet) `eerder afgewezen, opnieuw omdat …`.
 
-**Het scanissue en de marker.** Een scanissue is een issue met het label `needs_decision`, de marker op
+**Het scanissue en de marker.** Een scanissue is een issue met het label `needs_mind`, de marker op
 regel 1 van de body en als auteur de login van het token; zijn er meerdere open, dan telt het oudste. De
 marker is `<!-- lighthouse: {"kind":"architecture-scan","version":1,"run":"<run-id>","base":"<sha>","first":"<datum>","scans":<n>} -->`;
 regel 2 is een waarschuwing dat de kandidaten al `first` onbeslist zijn (kop `scan_unresolved`). Is er geen
@@ -926,8 +926,8 @@ label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
 
 | Reden op de Teruggegeven | Label |
 |---|---|
-| `reason_needs_brainstorm` | `needs_shaping` |
-| `reason_interactive` | `needs_decision` |
+| `reason_needs_brainstorm` | `needs_mind` |
+| `reason_interactive` | `needs_mind` |
 | regel 13 met actieve blokkade | `blocked_issue` |
 | alle andere redenen | `needs_hands` |
 

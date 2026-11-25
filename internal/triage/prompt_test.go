@@ -33,7 +33,7 @@ func TestPrompt(t *testing.T) {
 	p := Prompt(promptFacts(), c)
 	for _, want := range []string{
 		".claude/skills/lighthouse-route-issue/SKILL.md", "Poort", "Dutch",
-		"blocked-issue", "blocked-external", "needs-shaping", "needs-decision", "needs-hands", "needs-testing",
+		"blocked-issue", "blocked-external", "needs-mind", "needs-hands",
 		"- lighthouse-a: does a", "- superpowers:brainstorming: think",
 		"abc123 feat: earlier work (#7)", "#8 Open sibling", "#9 Closed sibling",
 		"#5 (open)", "#4 (closed)", "Milestone prose", "Nog niet vastgelegd", "Not yet decided",

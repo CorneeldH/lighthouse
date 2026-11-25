@@ -162,6 +162,22 @@ func newTickCommand() *cobra.Command {
 	return cmd
 }
 
+// tickLockPath is $XDG_RUNTIME_DIR/lighthouse/tick.lock, with its directory made.
+func tickLockPath(getenv func(string) string) (string, error) {
+	runtime := getenv("XDG_RUNTIME_DIR")
+	if runtime == "" {
+		return "", errors.New("tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock")
+	}
+	if !filepath.IsAbs(runtime) {
+		return "", errors.New("tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock")
+	}
+	dir := filepath.Join(runtime, "lighthouse")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", fmt.Errorf("tick: %w", err)
+	}
+	return filepath.Join(dir, "tick.lock"), nil
+}
+
 // tick takes tick.lock, loads the repos of host.toml, opens the forge of each with its own token
 // (openForges) and skips, loudly, each one that does not load, shares its slug, is not
 // dispatchable, has no forge or whose gather fails; the others get gatherRepo, the gathered ones
@@ -171,18 +187,11 @@ func newTickCommand() *cobra.Command {
 // not an error. At least one skip, failed action, unsaved run view or failed cleanup returns
 // errSilent: the reasons are already on errOut.
 func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) error {
-	runtime := env.Getenv("XDG_RUNTIME_DIR")
-	if runtime == "" {
-		return errors.New("tick: XDG_RUNTIME_DIR is not set: cannot take tick.lock")
+	lockPath, err := tickLockPath(env.Getenv)
+	if err != nil {
+		return err
 	}
-	if !filepath.IsAbs(runtime) {
-		return errors.New("tick: XDG_RUNTIME_DIR is not an absolute path: cannot take tick.lock")
-	}
-	dir := filepath.Join(runtime, "lighthouse")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("tick: %w", err)
-	}
-	lock, err := flock.TryLock(filepath.Join(dir, "tick.lock"))
+	lock, err := flock.TryLock(lockPath)
 	if errors.Is(err, flock.ErrHeld) {
 		_, _ = fmt.Fprintln(errOut, "lighthouse: previous tick still running")
 		return nil

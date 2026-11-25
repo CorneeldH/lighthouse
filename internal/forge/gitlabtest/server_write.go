@@ -84,6 +84,7 @@ func (s *Server) writeRoutes(mux *http.ServeMux, p string) {
 	s.route(mux, "PUT "+p+"/milestones/{id}", s.project(s.editMilestone))
 	s.route(mux, "GET "+p+"/labels", s.project(s.listLabels))
 	s.route(mux, "POST "+p+"/labels", s.project(s.createLabel))
+	s.route(mux, "DELETE "+p+"/labels/{name}", s.project(s.deleteLabel))
 	s.route(mux, "GET "+p+"/repository/commits/{sha}", s.project(s.commit))
 	s.route(mux, "GET "+p+"/repository/merge_base", s.project(s.mergeBaseOf))
 	s.route(mux, "POST "+p+"/merge_requests", s.project(s.createMR))
@@ -404,6 +405,24 @@ func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {
 	}
 	s.labelColor[name] = color
 	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "color": color})
+}
+
+// deleteLabel removes a label from the project and from every issue; an unknown name answers 404.
+func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.Index(s.labels, name)
+	if i < 0 {
+		notFound(w)
+		return
+	}
+	s.labels = slices.Delete(s.labels, i, i+1)
+	delete(s.labelColor, name)
+	for _, it := range s.issues {
+		it["labels"] = slices.DeleteFunc(labelsOf(it), func(x string) bool { return x == name })
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // commit answers 200 for a sha from AddCommit, 500 for one from FailCommit, else 404.

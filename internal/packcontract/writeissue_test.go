@@ -27,13 +27,14 @@ func TestWriteIssueSetsRelationBeforeLabel(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			s := section(t, body, "#### 3e. Set a block", "#### 3f.")
 			wantOrder(t, s, "lighthouse forge issue block <nr> --by <blocker-nr>", `--add-label "$BLOCKED"`)
+			wantAll(t, s, `--remove-label "$EXTERNAL"`)
 			f := flat(s)
 			wantAll(t, f,
 				"The relation comes **before** the label, so that a half failure never leaves a label without a relation.",
 				"**Verify with the list, not from the summary**",
 				"`created_at` after the noted start time",
 				"**unknown** + the search call, stop before every mutation. Never create again blindly",
-				"Only when relation and winning blocking label stand there together, report success.")
+				"Only when relation and `labels.blocked_issue` stand there together, with `labels.blocked_external` gone, report success.")
 			for _, verdict := range []string{"holds", "lapsed", "unlinked", "label missing"} {
 				wantAll(t, s, "**"+verdict+"**")
 			}
@@ -44,16 +45,17 @@ func TestWriteIssueSetsRelationBeforeLabel(t *testing.T) {
 // Classification: fails when 3e names the blocked-issue label literally instead of through its
 // config key, a blocking key disappears, or the rank table of 3c changes its order.
 func TestWriteIssueBlockingLabelsComeFromConfigInRankOrder(t *testing.T) {
-	keys := []string{"labels.needs_shaping", "labels.needs_decision", "labels.blocked_issue",
-		"labels.blocked_external", "labels.needs_hands", "labels.needs_testing"}
+	keys := []string{"labels.needs_mind", "labels.blocked_issue",
+		"labels.blocked_external", "labels.needs_hands"}
+	axes := []string{"think", "wait", "wait", "do"}
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(section(t, body, "#### 3e. Set a block", "### 4.")),
-				`BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2 lighthouse forge issue edit <nr> --add-label "$BLOCKED"`)
+				`BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2 EXTERNAL=$(lighthouse config labels.blocked_external) || exit 2 lighthouse forge issue edit <nr> --add-label "$BLOCKED" --remove-label "$EXTERNAL"`)
 			rank := section(t, body, "#### 3c.", "#### 3d.")
 			var rows []string
 			for i, key := range keys {
-				rows = append(rows, "| "+string(rune('1'+i))+" | `"+key+"` |")
+				rows = append(rows, "| "+axes[i]+" | `"+key+"` |")
 			}
 			wantOrder(t, rank, rows...)
 		})
@@ -264,7 +266,7 @@ func TestWriteIssueInvariantCheckRunsAgainstTheForge(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := filepath.Join(repo, "page.json")
-	pageJSON := `[{"number": 1, "labels": ["loc-a", "area-b", "needs-shaping", "needs-decision"]},` +
+	pageJSON := `[{"number": 1, "labels": ["loc-a", "area-b", "needs-mind", "needs-hands"]},` +
 		` {"number": 2, "labels": ["loc-a", "area-b"]}]`
 	if err := os.WriteFile(page, []byte(pageJSON), 0o644); err != nil {
 		t.Fatal(err)
@@ -349,12 +351,12 @@ func TestWriteIssueFreeLabelsWithADocument(t *testing.T) {
 }
 
 // Classification: fails when write-issue loses the gate-4 judgement (design depth at 4c means
-// `labels.needs_shaping`), or names `On hold` as a status again. Nothing writes `On hold` any more:
+// `labels.needs_mind`), or names `On hold` as a status again. Nothing writes `On hold` any more:
 // parking is `To do` plus `labels.blocked_issue`.
-func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
+func TestWriteIssueSkillSetsNeedsMindAtGate4c(t *testing.T) {
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, body, "gate 4", "4c", "`labels.needs_shaping`")
+			wantAll(t, body, "gate 4", "4c", "`labels.needs_mind`")
 			wantNone(t, body, "\"On hold\"", "Status `On hold`")
 			wantAll(t, body, "`To do`", "`labels.blocked_issue`")
 		})
@@ -422,6 +424,26 @@ func TestSkillsStaySilentWithoutDirectionKeys(t *testing.T) {
 					t.Errorf("%s: missing skips silently", name)
 				}
 			}
+		})
+	}
+}
+
+// Classification: fails when write-issue 3c goes back to one rank table (a `needs_mind` or
+// `needs_hands` label is then dropped by a blocking one), or when 3e lets `needs_mind` hold an
+// open `blocked_by` back from `labels.blocked_issue` instead of calling it *label missing*.
+func TestWriteIssueLabelAxesAndNeedsMindWithBlocker(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := flat(section(t, body, "#### 3c.", "#### 3d."))
+			wantAll(t, c, "Three axes", "`labels.needs_mind` and `labels.needs_hands` stand apart",
+				"`labels.blocked_issue` wins only over `labels.blocked_external`")
+			wantNone(t, c, "lowest rank", "| Rank |")
+			e := flat(section(t, body, "#### 3e.", "#### 3f."))
+			wantAll(t, e, "| `labels.needs_mind` | ≥ 1 | **label missing**",
+				"`labels.needs_mind` stays on")
+			wantNone(t, e, "the lower label wins", "that label wins and the blocked-issue label does not go on")
+			wantAll(t, flat(section(t, body, "## An existing issue", "## A defect in an external tool")),
+				"only within its axis")
 		})
 	}
 }

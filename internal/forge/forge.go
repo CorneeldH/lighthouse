@@ -121,6 +121,9 @@ type Forge interface {
 	// CreateLabel creates the label name with color, six hex digits without a "#". A label that
 	// already exists is no error.
 	CreateLabel(ctx context.Context, name, color string) error
+	// DeleteLabel deletes the label name from the repository, and so from every issue that carries
+	// it. A label that does not exist is no error.
+	DeleteLabel(ctx context.Context, name string) error
 	// CommitKnown reports whether the forge knows the commit sha; a 404 or 422 is false, nil,
 	// any other failure is returned.
 	CommitKnown(ctx context.Context, sha string) (bool, error)

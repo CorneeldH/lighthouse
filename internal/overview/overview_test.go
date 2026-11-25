@@ -443,7 +443,7 @@ func TestBuildAllReturnedOnToDo(t *testing.T) {
 		return is
 	}
 	src := &fakeSource{
-		issues: []forge.Issue{withLabel(379, l.NeedsHands), withLabel(20, l.NeedsDecision), withLabel(21), withLabel(22, l.NeedsHands)},
+		issues: []forge.Issue{withLabel(379, l.NeedsHands), withLabel(20, l.NeedsMind), withLabel(21), withLabel(22, l.NeedsHands)},
 		comments: map[int][]protocol.Comment{
 			379: returnedComment("2026-11-25T08:00:00Z"),
 			20:  {question("c20", "2026-11-25T09:00:00Z", "A of B?")},

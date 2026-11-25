@@ -24,7 +24,7 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	repos := []priorities.Repo{{
 		Slug: "o/r",
 		Issues: []priorities.Issue{{
-			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Label: "needs_shaping", OpenQuestion: true, NeedsLabel: true, PrioWeight: 5, Factor: 2,
+			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Labels: []string{"needs_mind", "blocked_external"}, OpenQuestion: true, PrioWeight: 5, Factor: 2,
 			Milestone: &priorities.MilestoneRef{Number: 1, Title: "M1", State: "open", URL: "https://x/m/1"},
 			BlockedBy: []priorities.Blocker{{Repo: "o/s", Issue: 9}},
 		}},
@@ -57,8 +57,8 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	var issues, milestones []map[string]json.RawMessage
 	_ = json.Unmarshal(raw[0]["issues"], &issues)
 	_ = json.Unmarshal(raw[0]["milestones"], &milestones)
-	if string(issues[0]["label"]) != `"needs_shaping"` || string(issues[0]["open_question"]) != "true" {
-		t.Errorf("issue label/open_question = %s / %s, want \"needs_shaping\" / true", issues[0]["label"], issues[0]["open_question"])
+	if string(issues[0]["labels"]) != `["needs_mind","blocked_external"]` || string(issues[0]["open_question"]) != "true" {
+		t.Errorf("issue labels/open_question = %s / %s, want [needs_mind blocked_external] / true", issues[0]["labels"], issues[0]["open_question"])
 	}
 	if string(milestones[0]["closed"]) != `[{"number":4,"title":"four","url":"https://x/4"}]` {
 		t.Errorf("closed = %s", milestones[0]["closed"])

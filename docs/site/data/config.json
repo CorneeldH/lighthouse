@@ -693,21 +693,6 @@
               ]
             },
             {
-              "key": "labels.needs_decision",
-              "level": "advanced",
-              "required": "no",
-              "default": "needs-decision",
-              "about": "The label for an issue that waits for a decision.",
-              "readers": [
-                "internal/repoconfig/repoconfig.go",
-                "internal/scheduled/archscan/archscan.go",
-                "internal/scheduled/mapplanned/corpus.go",
-                "internal/scheduled/mapplanned/mapplanned.go",
-                "pack/core/skills/route-issue",
-                "pack/core/skills/write-issue"
-              ]
-            },
-            {
               "key": "labels.needs_hands",
               "level": "advanced",
               "required": "no",
@@ -721,26 +706,16 @@
               ]
             },
             {
-              "key": "labels.needs_shaping",
+              "key": "labels.needs_mind",
               "level": "advanced",
               "required": "no",
-              "default": "needs-shaping",
-              "about": "The label for an issue that still needs shaping.",
+              "default": "needs-mind",
+              "about": "The label for an issue that waits for a person's thinking: shaping or a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/route-issue",
-                "pack/core/skills/start-issue",
-                "pack/core/skills/write-issue"
-              ]
-            },
-            {
-              "key": "labels.needs_testing",
-              "level": "advanced",
-              "required": "no",
-              "default": "needs-testing",
-              "about": "The label for an issue that needs testing by a person.",
-              "readers": [
-                "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/archscan/archscan.go",
+                "internal/scheduled/mapplanned/corpus.go",
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"

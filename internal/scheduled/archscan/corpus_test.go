@@ -27,7 +27,7 @@ import (
 
 const (
 	jobLogin   = "lh-bot"
-	scanLabel  = "3-needs-decision" // deliberately not the key needs_decision
+	scanLabel  = "3-needs-mind" // deliberately not the key needs_mind
 	defaultTOM = "[project]\nlanguage = \"nl\"\n"
 )
 
@@ -126,7 +126,7 @@ func (r *rig) comment(n int, body, created string) {
 func (r *rig) env() scheduled.Env {
 	env := scheduled.Env{
 		Repo: repoconfig.Repo{Dir: r.repo, DefaultBranch: "main", Slug: "o/r", Kind: "github", Language: "nl",
-			Labels: repoconfig.Labels{NeedsDecision: scanLabel}},
+			Labels: repoconfig.Labels{NeedsMind: scanLabel}},
 		Dir: r.repo,
 		Now: time.Date(2026, 11, 22, 5, 0, 0, 0, time.UTC),
 		Run: workplace.ExecRunner(),

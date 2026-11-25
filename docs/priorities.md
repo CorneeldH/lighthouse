@@ -92,22 +92,21 @@ de rang.
 De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server levert ze niet.
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
-  bordstatus `In progress` of `Controller` is (zoals `issueState` en de
-  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
-- **Toestand van een issue.** `issueState` kiest de eerste passende regel; een gesloten issue is
-  *done*. Een actief issue (live run, bordstatus `In progress` of `Controller`) is *needs shaping*
-  bij het label `needs_shaping`, anders *needs human* bij een open vraag of een ander
-  `needs_*`-label, anders *active*. Een niet-actief issue is *needs shaping* bij `needs_shaping`,
-  *needs human* bij `needs_decision`, *blocked* bij een label `blocked_*` of open blockers,
-  *needs human* bij `needs_hands` of `needs_testing`, anders *to do* (intern `ready`). De
-  milestone-balk tekent die zes toestanden met één vormentaal en groepeert de blokjes per
-  toestand, van links naar rechts: done, needs human, active, to do, needs shaping, blocked. De
-  legenda heeft de kopjes *Milestones* en *Status*; de volgorde onder *Status* is blocked, needs
-  shaping, to do, active, needs human, done. `lighthouse state show` drukt dezelfde status af
-  (`state: #<nr> <status>`) zonder vlag erbij. De API levert daarvoor per issue
-  `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
-  ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
-  gesloten issues (`closed`).
+  bordstatus `Controller` is, of `In progress` zonder blokkade; met een blokkade is `In progress`
+  niet actief (zoals `issueState` en de
+  [spec](developer/planning/specs/2026-11-24-statusmodel-mind-hands-design.md)).
+- **Toestand van een issue.** `issueState` kiest de eerste passende regel: een gesloten issue is
+  *done*; het label `needs_mind` of een open vraag geeft *needs mind*; `needs_hands` zonder
+  blokkade geeft *needs hands*; een live run, bordstatus `Controller` of `In progress` zonder
+  blokkade geeft *active*; de rest is *to do* (intern `ready`). Een blokkade (label
+  `blocked_issue` of `blocked_external`, of een open blocker) is geen toestand maar een vlag
+  (`blocked`): het kruis over de vorm. Een gesloten issue is nooit geblokkeerd. De
+  milestone-balk groepeert de blokjes per toestand, van links naar rechts: done, needs hands,
+  active, to do (eerst zonder kruis), needs mind. `lighthouse state show` drukt dezelfde status
+  af (`state: #<nr> <status>`, met `, blocked` erachter bij een blokkade). De API levert daarvoor
+  per issue `labels` (de sleutels van de `needs_*`- en `blocked_*`-labels op het issue, nooit
+  `null` bij de server), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per
+  milestone de gesloten issues (`closed`, zonder labels).
 - **Prio-gewicht.** De regel van #445 (`internal/prioweight`). Elke open milestone met een rang
   (`Priority: N`) krijgt een factor: bij M zulke milestones is dat M min de plaats, vanaf 0,
   waarop zijn rang voor het eerst staat in de oplopend gesorteerde rangen; gelijke rangen delen
@@ -119,15 +118,16 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
   kolommen mee (zie *Sortering van de graaf*).
 - **Vormentaal van de graaf.** De graaf tekent de status van een issue met dezelfde vormen als de
-  balk, in een blokje van 14 bij 14 px vóór het nummer: een kruis (vectorlijnen die in elk blok
-  glad blijven) bij *blocked*, een stippelrand van 1,5 px in de voorgrondkleur bij *needs
-  shaping*, strepen en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs human*, alleen strepen bij *active*, effen bij *to do* en *done*. Het
-  nummer is onderstreept bij *needs shaping* en *needs human*, nergens anders, en staat zonder
-  `#`. De kleurstrook links is altijd effen in de kleur van de milestone. Een externe kaart
-  (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken grijze rand.
-  Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf. Zie de
-  [spec](developer/planning/specs/2026-11-23-prioritering-zes-statussen-design.md) en het
-  [plan](developer/planning/plans/2026-11-24-issue-555-zes-statussen-vormentaal.md).
+  balk, in een blokje van 14 bij 14 px vóór het nummer: een stippelrand van 1,5 px in de
+  voorgrondkleur bij *needs mind*, effen bij *to do* en *done*, alleen strepen bij *active*, strepen
+  en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs hands*. Een blokkade is het
+  kruis (vectorlijnen die in elk blok glad blijven) over de vorm heen, dus ook over *to do*. Het
+  nummer is onderstreept bij *needs mind* en *needs hands*, nergens anders, en staat zonder `#`. De
+  legenda heeft drie koppen: *Milestones*, *Progress* (to do, active, done) en *Labels* (needs
+  mind, blocked, needs hands). De kleurstrook links is altijd effen in de kleur van de milestone.
+  Een externe kaart (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken
+  grijze rand. Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf.
+  Zie de [spec](developer/planning/specs/2026-11-24-statusmodel-mind-hands-design.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,

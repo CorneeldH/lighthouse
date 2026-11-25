@@ -5,8 +5,8 @@ import { Block } from './Block'
 
 afterEach(cleanup)
 
-const STATES: IssueStateName[] = ['done', 'active', 'ready', 'blocked', 'needs_shaping', 'needs_human']
-const UNDERLINED: IssueStateName[] = ['needs_shaping', 'needs_human']
+const STATES: IssueStateName[] = ['done', 'active', 'ready', 'needs_mind', 'needs_hands']
+const UNDERLINED: IssueStateName[] = ['needs_mind', 'needs_hands']
 
 const block = () => screen.getByTestId('block')
 
@@ -28,7 +28,7 @@ describe('Block shapes', () => {
     expect(block().hasAttribute('data-needs-human')).toBe(false)
   })
 
-  it.each(STATES)('underlines the number only for needs_shaping and needs_human (%s)', (state) => {
+  it.each(STATES)('underlines the number only for needs_mind and needs_hands (%s)', (state) => {
     render(<Block state={state} color="#2f5bd8" title="t" label={7} />)
     const num = screen.getByText('7')
     if (UNDERLINED.includes(state)) {
@@ -40,22 +40,22 @@ describe('Block shapes', () => {
     }
   })
 
-  it('draws needs_shaping with a 1.5px dashed foreground outline, kept next to a solid border', () => {
-    render(<Block state="needs_shaping" color="#2f5bd8" title="t" borderColor="rgb(18, 52, 86)" />)
+  it('draws needs_mind with a 1.5px dashed foreground outline, kept next to a solid border', () => {
+    render(<Block state="needs_mind" color="#2f5bd8" title="t" borderColor="rgb(18, 52, 86)" />)
     expect(block().style.outline).toBe('1.5px dashed var(--foreground)')
     expect(block().style.outlineOffset).toBe('-1.5px')
     expect(block().style.border).toBe('1.5px solid rgb(18, 52, 86)')
   })
 
-  it('draws needs_human as stripes with an inset 2px foreground shadow', () => {
-    render(<Block state="needs_human" color="#2f5bd8" title="t" />)
+  it('draws needs_hands as stripes with an inset 2px foreground shadow', () => {
+    render(<Block state="needs_hands" color="#2f5bd8" title="t" />)
     expect(block().className).toContain('lh-stripe')
     expect(block().style.boxShadow).toBe('inset 0 0 0 2px var(--foreground)')
     expect(block().style.getPropertyValue('--ms-color')).toBe('#2f5bd8')
   })
 
-  it('draws blocked as a vector cross that stretches with the block', () => {
-    render(<Block state="blocked" color="#2f5bd8" title="t" label={3} />)
+  it('draws a blockade as a vector cross that stretches with the block', () => {
+    render(<Block state="ready" blocked color="#2f5bd8" title="t" label={3} />)
     const svg = block().querySelector('svg')!
     expect(svg.getAttribute('preserveAspectRatio')).toBe('none')
     const lines = svg.querySelectorAll('line')
@@ -63,11 +63,27 @@ describe('Block shapes', () => {
     lines.forEach((l) => expect(l.getAttribute('vector-effect')).toBe('non-scaling-stroke'))
   })
 
-  it.each(['done', 'active', 'ready', 'needs_shaping', 'needs_human'] as IssueStateName[])(
-    'draws no cross outside blocked (%s)',
+  it.each(['done', 'active', 'ready', 'needs_mind', 'needs_hands'] as IssueStateName[])(
+    'draws no cross without a blockade (%s)',
     (state) => {
       render(<Block state={state} color="#2f5bd8" title="t" />)
       expect(block().querySelector('svg')).toBeNull()
     },
   )
+
+  it.each(['ready', 'needs_mind', 'active', 'needs_hands', 'done'] as IssueStateName[])(
+    'lays the cross over the shape of %s and keeps the number underline rule',
+    (state) => {
+      render(<Block state={state} blocked color="#2f5bd8" title="t" label={7} />)
+      expect(block().getAttribute('data-state')).toBe(state)
+      expect(block().querySelectorAll('svg')).toHaveLength(1)
+      expect(screen.getByText('7').getAttribute('data-underlined') === 'true').toBe(UNDERLINED.includes(state))
+    },
+  )
+
+  it('keeps the dashed outline of needs_mind under the cross', () => {
+    render(<Block state="needs_mind" blocked color="#2f5bd8" title="t" />)
+    expect(block().style.outline).toBe('1.5px dashed var(--foreground)')
+    expect(block().querySelector('svg')).not.toBeNull()
+  })
 })

@@ -13,7 +13,7 @@ function relationText(row: UnassignedRow): string | null {
 function Row({ row, colors }: { row: UnassignedRow; colors: ViewProps['colors'] }): JSX.Element {
   const { node } = row
   const relation = relationText(row)
-  const underlined = node.state === 'needs_shaping' || node.state === 'needs_human'
+  const underlined = node.state === 'needs_mind' || node.state === 'needs_hands'
   // A closed milestone keeps its colour; the rest is grey.
   const color = node.milestone ? (colors.get(`${node.repo}#m${node.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
   return (
@@ -26,6 +26,7 @@ function Row({ row, colors }: { row: UnassignedRow; colors: ViewProps['colors'] 
         testId="backlog-status"
         className="size-3.5 flex-none"
         state={node.state}
+        blocked={node.blocked}
         color={color}
         title={node.title}
       />

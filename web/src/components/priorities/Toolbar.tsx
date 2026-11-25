@@ -26,16 +26,27 @@ interface ToolbarProps {
   onDepsOrder: (o: DepsOrder) => void
 }
 
-const STATES: Array<{ key: IssueStateName; label: string }> = [
-  { key: 'blocked', label: 'blocked' },
-  { key: 'needs_shaping', label: 'needs shaping' },
-  { key: 'ready', label: 'to do' },
-  { key: 'active', label: 'active' },
-  { key: 'needs_human', label: 'needs human' },
-  { key: 'done', label: 'done' },
+interface LegendShape {
+  key: string
+  state: IssueStateName
+  label: string
+  blocked?: boolean
+}
+
+// Progress is the bar; Labels are the shapes the labels add on top of it (the cross is a blockade).
+const PROGRESS: LegendShape[] = [
+  { key: 'ready', state: 'ready', label: 'to do' },
+  { key: 'active', state: 'active', label: 'active' },
+  { key: 'done', state: 'done', label: 'done' },
 ]
 
-const UNDERLINED: ReadonlySet<IssueStateName> = new Set(['needs_shaping', 'needs_human'])
+const LABELS: LegendShape[] = [
+  { key: 'needs_mind', state: 'needs_mind', label: 'needs mind' },
+  { key: 'blocked', state: 'ready', label: 'blocked', blocked: true },
+  { key: 'needs_hands', state: 'needs_hands', label: 'needs hands' },
+]
+
+const UNDERLINED: ReadonlySet<string> = new Set(['needs_mind', 'needs_hands'])
 
 const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground'
 
@@ -158,29 +169,37 @@ export function Toolbar({
             ))}
           </ul>
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className={HEADING}>Status</span>
-          <ul aria-label="Status" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            {STATES.map((st) => (
-              <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
-                <Block
-                  testId="legend-block"
-                  state={st.key}
-                  color="var(--lh-grey)"
-                  title={st.label}
-                  className="size-3.5"
-                />
-                <span
-                  data-underlined={UNDERLINED.has(st.key) ? 'true' : undefined}
-                  className={UNDERLINED.has(st.key) ? 'underline underline-offset-2 decoration-2' : undefined}
-                >
-                  {st.label}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        <ShapeLegend heading="Progress" items={PROGRESS} />
+        <ShapeLegend heading="Labels" items={LABELS} />
       </div>
+    </div>
+  )
+}
+
+function ShapeLegend({ heading, items }: { heading: string; items: LegendShape[] }): JSX.Element {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <span className={HEADING}>{heading}</span>
+      <ul aria-label={heading} className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {items.map((it) => (
+          <li key={it.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
+            <Block
+              testId="legend-block"
+              state={it.state}
+              blocked={it.blocked}
+              color="var(--lh-grey)"
+              title={it.label}
+              className="size-3.5"
+            />
+            <span
+              data-underlined={UNDERLINED.has(it.key) ? 'true' : undefined}
+              className={UNDERLINED.has(it.key) ? 'underline underline-offset-2 decoration-2' : undefined}
+            >
+              {it.label}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

@@ -14,7 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
-const stateLabels = "\n[labels]\nneeds_shaping = \"3-needs-shaping\"\nneeds_hands = \"3-needs-hands\"\nneeds_testing = \"3-needs-testing\"\n"
+const stateLabels = "\n[labels]\nneeds_mind = \"3-needs-mind\"\nneeds_hands = \"3-needs-hands\"\n"
 
 // stateToml writes a lighthouse.toml for Owner/repo with extra appended; board adds a GitHub
 // board PVT_test whose To do option is opt-todo.
@@ -96,14 +96,16 @@ func TestStateShow(t *testing.T) {
 		want             string
 	}{
 		{name: "In progress is active", optionID: "opt-progress", status: "In progress", want: "state: #7 active\n"},
-		{name: "open blocker beats needs_hands", labels: []string{"3-needs-hands"}, optionID: "opt-todo", status: "To do",
-			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 blocked\n"},
+		{name: "open blocker keeps needs_hands from showing", labels: []string{"3-needs-hands"}, optionID: "opt-todo", status: "To do",
+			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 ready, blocked\n"},
+		{name: "open blocker on an active issue", optionID: "opt-ctrl", status: "Controller",
+			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 active, blocked\n"},
 		{name: "parked run is active", optionID: "opt-todo", status: "To do",
 			runs: []dispatch.RunView{{Repo: "Owner/repo", Issue: 8, State: "open"}, {Repo: "Owner/repo", Issue: 7, State: "parked"}},
 			want: "state: #7 active\n"},
 		{name: "active with needs_hands needs a human", labels: []string{"3-needs-hands"}, optionID: "opt-ctrl", status: "Controller",
-			want: "state: #7 needs_human\n"},
-		{name: "not on the board", labels: []string{"3-needs-shaping"}, want: "state: #7 needs_shaping\n"},
+			want: "state: #7 needs_hands\n"},
+		{name: "not on the board", labels: []string{"3-needs-mind"}, want: "state: #7 needs_mind\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateToml(t, stateLabels, true)
@@ -125,27 +127,42 @@ func TestStateShow(t *testing.T) {
 	}
 }
 
-func TestStateLabelReplacesTheHigherRank(t *testing.T) {
+func TestStateLabelAddsNeedsMindAndKeepsTheRest(t *testing.T) {
 	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-testing", "2-area:x"}, "opt-todo", "To do")
-	code, out, errOut := runState(t, srv, nil, "label", "7", "needs_shaping")
-	if want := "label: #7 3-needs-shaping (+3-needs-shaping, -3-needs-testing)\n"; code != 0 || out != want || errOut != "" {
+	srv := stateServer(t, []string{"3-needs-hands", "2-area:x"}, "opt-todo", "To do")
+	code, out, errOut := runState(t, srv, nil, "label", "7", "needs_mind")
+	if want := "label: #7 3-needs-mind, 3-needs-hands (+3-needs-mind)\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state label = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
-	want := []string{"POST /repos/Owner/repo/issues/7/labels", "DELETE /repos/Owner/repo/issues/7/labels/3-needs-testing"}
+	want := []string{"POST /repos/Owner/repo/issues/7/labels"}
 	if got := stateWrites(srv); !reflect.DeepEqual(got, want) {
 		t.Errorf("writes = %v, want %v", got, want)
 	}
-	if got := srv.Posts[0].Body["labels"]; !reflect.DeepEqual(got, []any{"3-needs-shaping"}) {
-		t.Errorf("POST labels = %v, want [3-needs-shaping]", got)
+	if got := srv.Posts[0].Body["labels"]; !reflect.DeepEqual(got, []any{"3-needs-mind"}) {
+		t.Errorf("POST labels = %v, want [3-needs-mind]", got)
 	}
 }
 
-func TestStateLabelKeepsTheLowerRank(t *testing.T) {
+// Review focus 4: needs_mind next to blocked-issue loses nothing and the line names both.
+func TestStateLabelNeedsMindKeepsABlockAndNamesBoth(t *testing.T) {
+	stateToml(t, stateLabels+"blocked_issue = \"3-blocked-issue\"\n", true)
+	srv := stateServer(t, []string{"3-blocked-issue"}, "opt-todo", "To do")
+	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
+	if want := "label: #7 3-needs-mind, 3-blocked-issue (+3-needs-mind)\n"; code != 0 || out != want {
+		t.Errorf("state label = %d, %q; want 0, %q", code, out, want)
+	}
+	for _, w := range stateWrites(srv) {
+		if strings.HasPrefix(w, "DELETE") {
+			t.Errorf("write %q removed a label", w)
+		}
+	}
+}
+
+func TestStateLabelKeepsWhatIsThere(t *testing.T) {
 	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-shaping"}, "opt-todo", "To do")
-	code, out, _ := runState(t, srv, nil, "label", "7", "needs_hands")
-	if want := "label: #7 keeps 3-needs-shaping\n"; code != 0 || out != want {
+	srv := stateServer(t, []string{"3-needs-mind"}, "opt-todo", "To do")
+	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
+	if want := "label: #7 keeps 3-needs-mind\n"; code != 0 || out != want {
 		t.Errorf("state label = %d, %q; want 0, %q", code, out, want)
 	}
 	if w := stateWrites(srv); len(w) != 0 {
@@ -164,7 +181,7 @@ func TestStateRefusesBeforeTheForge(t *testing.T) {
 		{"unknown key", stateLabels, []string{"label", "7", "needs-hands"}, 1, "state: usage: "},
 		{"unknown key on return", stateLabels, []string{"return", "7", "blocked"}, 1, "state: usage: "},
 		{"not a number", stateLabels, []string{"show", "x7"}, 1, "state: usage: "},
-		{"empty label name in lighthouse.toml", "\n[labels]\nneeds_testing = \"\"\n", []string{"label", "7", "needs_hands"}, 2,
+		{"empty label name in lighthouse.toml", "\n[labels]\nneeds_hands = \"\"\n", []string{"label", "7", "needs_hands"}, 2,
 			"state: ERROR — ConfigError: "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -221,10 +238,10 @@ func TestStateReturnBoardLines(t *testing.T) {
 }
 
 func TestStateLabelHalfWriteAsksToRunAgain(t *testing.T) {
-	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-testing"}, "opt-todo", "To do")
-	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-needs-testing": 500}
-	code, out, _ := runState(t, srv, nil, "label", "7", "needs_shaping")
+	stateToml(t, stateLabels+"blocked_issue = \"3-blocked-issue\"\nblocked_external = \"3-blocked-external\"\n", true)
+	srv := stateServer(t, []string{"3-blocked-external"}, "opt-todo", "To do")
+	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-blocked-external": 500}
+	code, out, _ := runState(t, srv, nil, "label", "7", "blocked_issue")
 	if code != 1 || !strings.HasPrefix(out, "state: ERROR — ") || !strings.HasSuffix(out, "; run it again to finish the label edit\n") {
 		t.Errorf("state label = %d, %q; want 1 and an ERROR line that asks to run it again", code, out)
 	}
@@ -243,13 +260,13 @@ func TestStateRunsOpenNextToAServe(t *testing.T) {
 	}
 }
 
-// Red when Show stops writing "needs human" for an open 🤖 Vraag on an active issue.
-func TestStateShowReportsOpenQuestionNeedsHuman(t *testing.T) {
+// Red when Show stops writing "needs_mind" for an open 🤖 Vraag on an active issue.
+func TestStateShowReportsOpenQuestionNeedsMind(t *testing.T) {
 	stateToml(t, stateLabels, true)
 	srv := stateServer(t, nil, "opt-ctrl", "Controller")
 	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "🤖 Vraag\n\nWelke kant op?", "user": map[string]any{"login": "lh-bot"}}}}
 	code, out, errOut := runState(t, srv, nil, "show", "7")
-	if want := "state: #7 needs_human\n"; code != 0 || out != want || errOut != "" {
+	if want := "state: #7 needs_mind\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state show 7 = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
 }

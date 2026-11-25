@@ -37,13 +37,13 @@ func TestReturn(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &fakeForge{labels: []string{"needs_testing"}, item: tt.item, onBoard: tt.onBoard}
-			got, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, tt.board)
+			f := &fakeForge{labels: []string{"blocked_external"}, item: tt.item, onBoard: tt.onBoard}
+			got, err := Return(context.Background(), f, 7, "blocked_issue", keyLabels, tt.board)
 			if err != nil {
 				t.Fatal(err)
 			}
 			tt.want.Labeled = true
-			tt.want.Label = LabelEdit{Winner: "needs_hands", Add: []string{"needs_hands"}, Remove: []string{"needs_testing"}}
+			tt.want.Label = LabelEdit{Add: []string{"blocked_issue"}, Remove: []string{"blocked_external"}}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Return = %#v, want %#v", got, tt.want)
 			}
@@ -58,9 +58,9 @@ func TestReturn(t *testing.T) {
 }
 
 func TestReturnStopsBeforeTheBoardOnAnEditError(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing"}, editErr: errors.New("boom"), onBoard: true,
+	f := &fakeForge{labels: []string{"needs_hands"}, editErr: errors.New("boom"), onBoard: true,
 		item: forge.BoardItem{ItemID: "I1", Status: "Controller"}}
-	got, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, true)
+	got, err := Return(context.Background(), f, 7, "needs_mind", keyLabels, true)
 	if err == nil {
 		t.Fatal("Return gave no error")
 	}
@@ -73,9 +73,9 @@ func TestReturnStopsBeforeTheBoardOnAnEditError(t *testing.T) {
 }
 
 func TestReturnReportsTheLabelBeforeABoardError(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing"}, onBoard: true, setErr: errors.New("board down"),
+	f := &fakeForge{labels: []string{"needs_hands"}, onBoard: true, setErr: errors.New("board down"),
 		item: forge.BoardItem{ItemID: "I1", Status: "Controller"}}
-	got, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, true)
+	got, err := Return(context.Background(), f, 7, "needs_mind", keyLabels, true)
 	if err == nil {
 		t.Fatal("Return gave no error")
 	}
@@ -99,9 +99,9 @@ func closedEnv(t *testing.T, f *fakeForge) Env {
 
 // Red when GiveBack or Label stops checking the issue state before Return/Apply: the edit then lands.
 func TestGiveBackRefusesClosedIssue(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing"}, closed: true}
+	f := &fakeForge{labels: []string{"needs_hands"}, closed: true}
 	var out bytes.Buffer
-	code := GiveBack(context.Background(), closedEnv(t, f), "7", "needs_hands", &out)
+	code := GiveBack(context.Background(), closedEnv(t, f), "7", "needs_mind", &out)
 	if code != 1 || !strings.Contains(out.String(), "closed") {
 		t.Errorf("GiveBack = %d, %q; want 1 and a line that says closed", code, out.String())
 	}
@@ -111,9 +111,9 @@ func TestGiveBackRefusesClosedIssue(t *testing.T) {
 }
 
 func TestLabelRefusesClosedIssue(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing"}, closed: true}
+	f := &fakeForge{labels: []string{"needs_hands"}, closed: true}
 	var out bytes.Buffer
-	code := Label(context.Background(), closedEnv(t, f), "7", "needs_hands", &out)
+	code := Label(context.Background(), closedEnv(t, f), "7", "needs_mind", &out)
 	if code != 1 || !strings.Contains(out.String(), "closed") {
 		t.Errorf("Label = %d, %q; want 1 and a line that says closed", code, out.String())
 	}

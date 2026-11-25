@@ -200,7 +200,7 @@ func (j *Job) buildCorpus(ctx context.Context, env scheduled.Env) (corpus, error
 	if c.Hotspots, err = hotspots(ctx, env, env.Dir, j.cfg.window, dirs); err != nil {
 		return c, err
 	}
-	label := env.Repo.Labels.NeedsDecision
+	label := env.Repo.Labels.NeedsMind
 	open, err := scheduled.FindDecisionIssue(ctx, env.Forge, Name, label, "open")
 	if err != nil {
 		return c, err

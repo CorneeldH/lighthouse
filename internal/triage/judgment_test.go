@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -153,8 +154,7 @@ func facts7() Facts {
 func ctxNL() Context {
 	return Context{Language: "nl", Labels: repoconfig.Labels{
 		BlockedIssue: "blocked-issue", BlockedExternal: "blocked-external",
-		NeedsShaping: "needs-shaping", NeedsDecision: "needs-decision",
-		NeedsHands: "needs-hands", NeedsTesting: "needs-testing",
+		NeedsMind: "needs-mind", NeedsHands: "needs-hands",
 	}}
 }
 
@@ -226,10 +226,8 @@ func TestValidateValid(t *testing.T) {
 }
 
 func TestValidateInvalid(t *testing.T) {
-	needsDecision := facts7()
-	needsDecision.Labels = append(needsDecision.Labels, "needs-decision")
-	needsShaping := facts7()
-	needsShaping.Labels = append(needsShaping.Labels, "needs-shaping")
+	needsMind := facts7()
+	needsMind.Labels = append(needsMind.Labels, "needs-mind")
 	c4 := map[string]any{"route_line": "#7 Poort 4c: brainstorming — x", "sub": "c"}
 	merge := func(extra map[string]any) map[string]any {
 		m := map[string]any{}
@@ -251,8 +249,7 @@ func TestValidateInvalid(t *testing.T) {
 		{"gate 3", facts7(), map[string]any{"route_line": "#7 Poort 3: x — y", "gate": 3, "sub": ""}, "gate 3"},
 		{"gate field mismatch", facts7(), map[string]any{"gate": 2}, "field gate 2"},
 		{"sub field mismatch", facts7(), map[string]any{"sub": "a"}, "field sub"},
-		{"4b with needs-decision", needsDecision, nil, "needs-decision"},
-		{"4b with needs-shaping", needsShaping, nil, "needs-shaping"},
+		{"4b with needs-mind", needsMind, nil, "needs-mind"},
 		{"4c without questions", facts7(), c4, "4c needs 1 to 4"},
 		{"4c five questions", facts7(), merge(map[string]any{"design_questions": questions(5, 2, 0)}), "4c needs 1 to 4"},
 		{"4c one option", facts7(), merge(map[string]any{"design_questions": questions(1, 1, 0)}), "options"},
@@ -426,5 +423,27 @@ func TestValidateGate0FromGo(t *testing.T) {
 	// the redundancy rules still hold under gate 0
 	if _, err := Validate(envelope(t, verdict(map[string]any{"redundancy": "done"})), facts7(), c); err == nil {
 		t.Error("done without evidence passed")
+	}
+}
+
+// A needs-mind issue with an open blocker is routed to 4c with "blocker #<x> open" in the reason: Go
+// adds it when the model leaves it out, and keeps a reason that has it. Dropping the append turns
+// the first case red.
+func TestValidateNeedsMindBlockerReason(t *testing.T) {
+	f := facts7()
+	f.Labels = append(f.Labels, "needs-mind", "blocked-issue")
+	f.Blockers = []forge.Blocker{{Issue: 5, State: "OPEN"}, {Issue: 6, State: "CLOSED"}}
+	for _, tt := range []struct{ name, line, want string }{
+		{"left out", "#7 Poort 4c: brainstorming — x", "#7 Poort 4c: brainstorming — x — blocker #5 open"},
+		{"already there", "#7 Poort 4c: brainstorming — blocker #5 open", "#7 Poort 4c: brainstorming — blocker #5 open"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			j, err := Validate(envelope(t, verdict(map[string]any{
+				"route_line": tt.line, "gate": 4, "sub": "c", "design_questions": questions(1, 2, 0),
+			})), f, ctxNL())
+			if err != nil || j.RouteLine != tt.want {
+				t.Errorf("RouteLine = %q, %v; want %q", j.RouteLine, err, tt.want)
+			}
+		})
 	}
 }

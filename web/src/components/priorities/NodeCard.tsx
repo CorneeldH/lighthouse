@@ -39,7 +39,7 @@ export function NodeCard({
   onMouseLeave,
   onClick,
 }: Props): JSX.Element {
-  const underlined = node.state === 'needs_shaping' || node.state === 'needs_human'
+  const underlined = node.state === 'needs_mind' || node.state === 'needs_hands'
   return (
     <a
       href={grey && node.url === '' ? undefined : node.url}
@@ -69,7 +69,7 @@ export function NodeCard({
       onClick={onClick}
     >
       <span data-testid="card-strip" className="w-1.5 flex-none self-stretch" style={{ background: color }} />
-      {!grey && <Block testId="card-status" className="size-3.5 flex-none" state={node.state} color={color} title={node.title} />}
+      {!grey && <Block testId="card-status" className="size-3.5 flex-none" state={node.state} blocked={node.blocked} color={color} title={node.title} />}
       <span
         data-underlined={underlined && !grey ? 'true' : undefined}
         className={`flex-none text-[13px] font-semibold${underlined && !grey ? ' underline underline-offset-2 decoration-2' : ''}`}

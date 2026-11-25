@@ -90,10 +90,8 @@ var schema = []struct{ key, kind string }{
 	{"paths.mirror_exceptions", kStr},
 	{"labels.blocked_issue", kStr},
 	{"labels.blocked_external", kStr},
-	{"labels.needs_shaping", kStr},
-	{"labels.needs_decision", kStr},
+	{"labels.needs_mind", kStr},
 	{"labels.needs_hands", kStr},
-	{"labels.needs_testing", kStr},
 	{"labels.location_prefix", kStr},
 	{"labels.area_prefix", kStr},
 	{"test_gate.command", kStr},
@@ -153,10 +151,8 @@ var defaults = map[string]any{
 	"paths.search_dirs":                      []any{"."},
 	"labels.blocked_issue":                   "blocked-issue",
 	"labels.blocked_external":                "blocked-external",
-	"labels.needs_shaping":                   "needs-shaping",
-	"labels.needs_decision":                  "needs-decision",
+	"labels.needs_mind":                      "needs-mind",
 	"labels.needs_hands":                     "needs-hands",
-	"labels.needs_testing":                   "needs-testing",
 	"test_gate.on":                           "commit",
 	"test_gate.deadline_seconds":             int64(270),
 	"test_gate.slots":                        int64(2),
@@ -649,11 +645,24 @@ func checkSchema(data map[string]any, path string) error {
 	return nil
 }
 
+// OldLabelKeys are the [labels] keys that were removed; lighthouse labels migrate rewrites them.
+var OldLabelKeys = []string{"needs_shaping", "needs_decision", "needs_testing"}
+
+// OldLabelKeyError is the error for a removed [labels] key in the lighthouse.toml at path.
+func OldLabelKeyError(path, key string) error {
+	return fmt.Errorf("%s: [labels] %s was removed; run lighthouse labels migrate", path, key)
+}
+
 // Load reads and validates one lighthouse.toml.
 func Load(path string) (*Config, error) {
 	data, md, err := readTOML(path, pyPath(path)+": file is missing")
 	if err != nil {
 		return nil, err
+	}
+	for _, key := range OldLabelKeys {
+		if md.IsDefined("labels", key) {
+			return nil, OldLabelKeyError(pyPath(path), key)
+		}
 	}
 	return build(data, md, path)
 }

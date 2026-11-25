@@ -12,9 +12,8 @@ const iss = (number: number, by: Array<[string, number]> = [], extra: Partial<Is
   title: `title-${number}`,
   url: `https://forge/${number}`,
   status: 'To do',
-  label: '',
+  labels: [],
   open_question: false,
-  needs_label: false,
   prio_weight: 0,
   factor: 0,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
@@ -74,15 +73,15 @@ describe('DepsView', () => {
         repo(A, [
           iss(1),
           iss(2, [[A, 1]]),
-          iss(3, [], { label: 'needs_shaping' }),
-          iss(4, [], { label: 'needs_decision' }),
+          iss(3, [], { labels: ['needs_mind'] }),
+          iss(4, [], { labels: ['needs_hands'] }),
           iss(5, [], { status: 'In progress' }),
           iss(6, [[A, 3], [A, 4], [A, 5]]),
         ]),
       ],
       [A],
     )
-    const want: Record<number, string> = { 1: 'ready', 2: 'blocked', 3: 'needs_shaping', 4: 'needs_human', 5: 'active' }
+    const want: Record<number, string> = { 1: 'ready', 2: 'ready', 3: 'needs_mind', 4: 'needs_hands', 5: 'active' }
     for (const [k, st] of Object.entries(want)) {
       const card = node(`${A}#${k}`)
       expect(card.getAttribute('data-state')).toBe(st)
@@ -96,13 +95,13 @@ describe('DepsView', () => {
     }
   })
 
-  it('underlines the number for needs shaping and needs human only, without a hash', () => {
+  it('underlines the number for needs mind and needs hands only, without a hash', () => {
     view(
       [
         repo(A, [
           iss(1),
-          iss(3, [], { label: 'needs_shaping' }),
-          iss(4, [], { label: 'needs_hands' }),
+          iss(3, [], { labels: ['needs_mind'] }),
+          iss(4, [], { labels: ['needs_hands'] }),
           iss(5, [], { status: 'In progress', open_question: true }),
           iss(6, [[A, 3], [A, 4], [A, 5], [A, 1]]),
         ]),
@@ -114,7 +113,7 @@ describe('DepsView', () => {
       expect(n.getAttribute('data-underlined')).toBe('true')
       expect(n.className).toContain('underline')
     }
-    expect(node(`${A}#5`).getAttribute('data-state')).toBe('needs_human')
+    expect(node(`${A}#5`).getAttribute('data-state')).toBe('needs_mind')
     for (const k of [1, 6]) {
       const n = within(node(`${A}#${k}`)).getByText(String(k))
       expect(n.getAttribute('data-underlined')).toBeNull()
@@ -155,7 +154,7 @@ describe('DepsView', () => {
   })
 
   it('gives an external card a solid grey border and never a needs-human outline', () => {
-    view([repo(A, [iss(2, [['a/y', 9]])]), repo('a/y', [iss(9, [], { label: 'needs_decision' })])], [A])
+    view([repo(A, [iss(2, [['a/y', 9]])]), repo('a/y', [iss(9, [], { labels: ['needs_hands'] })])], [A])
     const ext = node('a/y#9')
     expect(ext.className).toContain('border-lh-grey')
     expect(ext.className).not.toContain('border-dashed')
@@ -232,11 +231,19 @@ describe('DepsView', () => {
     expect(within(card).getByTestId('card-strip').className).not.toContain('lh-stripe')
   })
 
-  it('draws a blocked status block on a loose card with a blocked_external label', () => {
-    view([repo(A, [iss(1, [], { label: 'blocked_external' })])], [A])
+  it('keeps a loose card with a blocked_external label to do', () => {
+    view([repo(A, [iss(1, [], { labels: ['blocked_external'] })])], [A])
     const card = screen.getByTestId(`loose-${A}#1`)
-    expect(card.getAttribute('data-state')).toBe('blocked')
-    expect(within(card).getByTestId('card-status').getAttribute('data-state')).toBe('blocked')
+    expect(card.getAttribute('data-state')).toBe('ready')
+    expect(within(card).getByTestId('card-status').getAttribute('data-state')).toBe('ready')
+  })
+
+  it('draws the cross in the status block of a blocked card, also for needs_mind', () => {
+    view([repo(A, [iss(1, [], { labels: ['blocked_external'] }), iss(2, [], { labels: ['needs_mind', 'blocked_external'] }), iss(3)])], [A])
+    const cross = (nr: number) => within(screen.getByTestId(`loose-${A}#${nr}`)).getByTestId('card-status').querySelector('svg')
+    expect(cross(1)).not.toBeNull()
+    expect(cross(2)).not.toBeNull()
+    expect(cross(3)).toBeNull()
   })
 
   it('positions a graph card absolutely through its inline style', () => {

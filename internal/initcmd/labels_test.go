@@ -159,8 +159,8 @@ func TestLabelTemplateHasEveryConfiguredLabel(t *testing.T) {
 			checked++
 		}
 	}
-	if checked != 6 {
-		t.Fatalf("checked %d labels, want 6", checked)
+	if checked != 4 {
+		t.Fatalf("checked %d labels, want 4", checked)
 	}
 }
 
@@ -274,6 +274,8 @@ func (f *labelForge) CreateLabel(_ context.Context, name, _ string) error {
 	return nil
 }
 
+func (f *labelForge) DeleteLabel(context.Context, string) error { return nil }
+
 // withForge makes the label step use f (nil means the forge cannot be opened).
 func withForge(f forge.Forge) func(*Options) {
 	return func(o *Options) { o.LabelForge = func(string) forge.Forge { return f } }
@@ -303,8 +305,8 @@ func TestCreateLabelsDefaultSyncCreates(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	if len(f.created) != 5 || slices.Contains(f.created, "needs-hands") {
-		t.Fatalf("created %v, want the 5 missing labels", f.created)
+	if len(f.created) != 3 || slices.Contains(f.created, "needs-hands") {
+		t.Fatalf("created %v, want the 3 missing labels", f.created)
 	}
 }
 
