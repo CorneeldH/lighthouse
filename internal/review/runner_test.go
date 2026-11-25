@@ -9,12 +9,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
 // fakeCodex is a `codex` that records its argv and answers `exec` with a clean result.
-const fakeCodex = `#!/bin/sh
-printf '%s\n' "$@" > "$CAPTURE"
+const fakeCodex = `printf '%s\n' "$@" > "$CAPTURE"
 out=""
 while [ "$#" -gt 0 ]; do
   if [ "$1" = "-o" ]; then out="$2"; fi
@@ -49,7 +49,8 @@ func newRound(t *testing.T) *round {
 	}
 	write(filepath.Join(repo, "docs", "doc.md"), "# doc\n", 0o644)
 	write(filepath.Join(home, ".codex", "auth.json"), "{}", 0o600)
-	write(filepath.Join(bin, "codex"), fakeCodex, 0o755)
+	stubbin.RequirePOSIX(t, "fakeCodex records argv with printf and shifts positional parameters")
+	stubbin.MakeScript(t, bin, "codex", fakeCodex)
 	skill := filepath.Join(repo, ".claude", "skills", "lighthouse-review-spec")
 	if err := os.MkdirAll(skill, 0o755); err != nil {
 		t.Fatal(err)
@@ -58,7 +59,7 @@ func newRound(t *testing.T) *round {
 	write(filepath.Join(skill, "findings.schema.json"), "{}", 0o644)
 
 	r := &round{capture: filepath.Join(tmp, "capture.txt")}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, bin)
 	t.Setenv("HOME", home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
@@ -198,19 +199,14 @@ func TestRoundFailureExits(t *testing.T) {
 		}, ExitNoLogin, "CODEX_UNAUTHENTICATED: ~/.codex/auth.json missing\n"},
 		{"codex fails", func(t *testing.T, _ *round) {
 			bin := t.TempDir()
-			script := "#!/bin/sh\necho boom >&2\nexit 7\n"
-			if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			stubbin.Make(t, bin, "codex", stubbin.Spec{Stderr: "boom\n", Exit: 7})
+			stubbin.Prepend(t, bin)
 		}, ExitRunFailed, "boom\n"},
 		{"incomplete result", func(t *testing.T, _ *round) {
+			stubbin.RequirePOSIX(t, "the stub finds the -o argument by shifting positional parameters")
 			bin := t.TempDir()
-			script := "#!/bin/sh\nwhile [ \"$1\" != -o ]; do shift; done\necho '{\"status\":\"x\"}' > \"$2\"\n"
-			if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			stubbin.MakeScript(t, bin, "codex", "while [ \"$1\" != -o ]; do shift; done\necho '{\"status\":\"x\"}' > \"$2\"\n")
+			stubbin.Prepend(t, bin)
 		}, ExitFailed, "incomplete result, missing ['findings', 'review_markdown']\n"},
 	}
 	for _, c := range cases {
