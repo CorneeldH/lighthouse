@@ -549,11 +549,12 @@ func TestGateExit128PlusNDoesNotStopTheDispatch(t *testing.T) {
 
 func TestGatePacksNameEveryGate(t *testing.T) {
 	eq(t, "GatePacks", GatePacks, map[string]string{
-		"shell-lint-check.sh":    "shell",
-		"ruff-format-check.sh":   "python",
-		"gofmt-check.sh":         "go",
-		"md-link-check":          "core",
-		"code-language-check.sh": "core",
+		"shell-lint-check.sh":      "shell",
+		"ruff-format-check.sh":     "python",
+		"gofmt-check.sh":           "go",
+		"powershell-lint-check.sh": "powershell",
+		"md-link-check":            "core",
+		"code-language-check.sh":   "core",
 	})
 	all := map[string]string{}
 	for _, gates := range Gates {
@@ -1052,11 +1053,12 @@ func writeStands(t *testing.T, root string, stands map[string]string) {
 func TestGateComponentsNameEveryGate(t *testing.T) {
 	// Fails when GateComponents loses a gate or names another component than levels.toml does.
 	eq(t, "GateComponents", GateComponents, map[string]string{
-		"shell-lint-check.sh":    "shell-lint-check",
-		"ruff-format-check.sh":   "ruff-format-check",
-		"gofmt-check.sh":         "gofmt-check",
-		"md-link-check":          "md-link-check",
-		"code-language-check.sh": "code-language-check",
+		"shell-lint-check.sh":      "shell-lint-check",
+		"ruff-format-check.sh":     "ruff-format-check",
+		"gofmt-check.sh":           "gofmt-check",
+		"powershell-lint-check.sh": "powershell-lint-check",
+		"md-link-check":            "md-link-check",
+		"code-language-check.sh":   "code-language-check",
 	})
 	for gate := range GatePacks {
 		if GateComponents[gate] == "" {
@@ -1174,4 +1176,51 @@ func TestGateOnLogRunsAndStaysQuiet(t *testing.T) {
 	if counts["md-link-check"] != 1 {
 		t.Fatalf("logbook = %v", counts)
 	}
+}
+
+func TestPowershellFilesRunThePowershellGate(t *testing.T) {
+	// Fails when .ps1/.psm1 are not in Gates, or when code-language-check.sh is added to them.
+	for _, ext := range []string{".ps1", ".psm1"} {
+		eq(t, ext, Gates[ext], []string{"powershell-lint-check.sh"})
+		e := utf8Env(t)
+		writeFile(t, GatePath(e.gates, "powershell-lint-check.sh"), "#!/bin/sh\necho ps-ran\nexit 2\n")
+		verdict, output, err := runGate(e.gates, e.repo, "x"+ext, "powershell-lint-check.sh", time.Now().Add(10*time.Second))
+		if err != nil {
+			t.Fatal(err)
+		}
+		eq(t, "verdict "+ext, verdict, "finding")
+		eq(t, "output "+ext, string(output), "ps-ran\n")
+	}
+}
+
+func TestMissingPowershellGateNamesThePack(t *testing.T) {
+	// Fails when the notice of a missing powershell gate does not name pack powershell.
+	e := utf8Env(t)
+	if err := os.Remove(GatePath(e.gates, "powershell-lint-check.sh")); err != nil {
+		t.Fatal(err)
+	}
+	verdict, output, err := runGate(e.gates, e.repo, "x.ps1", "powershell-lint-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "missing")
+	eq(t, "output", string(output), "no powershell check installed")
+	e.dirtyCalls(t, "x.psm1")
+	r := e.post(t, 0)
+	if r.code != 0 || !strings.Contains(r.context(t), "x.psm1 not checked — no powershell check installed") {
+		t.Fatalf("post = %+v", r)
+	}
+}
+
+func TestPowershellGateOffDoesNotRun(t *testing.T) {
+	// Fails when an off powershell-lint-check still runs.
+	e := utf8Env(t)
+	writeStands(t, e.gates, map[string]string{"powershell-lint-check": "off"})
+	writeFile(t, GatePath(e.gates, "powershell-lint-check.sh"), "#!/bin/sh\necho ran\nexit 2\n")
+	verdict, output, err := runGate(e.gates, e.repo, "x.ps1", "powershell-lint-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "ok")
+	eq(t, "output", string(output), "")
 }

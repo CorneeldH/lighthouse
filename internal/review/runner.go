@@ -233,7 +233,7 @@ func checkBudget(ctx context.Context, o Options) int {
 	// The fields of the budget answer, in its JSON order.
 	synth := fmt.Sprintf(`{"decision": "not_measurable", "reason": "budget check failed: exit %d", `+
 		`"window": null, "reset_at": null, "session_pct": null, "week_pct": null, `+
-		`"source": null, "lower_bound": null, "thresholds": null}`+"\n", code)
+		`"source": null, "lower_bound": null, "thresholds": null, "reset_credits": null}`+"\n", code)
 	if err := os.WriteFile(budgetPath, []byte(synth), 0o644); err != nil {
 		_, _ = fmt.Fprintf(o.Stderr, "%v\n", err)
 		return -1

@@ -479,3 +479,49 @@ func TestRemoveMirror(t *testing.T) {
 		t.Errorf("RemoveMirror of a missing mirror: %v, want nil", err)
 	}
 }
+
+// RawTranscript on a node syncs the mirror and gives the whole files, also on the second call,
+// when serve sends only the new bytes.
+func TestRawTranscriptOnNodeGivesWholeMirrorFiles(t *testing.T) {
+	s := newSourceNode(t)
+	sess := randomID(t)
+	s.write(t, sess+".jsonl", line1)
+	s.write(t, sess+"/subagents/agent-c.jsonl", sub1)
+	a := nodeAdapter(t, s.client(t), t.TempDir())
+	ctx := context.Background()
+	got, err := a.RawTranscript(ctx, randomID(t), sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].Name != sess+".jsonl" || string(got[0].Data) != line1 || got[0].From != 0 ||
+		got[1].Name != sess+"/subagents/agent-c.jsonl" || string(got[1].Data) != sub1 {
+		t.Fatalf("first RawTranscript = %+v", got)
+	}
+	if mirrored(t, a, sess, sess+".jsonl") != line1 {
+		t.Error("the mirror does not hold the main transcript")
+	}
+	s.appendTo(t, sess+".jsonl", line2)
+	got, err = a.RawTranscript(ctx, randomID(t), sess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got[0].Data) != line1+line2 || got[0].From != 0 || got[0].Size != int64(len(line1+line2)) {
+		t.Errorf("second RawTranscript main = %+v, want the whole file", got[0])
+	}
+	if froms := s.recorded(); len(froms) != 2 || froms[1] == "" {
+		t.Errorf("froms = %q, want the second fetch to ask only for the new bytes", froms)
+	}
+}
+
+func TestRawTranscriptOnNodeErrors(t *testing.T) {
+	s := newSourceNode(t)
+	a := nodeAdapter(t, s.client(t), t.TempDir())
+	if _, err := a.RawTranscript(context.Background(), randomID(t), randomID(t)); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("no transcript on the node: err = %v, want fs.ErrNotExist", err)
+	}
+	a.Serve = nil
+	_, err := a.RawTranscript(context.Background(), randomID(t), randomID(t))
+	if !errors.Is(err, workplace.ErrNotMeasurable) || !errors.Is(err, workplace.ErrUnanswered) {
+		t.Errorf("no serve: err = %v, want ErrNotMeasurable and ErrUnanswered", err)
+	}
+}

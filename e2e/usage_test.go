@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // usageEnv is a clean environment with a temporary cache, host.toml and PATH prefix.
@@ -19,16 +21,16 @@ func usageEnv(t *testing.T, xdg, binDir string) []string {
 	return append(cleanEnv(),
 		"XDG_CACHE_HOME="+xdg,
 		"LIGHTHOUSE_HOST_TOML="+filepath.Join(t.TempDir(), "host.toml"),
-		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
+		"PATH="+stubbin.PathValue(t, binDir),
 		"TZ=Europe/Amsterdam",
 	)
 }
 
+// writeScript writes a POSIX stub script: its body uses shell builtins and POSIX tools.
 func writeScript(t *testing.T, dir, name, body string) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubbin.RequirePOSIX(t, "usage stub "+name+" runs shell commands (pwd, cat, sed, touch, read loop)")
+	stubbin.MakeScript(t, dir, name, body)
 }
 
 func runUsage(t *testing.T, bin string, env []string, args ...string) (string, string) {
@@ -97,7 +99,7 @@ func TestUsageRefreshE2E(t *testing.T) {
 		t.Errorf("script ran again within the TTL: %q", got)
 	}
 
-	writeScript(t, binDir, "claude", "exit 1\n")
+	stubbin.Make(t, binDir, "claude", stubbin.Spec{Exit: 1})
 	_, stderr := runUsage(t, bin, env, "usage", "refresh", "--force")
 	if !strings.HasPrefix(stderr, "usage: failed: ") {
 		t.Errorf("forced refresh stderr = %q", stderr)
@@ -140,7 +142,7 @@ func TestUsageKeepsControllerStateOut(t *testing.T) {
 func TestUsageTickWithoutClaude(t *testing.T) {
 	bin := buildLighthouse(t)
 	xdg, binDir, marker := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "ran")
-	writeScript(t, binDir, "pgrep", "exit 1\n")
+	stubbin.Make(t, binDir, "pgrep", stubbin.Spec{Exit: 1})
 	writeScript(t, binDir, "claude", "touch '"+marker+"'\n")
 
 	if stdout, _ := runUsage(t, bin, usageEnv(t, xdg, binDir), "usage", "tick"); stdout != "usage: idle\n" {
@@ -213,7 +215,8 @@ func TestUsageCodexNotMeasurableE2E(t *testing.T) {
 	binDir := t.TempDir()
 	env := append(usageEnv(t, t.TempDir(), binDir),
 		"HOME="+t.TempDir(),
-		"PATH="+binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin",
+		// The PATH is the empty stub dir alone: no codex can be found.
+		"PATH="+binDir,
 	)
 	cmd := exec.Command(bin, "usage", "codex")
 	cmd.Env = env

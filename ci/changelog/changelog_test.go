@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -219,6 +220,9 @@ func TestCheck(t *testing.T) {
 		}
 	})
 	t.Run("nonUTF8Name", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("NTFS names are UTF-16, so Go writes no non-UTF-8 name there; see host-assumptions.md")
+		}
 		root, c1 := checkRepo(t)
 		bad := filepath.Join(root, "changelog.d") + "/\xff.md"
 		if err := os.WriteFile(bad, []byte(goodFragment), 0o600); err != nil {

@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -143,10 +144,9 @@ func TestRealRunKillReachesGrandchild(t *testing.T) {
 	t.Cleanup(func() { syscall.Umask(old) })
 	repo, _ := newRepoNamed(t, "repo met spatie")
 	bin, out := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(fakeClaude), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.RequirePOSIX(t, "argv, cwd and umask dump and a setsid grandchild")
+	stubbin.MakeScript(t, bin, "claude", strings.TrimPrefix(fakeClaude, "#!/bin/sh\n"))
+	stubbin.Prepend(t, bin)
 	argvFile, cwdFile, grandchildFile := filepath.Join(out, "argv"), filepath.Join(out, "cwd"), filepath.Join(out, "grandchild")
 	umaskFile := filepath.Join(out, "umask")
 	t.Setenv("LH_TEST_ARGV", argvFile)
@@ -263,10 +263,9 @@ func TestRealRunUnsetsTheToken(t *testing.T) {
 	}
 	repo, _ := newRepo(t)
 	bin, out := t.TempDir(), t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(envClaude), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.RequirePOSIX(t, "env -0 dump")
+	stubbin.MakeScript(t, bin, "claude", strings.TrimPrefix(envClaude, "#!/bin/sh\n"))
+	stubbin.Prepend(t, bin)
 	envFile := filepath.Join(out, "env")
 	t.Setenv("LH_TEST_ENV", envFile)
 	t.Setenv("GH_TOKEN", "ghp_inherited_by_the_tick")

@@ -62,7 +62,7 @@ func TestClosingRunFreesSlotSameTick(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			in := loadInput(t, c.base)
 			withClosingRepo(t, &in, c.row)
-			got := Decide(in)
+			got := withoutNoteDone(Decide(in))
 			if k := kinds(got); !reflect.DeepEqual(k, c.want) {
 				t.Fatalf("kinds = %v, want %v: %+v", k, c.want, got)
 			}
@@ -136,7 +136,7 @@ func TestCloseWithoutFreedSlotDefers(t *testing.T) {
 			in.Brake = openBrake()
 			in.Brake.InUse = 4
 			withWaitingRepo(t, &in)
-			got := Decide(in)
+			got := withoutNoteDone(Decide(in))
 			if k := kinds(got); !reflect.DeepEqual(k, []Kind{c.kind, KindDefer}) {
 				t.Fatalf("kinds = %v, want [%s defer]: %+v", k, c.kind, got)
 			}

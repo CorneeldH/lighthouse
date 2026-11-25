@@ -15,8 +15,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
 | Python 3.11+ (`python3`, `tomllib`) | python | `ty-gate`, `gate_python` and the `python-standard` skill | Those hooks and that skill cannot run. The other packages need no Python. |
-| `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
-| `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
+| `git` | core, expo, go, powershell, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
+| `jq` | core, go, powershell, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs in the skills that do not yet use `lighthouse forge` | Those skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. The chain skills `start-issue`, `route-issue`, `write-issue` and `write-pr` go through `lighthouse forge` and need `gh` only for the fallback `gh auth token`. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
@@ -27,6 +27,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `npx` | node | `node-imports-gate` (knip) | `node-imports-gate` reports `COULD NOT CHECK` at Stop; nothing was checked. |
 | `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
+| `pwsh` | powershell | `powershell-lint-check` runs PSScriptAnalyzer in it | `powershell-lint-check` blocks with `COULD NOT CHECK` on every `.ps1` or `.psm1` file you edit. |
+| `PSScriptAnalyzer` (PowerShell module) | powershell | the rules of `powershell-lint-check` | As for `pwsh`. Install it with `Install-Module PSScriptAnalyzer -Scope CurrentUser` (or `-Scope AllUsers`, which needs admin rights); the hook sees either. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |
@@ -147,7 +149,51 @@ On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
 `warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml.
 For the gate_* keys (memory brake, slots) write it by hand: see "A host.toml without Tailscale" in
-the lighthouse getting-started guide`: the next section.
+the lighthouse getting-started guide`: the section after "Remove lighthouse".
+
+## Remove lighthouse
+
+```bash
+lighthouse uninstall
+```
+
+`uninstall` removes what `init` installed, as listed in `.lighthouse/manifest.toml`. It prints a
+diff per file and asks `Remove lighthouse? [y/N]`; nothing is removed until you answer `y`.
+
+- `lighthouse uninstall --yes` approves without asking. Without a terminal the question reads
+  empty stdin, which counts as no: nothing is removed and `uninstall` exits 1.
+- A unit you changed locally makes the whole run refuse, and nothing is removed, unless you add
+  `--force`.
+
+What `init` created is undone: files it created are removed, and the sections and keys it added to
+`AGENTS.md`, `.gitattributes` and `.claude/settings.json` are taken out again. `CLAUDE.md` is only
+removed when `init` created it; `init` never edits an existing one. A `lighthouse.toml` that
+already existed stays, with a `left:` line: `init` may have added keys to it, and `uninstall` does
+not know which. A file that holds other content than what `init` put there stays, and the closing
+report on stderr says so with a `kept:` or `left:` line.
+
+What stays, each with a line in that report:
+
+- the labels file and the direction documents `init --labels` and `--direction` seeded: they are
+  your project files after seeding;
+- `.lighthouse/run` and other runtime directories under `.lighthouse/`;
+- the labels on the forge, `~/.config/lighthouse/host.toml` and the lighthouse binary
+  (`not touched:`).
+
+Two things to know:
+
+- `.claude/settings.json` is written back in the canonical layout of `init`, so a hand-made
+  layout (indentation, key order) does not return byte for byte; the JSON content is the same.
+- A file without a final newline, or with an empty last line, does not return byte for byte
+  either.
+
+An install from before this version has no record of what `init` created. `uninstall` removes the
+units of the manifest, and you remove `lighthouse.toml` and the rest yourself. The same holds for
+what an `init --upgrade` with an older binary creates: that binary does not record it, so it stays.
+
+The report ends with a `note:` line: a running Claude Code session keeps its hooks until it
+restarts. The summary on stdout reads `Changed N file(s).`, which counts the files removed and the
+files edited.
 
 ## A host.toml without Tailscale
 

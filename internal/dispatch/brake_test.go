@@ -280,3 +280,29 @@ func TestPushBrakeGroupIgnoresSlotsButHonoursPause(t *testing.T) {
 		})
 	}
 }
+
+func TestBrakeSetsBrakedOnPushRecover(t *testing.T) {
+	rec := planned{Action: Action{Kind: KindPushRecover, Repo: "o/a", Issue: 1}}
+	push := planned{Action: Action{Kind: KindPush, Repo: "o/a", Issue: 2}}
+	closed := (&Brake{UsageMeasured: true, SessionPct: 99, HaltPctSession: 90}).UsageClosed()
+	cases := []struct {
+		name  string
+		brake *Brake
+		want  string
+	}{
+		{"paused", &Brake{Paused: true}, "pause"},
+		{"usage closed", &Brake{UsageMeasured: true, SessionPct: 99, HaltPctSession: 90}, closed},
+		{"open", openBrake(), ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := c.brake.apply([]planned{rec})
+			if len(got) != 1 || got[0].Kind != KindPushRecover || got[0].Braked != c.want {
+				t.Fatalf("got %+v, want one push_recover with Braked %q", got, c.want)
+			}
+		})
+	}
+	if got := (&Brake{Paused: true}).apply([]planned{push}); len(got) != 0 {
+		t.Errorf("a paused push stays dropped, got %+v", got)
+	}
+}

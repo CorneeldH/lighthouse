@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func evalDir(t *testing.T, p string) string {
@@ -40,7 +42,7 @@ func TestDataDir(t *testing.T) {
 		{
 			name: "no env falls back to HOME",
 			env: func(t *testing.T, tmp string) map[string]string {
-				t.Setenv("HOME", tmp)
+				testpath.SetHome(t, tmp)
 				return map[string]string{}
 			},
 			want: func(tmp string) string { return filepath.Join(tmp, ".local/share/lighthouse/review-records") },
@@ -48,7 +50,7 @@ func TestDataDir(t *testing.T) {
 		{
 			name: "relative XDG_DATA_HOME is ignored",
 			env: func(t *testing.T, tmp string) map[string]string {
-				t.Setenv("HOME", tmp)
+				testpath.SetHome(t, tmp)
 				return map[string]string{"XDG_DATA_HOME": "rel"}
 			},
 			want: func(tmp string) string { return filepath.Join(tmp, ".local/share/lighthouse/review-records") },
@@ -56,7 +58,7 @@ func TestDataDir(t *testing.T) {
 		{
 			name: "tilde in LIGHTHOUSE_DATA expands to HOME",
 			env: func(t *testing.T, tmp string) map[string]string {
-				t.Setenv("HOME", tmp)
+				testpath.SetHome(t, tmp)
 				return map[string]string{"LIGHTHOUSE_DATA": "~/r"}
 			},
 			want: func(tmp string) string { return filepath.Join(tmp, "r") },

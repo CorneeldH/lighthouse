@@ -92,7 +92,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 19 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 20 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string
@@ -183,6 +183,17 @@ func TestLanguagePacks(t *testing.T) {
 			},
 			detect: true,
 			tools:  "curl,git,jq,tar,xz",
+			blocks: 0,
+			hooks:  1,
+		},
+		{
+			name: "powershell",
+			files: []string{
+				".claude/hooks/lighthouse/powershell-lint-check.sh",
+				".lighthouse/scripts/psscriptanalyzer-repo.ps1",
+			},
+			detect: true,
+			tools:  "PSScriptAnalyzer,git,jq,pwsh",
 			blocks: 0,
 			hooks:  1,
 		},

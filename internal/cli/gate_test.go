@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func runGate(t *testing.T, args ...string) (code int, stdout, stderr string) {
@@ -42,22 +44,24 @@ func TestGateGoPassesExitCode(t *testing.T) {
 }
 
 func TestGateNodePassesFlags(t *testing.T) {
+	stubbin.RequirePOSIX(t, "the npm stub echoes $*")
 	root := t.TempDir()
 	web := filepath.Join(root, "web")
 	for path, body := range map[string]string{
 		filepath.Join(web, "node_modules", ".keep"): "",
 		filepath.Join(web, "package.json"):          `{"scripts": {"lint": "x"}}`,
-		filepath.Join(root, "bin", "npm"):           "#!/bin/sh\necho \"npm $*\"\n",
-		filepath.Join(root, "bin", "node"):          "#!/bin/sh\nexit 0\n",
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("PATH", filepath.Join(root, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"))
+	bin := filepath.Join(root, "bin")
+	stubbin.MakeScript(t, bin, "npm", "echo \"npm $*\"\n")
+	stubbin.Make(t, bin, "node", stubbin.Spec{})
+	stubbin.Prepend(t, bin)
 	t.Chdir(root)
 	code, out, errOut := runGate(t, "node", "--dir", "web", "--", "lint")
 	want := "gate-node: web — npm run lint\nnpm run --silent lint\ngate-node: passed — lint\n"

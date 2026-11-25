@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
@@ -16,17 +18,15 @@ import (
 // its cwd into dir, then runs body.
 func fakeClaude(t *testing.T, body string) (dir string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "for loop over \"$@\", stdin through cat and pwd")
 	dir = t.TempDir()
 	bin := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
+	script := "for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
 		"cat > " + filepath.Join(dir, "stdin") + "\n" +
 		"pwd > " + filepath.Join(dir, "cwd") + "\n" +
 		body + "\n"
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "claude", script)
+	stubbin.Prepend(t, bin)
 	return dir
 }
 
@@ -44,7 +44,7 @@ func TestExecJudgeFlags(t *testing.T) {
 	work := t.TempDir()
 
 	settings := `{"disableAllHooks":true}`
-	out, err := execJudge(context.Background(), work, "the prompt\n", judgeConfig{Settings: settings})
+	out, err := execJudge(context.Background(), work, "the prompt\n", judgeConfig{Settings: settings}, triageSpec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,11 +70,39 @@ func TestExecJudgeFlags(t *testing.T) {
 	}
 }
 
+func TestExecJudgeSpecArgs(t *testing.T) {
+	rec := fakeClaude(t, `printf '{}'`)
+	spec := judgeSpec{Model: "m", Tools: "", Schema: "{}", Timeout: time.Minute}
+	if _, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{Settings: "S"}, spec); err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Split(strings.TrimSuffix(readFile(t, filepath.Join(rec, "args")), "\x00"), "\x00")
+	want := []string{"-p", "--model", "m", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
+		"--settings", "S", "--no-session-persistence", "--output-format", "json", "--json-schema", "{}"}
+	if !slices.Equal(args, want) {
+		t.Errorf("args:\n got %q\nwant %q", args, want)
+	}
+}
+
+func TestExecJudgeSpecEnv(t *testing.T) {
+	envFile := filepath.Join(t.TempDir(), "env")
+	fakeClaude(t, "env > "+envFile+`; printf '{}'`)
+	t.Setenv("LH_SECRET", "x")
+	spec := judgeSpec{Model: "m", Schema: "{}", Timeout: time.Minute, Env: func() []string { return []string{"PATH=" + os.Getenv("PATH")} }}
+	if _, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{Env: []string{"LH_T=1"}}, spec); err != nil {
+		t.Fatal(err)
+	}
+	got := readFile(t, envFile)
+	if strings.Contains(got, "LH_SECRET") || !strings.Contains(got, "LH_T=1") {
+		t.Errorf("env = %s", got)
+	}
+}
+
 func TestExecJudgeEnv(t *testing.T) {
 	envFile := filepath.Join(t.TempDir(), "env")
 	fakeClaude(t, "env > "+envFile+`; printf '{}'`)
 	t.Setenv("LH_T", "0") // the settings env wins over the process env
-	if _, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{Env: []string{"LH_T=1"}}); err != nil {
+	if _, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{Env: []string{"LH_T=1"}}, triageSpec); err != nil {
 		t.Fatal(err)
 	}
 	got := readFile(t, envFile)
@@ -88,7 +116,7 @@ func TestExecJudgeEnv(t *testing.T) {
 
 func TestExecJudgeNonZero(t *testing.T) {
 	fakeClaude(t, "printf 'not logged in%0300d' 0 >&2\nexit 1")
-	_, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{})
+	_, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{}, triageSpec)
 	if err == nil {
 		t.Fatal("err = nil, want the failed exit")
 	}
@@ -110,7 +138,7 @@ func TestExecJudgeTimeout(t *testing.T) {
 	t.Cleanup(func() { judgeTimeout = old })
 
 	start := time.Now()
-	_, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{})
+	_, err := execJudge(context.Background(), t.TempDir(), "p", judgeConfig{}, triageSpec)
 	if err == nil {
 		t.Fatal("err = nil, want a timeout")
 	}
@@ -185,10 +213,11 @@ func TestLoadJudgeConfig(t *testing.T) {
 
 func TestJudgeSettingsPath(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": "/c", "HOME": "/h"})); got != "/c/settings.json" {
+	c, h := testpath.Abs("c"), testpath.Abs("h")
+	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": c, "HOME": h})); got != filepath.Join(c, "settings.json") {
 		t.Errorf("got %q", got)
 	}
-	if got := judgeSettingsPath(env(map[string]string{"HOME": "/h"})); got != "/h/.claude/settings.json" {
+	if got := judgeSettingsPath(env(map[string]string{"HOME": h})); got != filepath.Join(h, ".claude", "settings.json") {
 		t.Errorf("got %q", got)
 	}
 	if got := judgeSettingsPath(env(nil)); got != "" {

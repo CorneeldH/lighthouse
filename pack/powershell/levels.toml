@@ -1,0 +1,8 @@
+# The entry levels of the powershell package: lint comes after the way of working.
+# The script exists only for powershell-lint-check. standard and strict have no rule: an
+# unlisted component is on (internal/levels Resolved.Stand), as in pack/shell.
+[owners]
+"scripts/psscriptanalyzer-repo.ps1" = "powershell-lint-check"
+
+[light.components]
+powershell-lint-check = "off"

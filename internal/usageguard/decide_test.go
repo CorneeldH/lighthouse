@@ -28,7 +28,7 @@ func TestUnreadablePayload(t *testing.T) {
 			if dec.Output["decision"] != "block" {
 				t.Errorf("tool Output = %v", dec.Output)
 			}
-			if got, want := doneKeys(t, d), []string{"venster-2026-09-06T12:30:00Z.tool.done"}; !reflect.DeepEqual(got, want) {
+			if got, want := doneKeys(t, d), []string{"venster-2026-09-06T12-30-00Z.tool.done"}; !reflect.DeepEqual(got, want) {
 				t.Errorf("keys = %v, want %v", got, want)
 			}
 		})
@@ -518,7 +518,7 @@ func TestAlarmParksWithControllerReason(t *testing.T) {
 				m["reset_at"] != testAlarm.ResetAt || m["cwd"] != tmp {
 				t.Errorf("marker = %v", m)
 			}
-			if stand == "tool" && !exists(filepath.Join(d.State, "venster-2026-09-06T12:30:00Z.tool.s1."+testRun+".done")) {
+			if stand == "tool" && !exists(filepath.Join(d.State, "venster-2026-09-06T12-30-00Z.tool.s1."+testRun+".done")) {
 				t.Errorf("keys = %v", doneKeys(t, d))
 			}
 			if stand == "stop" && !strings.HasSuffix(dec.KeyAfter, "stop.s1."+testRun+".done") {
@@ -632,7 +632,7 @@ func TestPauseParksOnce(t *testing.T) {
 	if m["window"] != "pause" || m["pause"] != true || m["controller"] != true || m["reset_at"] != testUntil || m["source"] != "tool" {
 		t.Errorf("marker = %v", m)
 	}
-	if got, want := doneKeys(t, d), []string{"pause-" + testUntil + "." + testRun + ".done"}; !reflect.DeepEqual(got, want) {
+	if got, want := doneKeys(t, d), []string{"pause-" + strings.ReplaceAll(testUntil, ":", "-") + "." + testRun + ".done"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("keys = %v, want %v", got, want)
 	}
 	if again, _ := decideWith(c, d, optsController); again.Output != nil {

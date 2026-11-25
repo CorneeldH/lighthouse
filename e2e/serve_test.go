@@ -9,13 +9,14 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 type serveProc struct {
@@ -117,6 +118,7 @@ func exitCode(t *testing.T, done <-chan error) int {
 }
 
 func TestServeSignals(t *testing.T) {
+	skipOnWindows(t, "Windows cannot send SIGTERM or SIGINT to a process")
 	bin := buildLighthouse(t)
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
 		t.Run(sig.String(), func(t *testing.T) {
@@ -171,7 +173,10 @@ func TestServePortInUse(t *testing.T) {
 	if code := exitCode(t, failing.done); code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr: %s", code, failing.stderr.String())
 	}
-	if !strings.Contains(failing.stderr.String(), "address already in use") {
+	// "bind: " is in the net.Listen error on every platform; the text after it is the OS's own
+	// ("address already in use" on Linux and macOS, "Only one usage of each socket address" on
+	// Windows, #559).
+	if !strings.Contains(failing.stderr.String(), "bind: ") {
 		t.Errorf("stderr lacks the net.Listen error: %s", failing.stderr.String())
 	}
 
@@ -192,7 +197,7 @@ func TestServeUsageE2E(t *testing.T) {
 
 	// The last value wins in cmd.Env: a real codex on the developer's PATH or HOME must not run.
 	env = append(env,
-		"PATH="+binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin",
+		"PATH="+stubbin.PathValue(t, binDir, "sh", "cat"),
 		"HOME="+t.TempDir(),
 	)
 	p := startServe(t, bin, env, "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))

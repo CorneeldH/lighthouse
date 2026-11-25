@@ -44,7 +44,7 @@ func newCodexUsageCommand(read func(context.Context, time.Duration) (usage.Codex
 		Use:   "budget",
 		Short: "Decide before a review round: codex or fallback (exit 0/6)",
 		Long: "Print one JSON object (decision, reason, window, reset_at, session_pct, week_pct, source,\n" +
-			"lower_bound, thresholds) and exit 6 on `fallback`, else 0. It writes no marker and asks no\n" +
+			"lower_bound, thresholds, reset_credits) and exit 6 on `fallback`, else 0. It writes no marker and asks no\n" +
 			"question. A broken config is not_measurable, with a line on stderr.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			outcome, code, stderr := usage.ReadBudget(cmd.Context(), read)

@@ -27,8 +27,9 @@ type Adapter struct {
 }
 
 var (
-	_ workplace.Workplace   = (*Adapter)(nil)
-	_ workplace.Transcripts = (*Adapter)(nil)
+	_ workplace.Workplace      = (*Adapter)(nil)
+	_ workplace.Transcripts    = (*Adapter)(nil)
+	_ workplace.RawTranscripts = (*Adapter)(nil)
 )
 
 // gitTimeout applies to every git command of the adapter, FollowRemote included.

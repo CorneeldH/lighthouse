@@ -17,6 +17,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/deadline"
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/repoidentity"
 )
 
@@ -94,7 +95,7 @@ func commonDir(ctx context.Context, path string) (string, string) {
 	case err != nil:
 		return "", "git did not run: " + err.Error()
 	case code == 0:
-		return realpath(pyStrip(stdout)), ""
+		return realpath(gitpath.Native(pyStrip(stdout))), ""
 	case strings.Contains(stderr, "not a git repository"):
 		return "", notARepo
 	}

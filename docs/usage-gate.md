@@ -136,8 +136,9 @@ telt als afwezig: de waarden belanden in bestandsnamen.
 Een leeg bestand `<soort>-<reset_at>.<stand>[.<session_id>][.<run-id>|.<agent_id>].done`, en voor
 de pauze `pause-<tot>.<run-id>.done`, in de sleutelmap. `<stand>` is `tool`, `subagent` of
 `stop`. Zonder `session_id` vervalt dat deel. Een controller-run voegt `.<run-id>` toe,
-`subagent` voegt `.<agent_id>` toe. `stop` ruimt sleutels ouder dan 14 dagen op, best-effort. De
-hook schrijft de sleutels, ook die van de pauze; geen ander onderdeel doet dat.
+`subagent` voegt `.<agent_id>` toe. Elke `:` in de naam wordt een `-`, want Windows weigert een
+`:` in een bestandsnaam (`venster-2026-09-06T12-30-00Z.tool.done`). `stop` ruimt sleutels ouder
+dan 14 dagen op, best-effort. De hook schrijft de sleutels, ook die van de pauze; geen ander onderdeel doet dat.
 
 ### Marker
 

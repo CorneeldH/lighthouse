@@ -4,6 +4,24 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.28.0] - 2026-11-24
+
+### Added
+
+- `lighthouse trajectory <issue>` shows when each question, answer and takeover of a trajectory was and how its time divides over active, human, usage, ci_review, pickup and unexplained time, each marked measured, estimate or running. The dispatcher now records questions, answers and Done as events for this (#378).
+
+### Changed
+
+- `lighthouse state show`, the Priorities tab's bar, legend and dependency graph now use six statuses: blocked, needs shaping, to do, active, needs human and done. Each has one shape, and the `, needs human` suffix of `state show` is gone (#555).
+
+### Fixed
+
+- On native Windows the state database and the forge cache open again: the SQLite `file:` URI put the drive letter in the authority (`invalid uri authority: C:%5CUsers…`), so `serve`, `tick`, `run` and every command that reads the store failed. The path now goes in as `/C:/…` (#559).
+  
+  The usage gate's keys no longer hold a `:`, which Windows refuses in a file name: every `:` of the RFC 3339 time is a `-` (`venster-2026-09-06T12-30-00Z.tool.done`). A key written by an older version is not found, so the gate may speak once more in a window that was open during the upgrade.
+  
+  `windows-measure`'s `tests` job gives `go test` 20 minutes per package and the job 45 minutes: `internal/cli` alone ran past the default ten, and the timeout panic hid its failures. Tests of what does not exist on native Windows (POSIX modes, signals, `bwrap`, the controller, the `shellcheck` download) now skip there with a reason; `docs/host-assumptions.md` lists them (#559).
+
 ## [v0.27.0] - 2026-11-24
 
 ### Added

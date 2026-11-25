@@ -60,7 +60,28 @@ type Env struct {
 	// LsRemote is the SHA of refs/heads/<branch> on origin as git sees it in worktree, "" when
 	// origin has no such branch; env is the pusher's environment. nil runs git ls-remote.
 	LsRemote func(ctx context.Context, worktree, branch string, env []string) (sha string, err error)
+	// Fetch fetches sha from origin into worktree without touching a ref or FETCH_HEAD; env is the
+	// pusher's environment. nil runs git fetch.
+	Fetch func(ctx context.Context, worktree, sha string, env []string) error
+	// IsAncestor says whether sha is an ancestor of tip in worktree; env is the pusher's
+	// environment. nil runs git merge-base --is-ancestor.
+	IsAncestor func(ctx context.Context, worktree, sha, tip string, env []string) (bool, error)
+	// ClassifyAnswer reads a user's answer to a pusher question in plain language; nil is no classifier.
+	ClassifyAnswer func(ctx context.Context, in AnswerInput) (AnswerVerdict, error)
 }
+
+// AnswerInput is what the classifier reads: the pusher's step, the SHA and branch the question
+// is about, and the user's answer.
+type AnswerInput struct{ Step, SHA, Branch, Answer string }
+
+// AnswerVerdict is what an answer means: "permit", "pushed" or "other".
+type AnswerVerdict string
+
+const (
+	VerdictPermit AnswerVerdict = "permit" // the user allows the push of the SHA
+	VerdictPushed AnswerVerdict = "pushed" // the user says they pushed it themselves
+	VerdictOther  AnswerVerdict = "other"  // anything else, in doubt too
+)
 
 // PusherSpec is what StartPusher starts: the push row RunID of issue Issue in Repo, for the
 // run's Worktree. Permit is the SHA a user's answer allowed, "" for a handoff. Env is the whole
@@ -188,14 +209,21 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindPush:
 		return ap.push(ctx, a, res)
 	case KindPushRecover:
-		return ap.pushRecover(ctx, a)
+		return ap.pushRecover(ctx, a, res)
 	case KindMerge:
 		return ap.merge(ctx, a, res)
 	case KindClose:
 		if err := ap.release(ctx, a); err != nil {
 			return err
 		}
-		return ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a))
+		if err := ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a)); err != nil {
+			return err
+		}
+		ap.recordQuestion(ctx, a)
+		return nil
+	case KindNoteDone:
+		ap.noteDone(ctx, a)
+		return nil
 	case KindRocket:
 		return ap.env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
@@ -457,6 +485,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	// After the claim, so the retry rule sees a start_failed run with the path in its reason.
 	if relocErr != nil {
 		return ap.startFailed(ctx, run.ID, "handoff path", relocErr)
@@ -569,11 +598,19 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	if a.CommentID > 0 {
 		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
 		}
 	}
+	return ap.startPusher(ctx, a, run, res)
+}
+
+// startPusher starts the pusher on the claimed push row run, with a.PermitSHA as its permit. A
+// start that fails closes the row start_failed.
+func (ap applier) startPusher(ctx context.Context, a Action, run runs.Run, res *Result) error {
+	env := ap.env
 	if env.StartPusher == nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", errors.New("no way to start the pusher"))
 	}
@@ -584,23 +621,28 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	if a.Trigger == triggerMerge {
 		spec.Merge, spec.PR, spec.HeadSHA = true, a.PR, a.HeadSHA
 	}
-	err = env.StartPusher(ctx, spec)
-	if err != nil {
+	if err := env.StartPusher(ctx, spec); err != nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", err)
 	}
 	res.Started++
 	return nil
 }
 
-// pushRecover handles a user's answer other than `push` to a pusher 🤖 Vraag. It takes the
-// trigger key first, like push. When origin has Branch on the Vraag's SHA the push has happened
-// already (by hand), so it posts the 🤖 Handoff the pusher posts after a push, with the Vraag's
-// after: command, and closes the row as handoff at once: no pusher starts, and an open row would
-// block handoff() and read as a silent pusher. Any other state of the branch, or a git that
-// cannot tell, posts a 🤖 Returned with the reason and gives the issue back. A failed post closes
-// the row as returned (recoverPostFailed).
-func (ap applier) pushRecover(ctx context.Context, a Action) error {
+// pushRecover handles a user's answer other than `push` to a pusher 🤖 Vraag. It asks origin
+// first (originContains); under a closed brake an answer origin does not satisfy is postponed
+// without a claim. Then it takes the trigger key, like push. When origin has the Vraag's SHA the
+// push has happened already, so it posts the 🤖 Handoff with the Vraag's after: command and closes
+// the row as handoff at once: no pusher starts, and an open row would block handoff() and read as
+// a silent pusher. Without an after: command it returns the issue. Any other state goes to
+// classifyFlow. A failed post closes the row as returned (recoverPostFailed).
+func (ap applier) pushRecover(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
+	state, gitErr := ap.originContains(ctx, a)
+	if a.Braked != "" && state != onOrigin {
+		// A closed brake keeps the answer for a later tick: no claim, no post, no classifier.
+		res.postpone(a, fmt.Sprintf("push answer waits on the brake: %s", a.Braked))
+		return nil
+	}
 	run, err := runs.Take(ctx, env.DB, runs.Claim{
 		Repo: a.Repo, Issue: a.Issue, Mode: "start", Trigger: "answer", TriggerKey: a.TriggerKey,
 		Command: cmdPush, Branch: a.Branch, Now: env.Now(),
@@ -612,29 +654,121 @@ func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	if a.CommentID > 0 {
 		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
 		}
 	}
-	lsRemote := env.LsRemote
-	if lsRemote == nil {
-		lsRemote = gitLsRemote
+	if state != onOrigin {
+		return ap.classifyFlow(ctx, a, run, gitErr, res)
 	}
-	// No prompt: git asks for credentials on the terminal, and the tick has none to answer.
-	gitEnv := append(ap.scrubbedEnv(a.Repo, false), "GIT_TERMINAL_PROMPT=0")
-	sha, err := lsRemote(ctx, a.Worktree, a.Branch, gitEnv)
-	switch {
-	case err != nil:
-		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_git_failed", oneLine(err.Error()))
-	case sha != a.PermitSHA:
-		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_answer_moved", clip(oneLine(a.AnswerText), 200))
+	if a.After == "" {
+		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_no_after", pushCommand(a.Worktree))
 	}
 	body := protocol.RenderPushed(a.Issue, a.Worktree, a.Branch, "", "", a.After, a.Lane, a.Language)
 	if _, err := env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return ap.recoverPostFailed(ctx, run.ID, "post handoff", err)
 	}
 	return ap.closeRun(ctx, run.ID, runs.Handoff, "")
+}
+
+// originState says whether origin has the SHA of a pusher question.
+type originState int
+
+const (
+	notOnOrigin originState = iota // origin lacks the SHA, or git could not tell
+	onOrigin                       // origin has Branch on the SHA, or a branch that contains it
+)
+
+// originContains asks whether origin has a.PermitSHA on a.Branch: ls-remote equal to it, or a
+// tip that contains it (fetched without touching a ref or FETCH_HEAD, then merge-base). An error
+// is returned with notOnOrigin.
+func (ap applier) originContains(ctx context.Context, a Action) (originState, error) {
+	env := ap.env
+	lsRemote := env.LsRemote
+	if lsRemote == nil {
+		lsRemote = gitLsRemote
+	}
+	fetch := env.Fetch
+	if fetch == nil {
+		fetch = gitFetch
+	}
+	isAncestor := env.IsAncestor
+	if isAncestor == nil {
+		isAncestor = gitIsAncestor
+	}
+	// No prompt: git asks for credentials on the terminal, and the tick has none to answer.
+	gitEnv := append(ap.scrubbedEnv(a.Repo, false), "GIT_TERMINAL_PROMPT=0")
+	tip, err := lsRemote(ctx, a.Worktree, a.Branch, gitEnv)
+	switch {
+	case err != nil:
+		return notOnOrigin, err
+	case tip == "":
+		return notOnOrigin, nil
+	case tip == a.PermitSHA:
+		return onOrigin, nil
+	}
+	if err := fetch(ctx, a.Worktree, tip, gitEnv); err != nil {
+		return notOnOrigin, err
+	}
+	ok, err := isAncestor(ctx, a.Worktree, a.PermitSHA, tip, gitEnv)
+	if err != nil || !ok {
+		return notOnOrigin, err
+	}
+	return onOrigin, nil
+}
+
+// classifyFlow reads the answer to a pusher question that origin does not satisfy in plain
+// language; gitErr is the git failure of originContains, nil when origin simply lacks the SHA.
+// A permit notes itself on the claimed row (pushTargetOf reads it on a retry) and starts the
+// pusher for exactly the Vraag's SHA; a note that does not write starts nothing. Any other
+// verdict, a failing or missing classifier included, posts one reply that says what works and
+// closes the row as question: the reply is the open Vraag for the next answer.
+func (ap applier) classifyFlow(ctx context.Context, a Action, run runs.Run, gitErr error, res *Result) error {
+	if gitErr != nil {
+		ap.logf("%s#%d: %s: git could not tell whether origin has %s: %v", a.Repo, a.Issue, a.TriggerKey, a.PermitSHA, gitErr)
+	}
+	verdict := VerdictOther
+	readable := false
+	if classify := ap.env.ClassifyAnswer; classify != nil {
+		v, err := classify(ctx, AnswerInput{Step: a.Step, SHA: a.PermitSHA, Branch: a.Branch, Answer: a.AnswerText})
+		switch {
+		case err != nil:
+			ap.logf("%s#%d: %s: classifier: %v", a.Repo, a.Issue, a.TriggerKey, err)
+		case v == VerdictPermit || v == VerdictPushed || v == VerdictOther:
+			verdict, readable = v, true
+		default:
+			ap.logf("%s#%d: %s: classifier: unknown verdict %q", a.Repo, a.Issue, a.TriggerKey, v)
+		}
+	}
+	if verdict == VerdictPermit {
+		if err := runs.SetVerdict(ctx, ap.env.DB, run.ID, permitVerdict); err != nil {
+			return ap.startFailed(ctx, run.ID, "note permit", err)
+		}
+		return ap.startPusher(ctx, a, run, res)
+	}
+	h := func(key string) string { return protocol.Heading(key, a.Language) }
+	var line []string
+	switch {
+	case !readable:
+		line = append(line, h("reply_push_unreadable"))
+	case verdict == VerdictOther:
+		line = append(line, h("reply_push_not_permit"))
+	case gitErr == nil: // pushed, and origin lacks the SHA
+		line = append(line, strings.NewReplacer("{sha}", a.PermitSHA, "{branch}", a.Branch).Replace(h("reply_push_not_on_origin")))
+	}
+	if gitErr != nil {
+		line = append(line, h("reply_push_could_not_check"))
+	}
+	body := protocol.RenderPushReply(protocol.PushReply{
+		SHA: a.PermitSHA, Worktree: a.Worktree, Branch: a.Branch, After: a.After, Lane: a.Lane, Step: a.Step,
+		Question: a.QuestionURL, Line: strings.Join(line, " "), Command: pushCommand(a.Worktree),
+	}, a.Language)
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return ap.recoverPostFailed(ctx, run.ID, "post reply", err)
+	}
+	return ap.closeRun(ctx, run.ID, runs.Question, "")
 }
 
 // recoverReturn posts the 🤖 Returned of a push recovery that could not hand on, gives the issue
@@ -660,14 +794,6 @@ func (ap applier) recoverPostFailed(ctx context.Context, runID int64, step strin
 	return ap.failedAs(ctx, runID, runs.Returned, step, cause)
 }
 
-// clip cuts s to at most n runes.
-func clip(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "…"
-	}
-	return s
-}
-
 // lsRemoteTimeout bounds one git ls-remote: a remote that hangs must not hold the tick.
 const lsRemoteTimeout = 30 * time.Second
 
@@ -688,6 +814,37 @@ func gitLsRemote(ctx context.Context, worktree, branch string, env []string) (st
 	}
 	sha, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
 	return sha, nil
+}
+
+// gitFetch is Env.Fetch in production: git fetch --no-write-fetch-head origin <sha>, within
+// lsRemoteTimeout.
+func gitFetch(ctx context.Context, worktree, sha string, env []string) error {
+	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", worktree, "fetch", "--no-write-fetch-head", "origin", sha)
+	cmd.Env = env
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git fetch: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// gitIsAncestor is Env.IsAncestor in production: git merge-base --is-ancestor <sha> <tip>, where
+// exit code 1 is a plain no and any other failure an error.
+func gitIsAncestor(ctx context.Context, worktree, sha, tip string, env []string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", worktree, "merge-base", "--is-ancestor", sha, tip)
+	cmd.Env = env
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return true, nil
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 1 {
+		return false, nil
+	}
+	return false, fmt.Errorf("git merge-base: %w: %s", err, strings.TrimSpace(string(out)))
 }
 
 // relocate finds the path of the start command in the worktree of ws. On self it looks on this

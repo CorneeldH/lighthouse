@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	"github.com/CorneeldH/lighthouse/internal/workflowguard"
 )
@@ -117,6 +118,7 @@ func checkPush(ctx context.Context, dir string, args []string, literal []bool, d
 		return hook.Result{}, false
 	}
 	root, gitMessage, err := runGit(ctx, dir, true, "rev-parse", "--show-toplevel")
+	root = gitpath.Native(root)
 	if err != nil || root == "" {
 		if containsAny(gitMessage, notARepo) {
 			return hook.Result{}, false

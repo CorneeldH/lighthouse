@@ -406,6 +406,53 @@ func TestDecidePushAnswerAfterReturned(t *testing.T) {
 	}
 }
 
+// A pushanswer row the classifier permitted carries {"answer":"permit"}: its failed start is
+// tried again as a push of the Vraag's SHA. Without that note, or with another one, a row of an
+// answer other than `push` never becomes a push.
+func TestPushTargetOfAcceptsPermitNote(t *testing.T) {
+	tests := []struct {
+		name, verdict string
+		want          []string
+	}{
+		{"permit note", `{"answer":"permit"}`, []string{"push::"}},
+		{"no note", "", []string{"return:reason_start_failed:"}},
+		{"other note", `{"answer":"other"}`, []string{"return:reason_start_failed:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, "ja, push maar")
+			item7(&in).Comments[2].Rocket = true
+			addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows",
+				Outcome: runs.StartFailed, Verdict: tt.verdict})
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if tt.want[0] != "push::" {
+				return
+			}
+			if a := got[0]; a.PermitSHA != pushSHA || a.Attempt != 2 || a.TriggerKey != "pushanswer:71" ||
+				a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" {
+				t.Errorf("action = %+v, want attempt 2 of pushanswer:71 with the Vraag's SHA", a)
+			}
+		})
+	}
+}
+
+// The note counts only on a row of the same trigger key: a permit on another answer's row
+// permits nothing here.
+func TestPushTargetOfPermitNoteOfAnotherKey(t *testing.T) {
+	in := pushQuestion(t, "ja, push maar")
+	item7(&in).Comments[2].Rocket = true
+	addRows(&in,
+		runs.Row{ID: 8, Issue: 7, TriggerKey: "pushanswer:69", Command: "push-workflows", Outcome: runs.Handoff,
+			Verdict: `{"answer":"permit"}`},
+		runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.StartFailed})
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"return:reason_start_failed:"}) {
+		t.Fatalf("summary = %q, want the issue back", s)
+	}
+}
+
 // withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
 func withAfter(in *Input) {
 	c := &item7(in).Comments[1]
@@ -422,8 +469,7 @@ func TestDecidePushAnswer(t *testing.T) {
 		{"push", "push", func(*Input) {}, []string{"push::"}},
 		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
 		{"other answer", "gepushed", func(in *Input) { withAfter(in) }, []string{"push_recover::"}},
-		{"other answer without after", "gepushed", func(*Input) {},
-			[]string{"return:reason_pusher_no_after:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"other answer without after", "gepushed", func(*Input) {}, []string{"push_recover::"}},
 		{"push after other answer", "push", func(in *Input) {
 			withAfter(in)
 			c := item7(in).Comments
@@ -465,7 +511,7 @@ func TestDecidePushAnswer(t *testing.T) {
 			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
 				t.Fatalf("summary = %q, want %q", s, tt.want)
 			}
-			if len(tt.want) > 0 && tt.want[0] == "push_recover::" {
+			if tt.name == "other answer" {
 				a := got[0]
 				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" || a.Lane != "docs" ||
 					a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 ||
@@ -514,6 +560,59 @@ func TestAJobCommentDoesNotAnswerAProtocolQuestion(t *testing.T) {
 	}
 }
 
+func TestPushAnswerWithoutAfterIsRecover(t *testing.T) {
+	got := Decide(pushQuestion(t, "gepusht"))
+	if len(got) != 1 || got[0].Kind != KindPushRecover || got[0].After != "" {
+		t.Fatalf("got %+v, want one push_recover with an empty After", got)
+	}
+}
+
+func TestPushAnswerExactPushStaysKindPush(t *testing.T) {
+	for _, ans := range []string{"push", "Push!", " PUSH. "} {
+		got := Decide(pushQuestion(t, ans))
+		if len(got) != 1 || got[0].Kind != KindPush || got[0].PermitSHA != pushSHA {
+			t.Errorf("answer %q: got %+v, want one push with the permit sha", ans, got)
+		}
+	}
+}
+
+// pushReply is a tick reaction (a pusher Vraag header, no session, sha) after the first answer,
+// followed by a second answer.
+func pushReply(t *testing.T) Input {
+	t.Helper()
+	in := pushQuestion(t, "gepusht")
+	item7(&in).Comments[2].Rocket = true
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 72, Author: "lh-bot", URL: "https://example.test/c/72", CreatedAt: "2026-10-31T11:35:00Z",
+			Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nvraag: https://example.test/c/70\n\nNog niet gepusht."},
+		Comment{ID: 73, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "nu wel"})
+	return in
+}
+
+func TestPushReplyIsOpenQuestion(t *testing.T) {
+	got := Decide(pushReply(t))
+	if len(got) != 1 || got[0].Kind != KindPushRecover || got[0].TriggerKey != "pushanswer:73" {
+		t.Fatalf("got %+v, want one push_recover with trigger key pushanswer:73", got)
+	}
+}
+
+func TestPushRecoverCarriesStepAndQuestionURL(t *testing.T) {
+	in := pushQuestion(t, "gepusht")
+	c := &item7(&in).Comments[1]
+	c.URL = "https://example.test/c/70"
+	c.Body = strings.Replace(c.Body, "\nbranch:", "\nstep: actionlint\nbranch:", 1)
+	got := Decide(in)
+	if len(got) != 1 || got[0].Step != "actionlint" || got[0].QuestionURL != "https://example.test/c/70" {
+		t.Fatalf("got %+v, want Step actionlint and the Vraag URL", got)
+	}
+	in = pushReply(t)
+	item7(&in).Comments[3].Body = strings.Replace(item7(&in).Comments[3].Body, "\nbranch:", "\nstep: actionlint\nbranch:", 1)
+	got = Decide(in)
+	if len(got) != 1 || got[0].Step != "actionlint" || got[0].QuestionURL != "https://example.test/c/70" {
+		t.Fatalf("reply: got %+v, want the original Vraag URL from the vraag field", got)
+	}
+}
+
 func TestDecidePushAnswerFields(t *testing.T) {
 	got := Decide(pushQuestion(t, "push"))
 	if len(got) != 1 {
@@ -521,7 +620,7 @@ func TestDecidePushAnswerFields(t *testing.T) {
 	}
 	want := Action{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71", Attempt: 1,
 		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
-		PermitSHA: pushSHA, Language: "nl"}
+		PermitSHA: pushSHA, Language: "nl", EventRef: "70", EventAt: time.Date(2026, 10, 31, 11, 30, 0, 0, time.UTC)}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("got  %+v\nwant %+v", got[0], want)
 	}
@@ -1180,7 +1279,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 // close that started nothing for another cause (the item is On hold) is not.
 func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
 	for name, want := range map[string]bool{"fixpr-blocker": true, "fixpr-on-hold": false} {
-		got := Decide(loadInput(t, name))
+		got := withoutNoteDone(Decide(loadInput(t, name)))
 		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
 			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
 		}
@@ -1503,5 +1602,137 @@ func TestDecideUsageParkMarkerGone(t *testing.T) {
 				t.Errorf("Decide = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// eventTime is an RFC 3339 time of the fixtures, for the EventAt of an action.
+func eventTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	at, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
+// The close of a run on its Vraag carries that Vraag: its id as EventRef and its created_at as
+// EventAt, so apply can store the question event. Red when settle drops either.
+func TestDecideQuestionCloseCarriesQuestionComment(t *testing.T) {
+	got := Decide(loadInput(t, "settle-question"))
+	if len(got) != 1 || got[0].Kind != KindClose || got[0].Outcome != runs.Question {
+		t.Fatalf("got %+v, want one question close", got)
+	}
+	if got[0].EventRef != "63" || !got[0].EventAt.Equal(eventTime(t, "2026-10-31T11:00:00Z")) {
+		t.Errorf("EventRef, EventAt = %q, %v; want 63, the Vraag's created_at", got[0].EventRef, got[0].EventAt)
+	}
+}
+
+// A resume on an answer:<id> and a push on a pushanswer:<id> carry the id of the Vraag they
+// answer as EventRef and the answer's created_at as EventAt; CommentID stays the answer.
+func TestDecideAnswerCarriesEventFields(t *testing.T) {
+	got := Decide(loadInput(t, "answer-resume"))
+	if len(got) != 1 || got[0].Kind != KindResume {
+		t.Fatalf("got %+v, want one resume", got)
+	}
+	if a := got[0]; a.EventRef != "63" || a.CommentID != 65 || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("resume EventRef, CommentID, EventAt = %q, %d, %v; want 63, 65, the answer's created_at", a.EventRef, a.CommentID, a.EventAt)
+	}
+	got = Decide(pushQuestion(t, "push"))
+	if len(got) != 1 || got[0].Kind != KindPush {
+		t.Fatalf("got %+v, want one push", got)
+	}
+	if a := got[0]; a.EventRef != "70" || a.CommentID != 71 || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("push EventRef, CommentID, EventAt = %q, %d, %v; want 70, 71, the answer's created_at", a.EventRef, a.CommentID, a.EventAt)
+	}
+}
+
+// A recovery answer to a pusher Vraag answers a human question too: the push_recover carries it.
+func TestDecideAnswerToPusherQuestionCarriesEventFields(t *testing.T) {
+	in := pushQuestion(t, "gepushed")
+	withAfter(&in)
+	got := Decide(in)
+	if len(got) != 1 || got[0].Kind != KindPushRecover {
+		t.Fatalf("got %+v, want one push_recover", got)
+	}
+	if a := got[0]; a.EventRef != "70" || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("EventRef, EventAt = %q, %v; want 70, the answer's created_at", a.EventRef, a.EventAt)
+	}
+}
+
+// A repair resume answers no human: it carries no event fields.
+func TestDecideRepairCarriesNoEventRef(t *testing.T) {
+	for _, a := range Decide(repairInput(t)) {
+		if a.EventRef != "" || !a.EventAt.IsZero() {
+			t.Errorf("action %+v carries event fields, want none for a repair", a)
+		}
+	}
+}
+
+// noteDones keeps the note_done actions of got.
+func noteDones(got []Action) []Action {
+	var out []Action
+	for _, a := range got {
+		if a.Kind == KindNoteDone {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// withoutNoteDone drops the note_done actions of got, for a test of what else a tick decides.
+func withoutNoteDone(got []Action) []Action {
+	out := []Action{}
+	for _, a := range got {
+		if a.Kind != KindNoteDone {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// An open agent run whose session is Done gets one note_done, also on the tick that closes it on
+// its Done comment: that tick is the first that sees Done (spec, Done). One without the Done
+// stand and one with work after its Stop get none.
+func TestDecideNoteDoneForOpenDoneRun(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   int
+	}{
+		{"done, PR pending", func(*Input) {}, 1},
+		{"no done stand", func(in *Input) { in.Repos[0].Stands = nil }, 0},
+		{"work after the stop", func(in *Input) {
+			st := in.Repos[0].Runs[5]
+			st.Transcript.Background = 1
+			in.Repos[0].Runs[5] = st
+		}, 0},
+		{"closes on its Done comment", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments, Comment{ID: 90, Author: "lh-bot", CreatedAt: "2026-10-31T11:50:00Z",
+				Body: "🤖 Klaar\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>"})
+		}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "done-pr-pending")
+			tt.mutate(&in)
+			got := noteDones(Decide(in))
+			if len(got) != tt.want {
+				t.Fatalf("note_done = %+v, want %d", got, tt.want)
+			}
+			if tt.want == 1 && (got[0].RunID != 5 || got[0].Repo != "o/r" || got[0].Issue != 7) {
+				t.Errorf("note_done = %+v, want run 5 of o/r#7", got[0])
+			}
+		})
+	}
+}
+
+// A push row runs no session: an open push-workflows or merge: row never gets a note_done.
+func TestDecideNoNoteDoneForPushRow(t *testing.T) {
+	for _, key := range []string{"push:63", "merge:12:abc123"} {
+		in := pushRow(t, "", time.Minute)
+		row5(&in).TriggerKey = key
+		if got := noteDones(Decide(in)); len(got) != 0 {
+			t.Errorf("%s: note_done = %+v, want none for a push row", key, got)
+		}
 	}
 }

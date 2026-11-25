@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func openTemp(t *testing.T, path string) *Store {
@@ -128,13 +130,14 @@ func TestStoreWrongSchemaRecreates(t *testing.T) {
 }
 
 func TestDefaultPath(t *testing.T) {
+	x, h := testpath.Abs("x", "state"), testpath.Abs("h")
 	tests := []struct {
 		name string
 		env  map[string]string
 		want string
 	}{
-		{"absolute xdg", map[string]string{"XDG_STATE_HOME": "/x/state", "HOME": "/h"}, "/x/state/lighthouse/forge-cache.db"},
-		{"relative xdg", map[string]string{"XDG_STATE_HOME": "rel", "HOME": "/h"}, "/h/.local/state/lighthouse/forge-cache.db"},
+		{"absolute xdg", map[string]string{"XDG_STATE_HOME": x, "HOME": h}, filepath.Join(x, "lighthouse", "forge-cache.db")},
+		{"relative xdg", map[string]string{"XDG_STATE_HOME": "rel", "HOME": h}, filepath.Join(h, ".local", "state", "lighthouse", "forge-cache.db")},
 		{"relative home", map[string]string{"HOME": "h"}, ""},
 		{"none", map[string]string{}, ""},
 	}

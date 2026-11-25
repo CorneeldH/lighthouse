@@ -5,10 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 	_ "time/tzdata"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const night = "21:00-08:00"
@@ -27,15 +30,16 @@ func at(loc *time.Location, y int, mo time.Month, d, h, mi int) time.Time {
 }
 
 func TestPauseFile(t *testing.T) {
+	c, sx, h := testpath.Abs("c"), testpath.Abs("s"), testpath.Abs("h")
 	tests := []struct {
 		name    string
 		env     map[string]string
 		want    string
 		wantErr bool
 	}{
-		{"controller state", map[string]string{"LIGHTHOUSE_CONTROLLER_STATE": "/c", "XDG_STATE_HOME": "/s", "HOME": "/h"}, "/c/PAUSE", false},
-		{"xdg", map[string]string{"XDG_STATE_HOME": "/s", "HOME": "/h"}, "/s/lighthouse/controller/PAUSE", false},
-		{"home", map[string]string{"HOME": "/h"}, "/h/.local/state/lighthouse/controller/PAUSE", false},
+		{"controller state", map[string]string{"LIGHTHOUSE_CONTROLLER_STATE": c, "XDG_STATE_HOME": sx, "HOME": h}, filepath.Join(c, "PAUSE"), false},
+		{"xdg", map[string]string{"XDG_STATE_HOME": sx, "HOME": h}, filepath.Join(sx, "lighthouse", "controller", "PAUSE"), false},
+		{"home", map[string]string{"HOME": h}, filepath.Join(h, ".local", "state", "lighthouse", "controller", "PAUSE"), false},
 		{"none absolute", map[string]string{"XDG_STATE_HOME": "s", "HOME": "h"}, "", true},
 	}
 	for _, tt := range tests {
@@ -259,6 +263,9 @@ func TestUntilAutumnOverlapFirstPass(t *testing.T) {
 // A flag that cannot be read is not a pause, also when it holds a future date: reading fails
 // open, a stuck controller must not park a run it cannot explain.
 func TestReadPauseUnreadableIsInactive(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 000 does not make a file unreadable on NTFS; see host-assumptions.md")
+	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a mode-000 file")
 	}

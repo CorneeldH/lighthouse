@@ -29,6 +29,11 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
 - `workflow-push-gate` (`run.sh workflow-push-gate`) — PreToolUse `Bash`. Only in a controller run: blocks
   a `git push` whose range (`origin/<branch>..HEAD`, or from the merge-base when the branch is not on
   origin) touches `.github/workflows/`; the workflow pusher pushes that (`next: push-workflows`).
+- `telemetry-collect-check` (`run.sh telemetry-collect-check`) — SessionStart. A base hook (no stand, no override): notes the
+  lighthouse and pack versions of the session in a sidecar file in the state directory and starts
+  `lighthouse telemetry collect --since-last` detached, except in a controller run or with
+  `LIGHTHOUSE_TELEMETRY_COLLECT=off`. Never blocks and opens no database; an error is one line in
+  `<state>/telemetry/hook.log`.
 - `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
   write into the main checkout on `main`.
 - `md-link-check` (`run.sh md-link-check`) — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute

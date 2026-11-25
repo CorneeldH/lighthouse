@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/pins"
 )
 
@@ -77,5 +77,5 @@ func repoRoot(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not inside a git repository", dir)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return gitpath.Native(string(out)), nil
 }

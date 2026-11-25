@@ -16,6 +16,8 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -111,13 +113,13 @@ func newGateRun(t *testing.T, c gateCase) *gateRun {
 	gateGit(t, r.repo, "checkout", "-b", "feat")
 	gateCommitLines(t, r.repo, 100, "x.go")
 	bin := filepath.Join(dir, "bin")
-	for _, tool := range []string{"roborev", "codex"} {
-		gateWrite(t, filepath.Join(bin, tool), "#!/bin/sh\n")
-		if err := os.Chmod(filepath.Join(bin, tool), 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	for _, tool := range []string{"roborev", "codex"} {
+		stubbin.Make(t, bin, tool, stubbin.Spec{})
+	}
+	stubbin.Only(t, bin, "git")
 	r.vars["base"] = gateGit(t, r.repo, "rev-parse", "origin/main")
 	return r
 }
@@ -625,7 +627,7 @@ func TestRoborevGateStdoutIsOneOrderedLine(t *testing.T) {
 // strict Codex read fails and the gate skips as not measurable.
 func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
 	r := newGateRun(t, gateCase{})
-	t.Setenv("HOME", filepath.Join(r.tmp, "home"))
+	testpath.SetHome(t, filepath.Join(r.tmp, "home"))
 	t.Setenv("CODEX_HOME", filepath.Join(r.tmp, "codex-home"))
 	t.Chdir(r.repo)
 	var out, errOut bytes.Buffer

@@ -3,6 +3,7 @@ package kpi
 import (
 	"fmt"
 	"math"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
@@ -217,9 +218,10 @@ func pyPath(p string) string {
 	return prefix + strings.Join(parts, "/")
 }
 
-// comparePaths orders paths like pathlib: component by component, not as plain strings.
+// comparePaths orders paths like pathlib: component by component, not as plain strings. A
+// Windows path is split on `\` too (#559).
 func comparePaths(a, b string) int {
-	return slices.Compare(strings.Split(a, "/"), strings.Split(b, "/"))
+	return slices.Compare(strings.Split(filepath.ToSlash(a), "/"), strings.Split(filepath.ToSlash(b), "/"))
 }
 
 func sortPaths(paths []string) {

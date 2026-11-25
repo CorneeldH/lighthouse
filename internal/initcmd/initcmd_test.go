@@ -945,6 +945,9 @@ func TestNoForgeForUnknownHost(t *testing.T) {
 }
 
 func TestRestoresExecBit(t *testing.T) {
+	if !execBits {
+		t.Skip("NTFS keeps no exec bits (host-assumptions.md)")
+	}
 	root := newRepo(t)
 	initYes(t, root)
 	if err := os.Chmod(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"), 0o644); err != nil {
@@ -954,6 +957,23 @@ func TestRestoresExecBit(t *testing.T) {
 	info, _ := os.Stat(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"))
 	if r.code != 0 || info.Mode().Perm() != 0o755 {
 		t.Fatalf("rc %d mode %o\n%s", r.code, info.Mode().Perm(), r.out)
+	}
+}
+
+// Without exec bits (NTFS) a hook never looks non-executable: Git Bash runs it anyway, and
+// a mode proposal would keep `init --upgrade` from ever being "No changes." (#559).
+func TestNoExecBitProposalWithoutExecBits(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	if err := os.Chmod(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := execBits
+	execBits = false
+	t.Cleanup(func() { execBits = old })
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 || strings.Contains(r.out, "mode ") || !strings.Contains(r.out, "No changes.") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 }
 
@@ -1881,5 +1901,56 @@ func TestWarnsMainCheckoutInSyncFolderFromLinkedWorktree(t *testing.T) {
 	}
 	if !strings.Contains(r.err, "OneDrive") {
 		t.Errorf("no warning for the main checkout in OneDrive:\n%s", r.err)
+	}
+}
+
+// TestInitReportsMissingPowershellTools runs the real pack/powershell: a host without pwsh, and one
+// with pwsh but without the PSScriptAnalyzer module, each name what is missing and which unit needs it.
+func TestInitReportsMissingPowershellTools(t *testing.T) {
+	cases := []struct {
+		name   string
+		noPwsh bool
+		want   []string
+		none   string
+	}{
+		// The module is reported too: it cannot be there without pwsh.
+		{"no pwsh", true, []string{
+			"missing dependency: pwsh (needed by: powershell-lint-check)\n",
+			"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n",
+		}, ""},
+		{"no module", false, []string{"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n"}, "missing dependency: pwsh"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			r := run(t, root, "", func(o *Options) {
+				o.Yes = true
+				o.Packs = os.DirFS("../../pack")
+				o.AddPacks = []string{"powershell"}
+				o.Level = "strict" // light has powershell-lint-check off, and needs nothing
+				o.Deps = deps.Checker{
+					LookPath: func(name string) (string, error) {
+						if name == "pwsh" && c.noPwsh {
+							return "", errors.New("no")
+						}
+						return "/usr/bin/" + name, nil
+					},
+					Run: func(name string, _ ...string) error {
+						if name == "pwsh" {
+							return errors.New("exit 1")
+						}
+						return nil
+					},
+				}
+			})
+			if r.code != 0 || (c.none != "" && strings.Contains(r.err, c.none)) {
+				t.Fatalf("rc %d err %q", r.code, r.err)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(r.err, w) {
+					t.Fatalf("err lacks %q: %q", w, r.err)
+				}
+			}
+		})
 	}
 }

@@ -2,7 +2,7 @@
 #
 # Runs `lighthouse self-update --restart lighthouse.service` once, started daily by
 # lighthouse-upgrade.timer. The binary is replaced only when the newest release is newer and
-# its checksum matches; the server restarts only after a replacement. A `dev` build is skipped.
+# its checksum matches; the server restarts only after a replacement. A local build without a tag (`dev`) is skipped.
 #
 # Why oneshot: the command does its work and exits. systemd then records the run in the journal
 # and the timer can start the unit again at the next tick.
@@ -14,8 +14,12 @@
 # has one (GH_TOKEN). The token is sent to api.github.com for the release lookup only, never to
 # the downloads. Keep the file mode 0600. The leading dash lets the unit run without the file.
 #
-# Every release goes live here without a review: a bad release reaches this machine at the next
-# tick. Disable the timer to hold a version (docs/install.md, "Upgrade automatically").
+# Which releases: the unit follows the channel stored in ~/.config/lighthouse/channel (default
+# `release`; choose with `lighthouse self-update --channel dev`). The unit does not read
+# LIGHTHOUSE_HOST_TOML for it: the channel file is derived from the home directory.
+#
+# Every release on the channel goes live here without a review: a bad release reaches this
+# machine at the next tick. Disable the timer to hold a version (docs/install.md, "Upgrade automatically").
 #
 # Install (details in docs/install.md):
 #   cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/

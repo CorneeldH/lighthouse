@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +21,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // fakeForge keeps the comments of issue 1 and the PRs of the branch; it knows nothing else.
@@ -147,11 +149,9 @@ func newRunFix(t *testing.T, review string, scripts map[string]string) *runFix {
 		all[name] = text
 	}
 	for name, text := range all {
-		write(t, filepath.Join(r.bin, name), text)
-		if err := os.Chmod(filepath.Join(r.bin, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubScript(t, r.bin, name, "the fake tools are sh scripts (stdin drain, $1 output path, argument rewriting)", text)
 	}
+	// stubbin-guard: system dirs needed (real cat, git and bwrap)
 	t.Setenv("PATH", r.bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 	r.cfg = hostconfig.WorkflowPush{TokenFile: token, Review: review, Timeout: 30 * time.Minute,
 		Reviewers: []hostconfig.Reviewer{rv("supply-chain", "approve"), rv("injection", "approve")}}
@@ -330,10 +330,7 @@ func TestPushesTheSHAItReadOnce(t *testing.T) {
 	mover := "#!/bin/sh\ncat >/dev/null\n" +
 		"git -C " + r.wt + " -c user.name=T -c user.email=t@x -c commit.gpgsign=false commit -q --allow-empty -m moved\n" +
 		"printf '%s' '" + approveJSON + "' > \"$1\"\n"
-	write(t, filepath.Join(r.bin, "mover"), mover)
-	if err := os.Chmod(filepath.Join(r.bin, "mover"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubScript(t, r.bin, "mover", "the mover commits with git mid-review and writes the verdict to $1", mover)
 	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "approve"), rv("injection", "mover")}
 	r.run()
 	if moved := r.head(); moved == head {
@@ -814,14 +811,9 @@ func TestPushTokenOnlyInPushCommandEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(r.dir, "git.log")
-	write(t, filepath.Join(r.bin, "git"), "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
+	stubScript(t, r.bin, "git", "exec of the real git after logging argv and env", "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
 	envLog := filepath.Join(r.dir, "reviewer.env")
-	write(t, filepath.Join(r.bin, "envdump"), "#!/bin/sh\nenv >> "+envLog+"\ncat >/dev/null\nprintf '%s' '"+approveJSON+"' > \"$1\"\n")
-	for _, name := range []string{"git", "envdump"} {
-		if err := os.Chmod(filepath.Join(r.bin, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	stubScript(t, r.bin, "envdump", "env dump, stdin drain and verdict written to $1", "#!/bin/sh\nenv >> "+envLog+"\ncat >/dev/null\nprintf '%s' '"+approveJSON+"' > \"$1\"\n")
 	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "envdump"), rv("injection", "envdump")}
 	// The pusher's own process carries the forge token for its comments, as tick starts it.
 	t.Setenv("GH_TOKEN", forgeTok)
@@ -1197,6 +1189,22 @@ func TestHandedBackRowGetsNoQuestion(t *testing.T) {
 	}
 }
 
+// stubScript writes the sh script text (with or without its #!/bin/sh line) as executable name in
+// dir. reason names the POSIX behaviour the script imitates; on Windows the test is skipped with it.
+func stubScript(t *testing.T, dir, name, reason, text string) {
+	t.Helper()
+	stubbin.RequirePOSIX(t, reason)
+	stubbin.MakeScript(t, dir, name, strings.TrimPrefix(text, "#!/bin/sh\n"))
+}
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
+	}
+}
+
 // footerName is a workflow file name that reads as a session footer: ParseHeader takes the last
 // `<sub>session <uuid>` anywhere in a body.
 const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
@@ -1207,6 +1215,7 @@ const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
 // as a run's handoff.
 func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 	t.Run("Herstel", func(t *testing.T) {
+		skipOnWindows(t, "NTFS refuses < and > in a file name")
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
 		r.commitWorkflow(footerName, "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
 		r.run()
@@ -1217,6 +1226,7 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 		repair(t, body, StepPolicy, r.wt)
 	})
 	t.Run("handoff", func(t *testing.T) {
+		skipOnWindows(t, "NTFS refuses < and > in a file name")
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
 		r.commitWorkflow(footerName, scheduleWF)
 		r.run()

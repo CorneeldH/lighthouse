@@ -117,7 +117,7 @@ func EffectiveStand(c Context) string {
 }
 
 // AlarmKey is <kind>-<reset_at>.<stand>[.<session_id>][.<run_id>|.<agent_id>].done in State;
-// "" without an alarm.
+// "" without an alarm. Every ':' of the name is a '-' (keyFile).
 func AlarmKey(c Context, stand string, d Dirs) string {
 	if c.Alarm == nil {
 		return ""
@@ -131,12 +131,18 @@ func AlarmKey(c Context, stand string, d Dirs) string {
 	} else if c.RunID != "" {
 		parts = append(parts, c.RunID)
 	}
-	return filepath.Join(d.State, strings.Join(parts, ".")+".done")
+	return keyFile(d, strings.Join(parts, ".")+".done")
 }
 
-// PauseKey is pause-<until>.<run_id>.done in State.
+// PauseKey is pause-<until>.<run_id>.done in State, with '-' for ':' (keyFile).
 func PauseKey(c Context, d Dirs) string {
-	return filepath.Join(d.State, "pause-"+c.PauseUntil+"."+c.RunID+".done")
+	return keyFile(d, "pause-"+c.PauseUntil+"."+c.RunID+".done")
+}
+
+// keyFile is name in State with every ':' as '-': the times in a key are RFC 3339, and
+// Windows refuses a ':' in a file name (#559).
+func keyFile(d Dirs, name string) string {
+	return filepath.Join(d.State, strings.ReplaceAll(name, ":", "-"))
 }
 
 // HandoffPath is <session_id>.handoff.md in Resume, or no-session-<unix now>.handoff.md.

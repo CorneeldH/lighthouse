@@ -6,9 +6,20 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
+	}
+}
 
 // tree writes files (slash paths relative to a new temporary directory) and returns that
 // directory. A path ending in ".sh" is made executable.
@@ -42,7 +53,7 @@ func hostless(t *testing.T) (home, configDir string) {
 	t.Helper()
 	home = t.TempDir()
 	configDir = filepath.Join(home, ".claude")
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
 	return home, configDir
 }

@@ -445,7 +445,7 @@ def _path_without_lighthouse(shadow: Path) -> str:
 @functools.cache
 def lighthouse_dir() -> Path:
     """The directory with `lighthouse` built from this checkout: built once per process,
-    removed at exit. `tests/conftest.py` hands out the same directory."""
+    removed at exit. `tests/pack/python/conftest.py` hands out the same directory."""
     out = Path(tempfile.mkdtemp(prefix="lighthouse-bin-"))
     atexit.register(shutil.rmtree, out, True)
     subprocess.run(

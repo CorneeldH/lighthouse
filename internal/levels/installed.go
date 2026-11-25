@@ -79,4 +79,4 @@ func (i Installed) Marshal() []byte {
 // BaseHooks are the hooks that no stand switches and that never read components.toml: they
 // cannot be off, on log, or blocked by a corrupt file. It mirrors the hook entries of `base` in
 // pack/core/levels.toml (a test keeps the two equal).
-var BaseHooks = []string{"usage-gate", "permission-check", "workflow-push-gate", "level-check", "no-verify-check"}
+var BaseHooks = []string{"usage-gate", "permission-check", "workflow-push-gate", "level-check", "no-verify-check", "telemetry-collect-check"}

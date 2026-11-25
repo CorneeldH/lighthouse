@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 11 {
-		t.Errorf("user_version = %d, want 11", v2)
+	if v2 != 13 {
+		t.Errorf("user_version = %d, want 13", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -971,4 +971,160 @@ func TestMigration0011Recovery(t *testing.T) {
 			t.Errorf("items after delete = %d, %v; want 0", n, err)
 		}
 	})
+}
+
+// upTo12 is the embedded migration set before 0013.
+var upTo12 = []string{"0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql",
+	"0005_workspace_removed.sql", "0006_runs_merge.sql", "0007_runs_node.sql", "0008_runs_schedule.sql",
+	"0009_runs_pushed.sql", "0010_telemetry.sql", "0011_recovery.sql", "0012_trajectory_events.sql"}
+
+// 0013 rebuilds setups with nullable deployment fields: an empty string becomes NULL, a filled
+// value stays, lane is added with its CHECK, trajectories gain the plan columns, and the UNIQUE
+// and owner constraints of 0010 survive the rebuild.
+func TestMigrate0013RebuildsSetups(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo12...)); err != nil {
+		t.Fatalf("migrate to 12: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO sessions (id, source, source_id, recorded_at, repo, harness, session_key,
+		transcript_path, unlinked_reason, started_at)
+		VALUES (1, 'transcript', 'transcript:s1', 't0', 'o/r', 'claude', 's1', '/x', 'main_only', 't0')`); err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, session_id, model, skills_hash)
+		VALUES ('transcript', 'transcript:s1', 't0', 1, '', 'abc')`); err != nil {
+		t.Fatalf("insert setup at v12: %v", err)
+	}
+	var before []schemaRow
+	before, _ = snapshot(t, db)
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo12, "0013_deployment.sql")...)); err != nil {
+		t.Fatalf("migrate to 13: %v", err)
+	}
+	if v := userVersion(t, db); v != 13 {
+		t.Errorf("user_version = %d, want 13", v)
+	}
+	var model, effort, hash, lane sql.NullString
+	if err := db.QueryRow(`SELECT model, effort, skills_hash, lane FROM setups WHERE session_id = 1`).
+		Scan(&model, &effort, &hash, &lane); err != nil {
+		t.Fatalf("read setup: %v", err)
+	}
+	if model.Valid || effort.Valid || lane.Valid {
+		t.Errorf("model, effort, lane = %v, %v, %v; want all NULL", model, effort, lane)
+	}
+	if hash.String != "abc" {
+		t.Errorf("skills_hash = %q, want abc", hash.String)
+	}
+	has := func(table, col string) bool {
+		rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
+		if err != nil {
+			t.Fatalf("table_info %s: %v", table, err)
+		}
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var n string
+			if err := rows.Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n == col {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range [][2]string{{"setups", "lane"}, {"trajectories", "plan_tasks"}, {"trajectories", "plan_path"}} {
+		if !has(c[0], c[1]) {
+			t.Errorf("%s.%s missing", c[0], c[1])
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO sessions (id, source, source_id, recorded_at, repo, harness, session_key,
+		transcript_path, unlinked_reason, started_at)
+		VALUES (2, 'transcript', 'transcript:s2', 't0', 'o/r', 'claude', 's2', '/x', 'main_only', 't0')`); err != nil {
+		t.Fatalf("insert session 2: %v", err)
+	}
+	ins := func(src, sid string, session any, run any, lane any) error {
+		_, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, run_id, session_id, lane)
+			VALUES (?, ?, 't', ?, ?, ?)`, src, sid, run, session, lane)
+		return err
+	}
+	if err := ins("transcript", "transcript:s2", 2, nil, "x"); err == nil {
+		t.Error("lane = 'x' accepted")
+	}
+	if err := ins("transcript", "transcript:s2", 2, nil, "sdd"); err != nil {
+		t.Errorf("lane = 'sdd' refused: %v", err)
+	}
+	if err := ins("transcript", "other", 2, nil, nil); err == nil {
+		t.Error("second setup for the same session accepted: UNIQUE (session_id) is gone")
+	}
+	if err := ins("transcript", "transcript:s2", nil, nil, nil); err == nil {
+		t.Error("setup without owner accepted: owner CHECK is gone")
+	}
+	if _, err := db.Exec(`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES (9, 'o/r', 1, 's9', 'start', 'handoff', 'h:9', 1, 'c', 't')`); err != nil {
+		t.Fatalf("insert run: %v", err)
+	}
+	if err := ins("transcript", "transcript:r9", nil, 9, nil); err != nil {
+		t.Fatalf("setup for run refused: %v", err)
+	}
+	if err := ins("transcript", "dup", nil, 9, nil); err == nil {
+		t.Error("second setup for the same run accepted: UNIQUE (run_id) is gone")
+	}
+	if err := ins("transcript", "transcript:r9", nil, 9, nil); err == nil {
+		t.Error("duplicate (source, source_id) accepted")
+	}
+	after, _ := snapshot(t, db)
+	idx := func(rows []schemaRow) []string {
+		var out []string
+		for _, r := range rows {
+			if r.Type == "index" && !strings.HasPrefix(r.Name, "sqlite_autoindex") {
+				out = append(out, r.Name)
+			}
+		}
+		return out
+	}
+	if !reflect.DeepEqual(idx(before), idx(after)) {
+		t.Errorf("named indexes changed: %v -> %v", idx(before), idx(after))
+	}
+}
+
+func TestTrajectoryEventsConstraints(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "lighthouse.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	for _, q := range []string{
+		`INSERT INTO trajectories (id, repo, issue, created_at) VALUES (1, 'o/r', 1, '2026-01-01T00:00:00Z')`,
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, started_at)
+		 VALUES (1, 'o/r', 1, 's', 'start', 'handoff', 'k', 1, '2026-01-01T00:00:00Z')`,
+		`INSERT INTO sessions (id, source, source_id, recorded_at, repo, harness, session_key, transcript_path, trajectory_id, link_basis, started_at)
+		 VALUES (1, 'src', 's1', '2026-01-01T00:00:00Z', 'o/r', 'claude', 'k', '/t', 1, 'branch', '2026-01-01T00:00:00Z')`,
+	} {
+		if _, err := s.DB.Exec(q); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	const ins = `INSERT INTO trajectory_events (source, source_id, recorded_at, trajectory_id, run_id, session_id, kind, ref, at)
+		VALUES (?, ?, '2026-01-01T00:00:00Z', 1, ?, ?, ?, ?, '2026-01-01T00:00:00Z')`
+	// A valid row first, so the unique check below has something to collide with.
+	if _, err := s.DB.Exec(ins, "src", "e1", 1, nil, "question", "c1"); err != nil {
+		t.Fatalf("valid insert: %v", err)
+	}
+	cases := []struct {
+		name             string
+		source, sourceID string
+		run, session     any
+		kind, ref        string
+	}{
+		{"neither run nor session", "src", "e2", nil, nil, "question", "c2"},
+		{"both run and session", "src", "e3", 1, 1, "question", "c3"},
+		{"done without run", "src", "e4", nil, 1, "done", "c4"},
+		{"duplicate trajectory, kind, ref", "src", "e5", 1, nil, "question", "c1"},
+	}
+	for _, c := range cases {
+		if _, err := s.DB.Exec(ins, c.source, c.sourceID, c.run, c.session, c.kind, c.ref); err == nil {
+			t.Errorf("%s: insert accepted, want constraint error", c.name)
+		}
+	}
 }

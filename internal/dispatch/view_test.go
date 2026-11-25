@@ -25,6 +25,7 @@ func openViewStore(t *testing.T) *store.Store {
 }
 
 func TestRunViews(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	pre := Pre{
 		Items:  []Item{{Issue: 3, Title: "Drie"}, {Issue: 5, Title: "Vijf"}},
 		Stands: map[int64]workplace.Stand{10: workplace.Waiting},

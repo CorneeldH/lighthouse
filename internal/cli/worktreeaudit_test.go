@@ -14,6 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/scriptcase"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const worktreeAuditFixtures = "../../tests/pack/fixtures/scripts/worktree-audit/cases.json"
@@ -44,7 +45,7 @@ func TestWorktreeAuditCases(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("LIGHTHOUSE_TOML", toml)
-			t.Setenv("HOME", t.TempDir())
+			testpath.SetHome(t, t.TempDir())
 			for k, v := range c.Env {
 				t.Setenv(k, fixturesetup.Fill(t, v, root))
 			}

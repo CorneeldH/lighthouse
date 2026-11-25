@@ -237,8 +237,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 11 {
-		t.Errorf("user_version = %d, want 11", v)
+	if v != 13 {
+		t.Errorf("user_version = %d, want 13", v)
 	}
 }
 
@@ -755,7 +755,7 @@ func TestTickStartsNewIssue(t *testing.T) {
 		t.Fatalf("spawns = %+v, want one", spawns)
 	}
 	if l := spawns[0]; l.Prompt != "/lighthouse-start-issue 7 (issue #7, controller-run)" || l.Mode != "start" ||
-		l.Profile != "software" || l.MCPConfig != "/etc/lh/mcp.json" || !strings.HasPrefix(l.InstructionsFile, env.StateDir+"/") {
+		l.Profile != "software" || l.MCPConfig != "/etc/lh/mcp.json" || !strings.HasPrefix(l.InstructionsFile, env.StateDir+string(filepath.Separator)) {
 		t.Errorf("spawn = %+v, want a start with the controller-run prompt, profile software, its mcp_config and instructions under %s", l, env.StateDir)
 	}
 	if text, err := os.ReadFile(spawns[0].InstructionsFile); err != nil || !strings.Contains(string(text), "asks at the round limit") {

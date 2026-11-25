@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -465,7 +466,7 @@ func (a *Adapter) checkDiscardable(ctx context.Context, w wireWorkspace) error {
 		if code != 0 {
 			return fmt.Errorf("git rev-parse %s: exit code %d", flag, code)
 		}
-		dirs = append(dirs, filepath.Clean(strings.TrimSpace(out)))
+		dirs = append(dirs, gitpath.Native(out))
 	}
 	if dirs[0] == dirs[1] {
 		return fmt.Errorf("worktree %q is the main checkout, not a linked worktree: nothing discarded", w.WorktreeDir)
@@ -573,6 +574,7 @@ func CheckClone(ctx context.Context, run workplace.Runner, home, kind, host, slu
 	if err != nil || code != 0 {
 		return "", fmt.Errorf("clone of %s: git rev-parse --git-common-dir: exit %d: %v", slug, code, err)
 	}
+	common = gitpath.Native(common)
 	cfg := filepath.Join(common, "config")
 	bare, code, err := git("config", "--file", cfg, "--get", "core.bare")
 	if err != nil || code > 1 {

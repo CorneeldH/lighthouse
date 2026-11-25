@@ -36,7 +36,17 @@ describe('prefs', () => {
       throw new Error('denied')
     })
     expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed', depsOrder: 'prio' })
-    expect(() => savePrefs({ view: 'unassigned', repos: null, msOrder: 'computed', depsOrder: 'prio' })).not.toThrow()
+    expect(() => savePrefs({ view: 'backlog', repos: null, msOrder: 'computed', depsOrder: 'prio' })).not.toThrow()
+  })
+
+  it('opens Backlog for a stored view "unassigned"', () => {
+    localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'unassigned' }))
+    expect(loadPrefs().view).toBe('backlog')
+  })
+
+  it('keeps a stored view "backlog"', () => {
+    localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'backlog' }))
+    expect(loadPrefs().view).toBe('backlog')
   })
 
   it('depsOrder staat standaard op prio', () => {

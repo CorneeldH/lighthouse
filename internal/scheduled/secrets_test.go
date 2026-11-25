@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -83,27 +84,42 @@ func TestScanSecretsSymlinkAndUnreadable(t *testing.T) {
 	}
 }
 
-// Classification: pure-logic. Fails if a token in a file name is not reported, if a finding
-// echoes such a name (in the name finding or in a content finding of that file), or if a path
-// with a newline reaches a finding unquoted.
+// Classification: pure-logic. Fails if a token in a file name is not reported, or if a finding
+// echoes such a name (in the name finding or in a content finding of that file).
 func TestScanSecretsFileNames(t *testing.T) {
 	dir := t.TempDir()
 	tokenName := "out/ghp_" + strings.Repeat("a", 36) + ".md"
 	if err := os.MkdirAll(filepath.Join(dir, "out"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	for name, body := range map[string]string{tokenName: "x\nsk_live_abc\n", "out/a\nb.md": "sk_live_abc"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(filepath.Join(dir, tokenName), []byte("x\nsk_live_abc\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	got := ScanSecrets(dir, []string{tokenName, "out/a\nb.md", "out/gho_" + strings.Repeat("b", 36) + ".md"})
+	got := ScanSecrets(dir, []string{tokenName, "out/gho_" + strings.Repeat("b", 36) + ".md"})
 	want := []string{
 		"file name contains a GitHub personal token",
 		"(file name withheld: GitHub personal token):2: Stripe live key",
-		`"out/a\nb.md":1: Stripe live key`,
 		"file name contains a GitHub OAuth token",
 	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ScanSecrets =\n%q\nwant\n%q", got, want)
+	}
+}
+
+// Classification: pure-logic. Fails if a path with a newline reaches a finding unquoted.
+func TestScanSecretsQuotesANewlineFileName(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS refuses a newline in a file name; see host-assumptions.md")
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "out/a\nb.md"), []byte("sk_live_abc"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := ScanSecrets(dir, []string{"out/a\nb.md"})
+	want := []string{`"out/a\nb.md":1: Stripe live key`}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ScanSecrets =\n%q\nwant\n%q", got, want)
 	}

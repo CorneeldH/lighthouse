@@ -8,9 +8,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func writeModeFile(t *testing.T, path string, data string, mode os.FileMode) {
@@ -89,9 +92,7 @@ func TestExportTree(t *testing.T) {
 	if err != nil || target != "/etc/hostname" {
 		t.Errorf("Readlink(link) = %q, %v; want /etc/hostname", target, err)
 	}
-	if fi, err := os.Stat(filepath.Join(out, "run.sh")); err != nil || fi.Mode()&0o100 == 0 {
-		t.Errorf("run.sh mode = %v, %v; want executable", fi, err)
-	}
+	runSh, runShErr := os.Stat(filepath.Join(out, "run.sh"))
 	for _, name := range []string{"a.txt", "sub/b c é.txt", "run.sh"} {
 		b, err := os.ReadFile(filepath.Join(out, name))
 		if err != nil {
@@ -106,6 +107,12 @@ func TestExportTree(t *testing.T) {
 	remove() // safe to call twice
 	if _, err := os.Stat(out); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Stat after remove = %v, want ErrNotExist", err)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no exec bit; see host-assumptions.md")
+	}
+	if runShErr != nil || runSh.Mode()&0o100 == 0 {
+		t.Errorf("run.sh mode = %v, %v; want executable", runSh, runShErr)
 	}
 }
 
@@ -136,9 +143,8 @@ func TestExportTreeBadRef(t *testing.T) {
 // truncated-archive error.
 func TestExportTreeGitDiesMidStream(t *testing.T) {
 	bin := t.TempDir()
-	script := "#!/bin/sh\necho 'fatal: pack is corrupt' >&2\nprintf short\nexit 128\n"
-	writeModeFile(t, filepath.Join(bin, "git"), script, 0o755)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Make(t, bin, "git", stubbin.Spec{Stdout: "short", Stderr: "fatal: pack is corrupt\n", Exit: 128})
+	stubbin.Prepend(t, bin)
 	t.Setenv("TMPDIR", t.TempDir())
 
 	_, _, err := exportTree(context.Background(), t.TempDir(), "origin/main")

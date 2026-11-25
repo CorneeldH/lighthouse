@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge/kennforgetest"
 	"github.com/CorneeldH/lighthouse/internal/workplace/workplacetest"
@@ -57,7 +58,7 @@ func (f *forgeFixture) Workspace(t *testing.T, branch string) workplace.Workspac
 }
 
 func (f *forgeFixture) Spec(*testing.T) workplace.LaunchSpec {
-	return workplace.LaunchSpec{Profile: "infra", Mode: "start", Prompt: "do the thing", InstructionsFile: "/abs/instr.md"}
+	return workplace.LaunchSpec{Profile: "infra", Mode: "start", Prompt: "do the thing", InstructionsFile: testpath.Abs("abs", "instr.md")}
 }
 
 func (f *forgeFixture) MakeDirty(t *testing.T, ws workplace.Workspace) { f.Forge.MakeDirty(t, ws.ID) }
