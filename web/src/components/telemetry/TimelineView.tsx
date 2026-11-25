@@ -28,15 +28,18 @@ export function TimelineView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
   // The questions line breaks at a null week.
   const segments: string[] = []
   let current: string[] = []
+  const flush = (): void => {
+    if (current.length > 1) segments.push(current.join(' '))
+    current = []
+  }
   weeks.forEach((w, i) => {
     if (w.questions === null) {
-      if (current.length > 0) segments.push(current.join(' '))
-      current = []
+      flush()
     } else {
       current.push(`${xMid(i)},${qY(w.questions)}`)
     }
   })
-  if (current.length > 0) segments.push(current.join(' '))
+  flush()
 
   return (
     <div className="space-y-2">
@@ -65,17 +68,29 @@ export function TimelineView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
                 />
               ),
             )}
-            {segments.map((points) => (
-              <polyline key={points} points={points} fill="none" strokeWidth={2} className="stroke-amber-600 dark:stroke-amber-400" />
+            {segments.map((points, i) => (
+              <polyline key={i} points={points} fill="none" strokeWidth={2} className="stroke-amber-600 dark:stroke-amber-400" />
             ))}
+            {weeks.map((w, i) =>
+              w.questions === null ? null : (
+                <circle key={w.start} data-questions={w.start} cx={xMid(i)} cy={qY(w.questions)} r={3} className="fill-amber-600 dark:fill-amber-400" />
+              ),
+            )}
             {markers.map((m, i) => {
               const idx = weeks.findIndex((w) => w.start === m.week)
               if (idx < 0) return null
               const x = xMid(idx)
+              const flip = x > W * 0.7
               return (
                 <g key={`${m.week}-${i}`}>
                   <line data-marker={m.kind} x1={x} x2={x} y1={PAD.top} y2={PAD.top + PLOT_H} stroke="currentColor" strokeDasharray="3 3" strokeOpacity={0.7} />
-                  <text x={x + 3} y={PAD.top + 8} fontSize={10} fill="currentColor">
+                  <text
+                    x={x + (flip ? -3 : 3)}
+                    y={PAD.top + 8}
+                    fontSize={10}
+                    textAnchor={flip ? 'end' : 'start'}
+                    fill="currentColor"
+                  >
                     {m.text}
                   </text>
                 </g>
@@ -89,8 +104,8 @@ export function TimelineView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
             </text>
           </svg>
           <p className="text-xs text-muted-foreground">
-            <span className="text-lh-navy dark:text-sky-400">Bars</span>: cost per week (max {costMax}).{' '}
-            <span className="text-amber-600 dark:text-amber-400">Line</span>: questions per week (max {qMax}).
+            <span className="text-lh-navy dark:text-sky-400">Bars</span>: cost per week (max {Math.round(costMax * 100) / 100}).{' '}
+            <span className="text-amber-600 dark:text-amber-400">Line</span>: questions per week (max {Math.round(qMax * 100) / 100}).
           </p>
           <table className="sr-only">
             <caption>Telemetry per week</caption>

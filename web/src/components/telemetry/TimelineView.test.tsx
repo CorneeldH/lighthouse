@@ -54,6 +54,18 @@ describe('TimelineView', () => {
     expect(container.querySelector('svg')?.textContent).toContain('v1.2 shipped')
   })
 
+  it('draws a circle for a single-week and an isolated questions point', async () => {
+    const body: TimelineReport = { weeks: [week('2026-01-05', 1, 2)], markers: [] }
+    const one = renderWith(body, <TimelineView filter={{}} />)
+    await screen.findByRole('img')
+    expect(one.container.querySelector('circle[data-questions="2026-01-05"]')).not.toBeNull()
+    cleanup()
+    const gap: TimelineReport = { weeks: [week('2026-01-05', 1, 2), week('2026-01-12', 1, null), week('2026-01-19', 1, 3)], markers: [] }
+    const two = renderWith(gap, <TimelineView filter={{}} />)
+    await screen.findByRole('img')
+    expect(two.container.querySelectorAll('circle[data-questions]').length).toBe(2)
+  })
+
   it('shows No data yet for empty weeks', async () => {
     renderWith({ weeks: null, markers: null }, <TimelineView filter={{}} />)
     expect(await screen.findByText('No data yet')).toBeTruthy()
@@ -85,6 +97,13 @@ describe('CoverageView', () => {
     expect(screen.getByText('no cost recorded')).toBeTruthy()
     expect(screen.getByText('7')).toBeTruthy()
     expect(screen.queryByText('0')).toBeNull()
+  })
+
+  it('shows Loading while pending and a message for empty lines', async () => {
+    renderWith({ lines: [], not_migrated: false }, <CoverageView filter={{}} />)
+    expect(screen.getByText('Loading…')).toBeTruthy()
+    expect(await screen.findByText('No coverage lines')).toBeTruthy()
+    expect(screen.queryByText('Loading…')).toBeNull()
   })
 
   it('shows the not-migrated message', async () => {

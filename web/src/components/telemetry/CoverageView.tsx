@@ -11,7 +11,8 @@ export function CoverageView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
       {q.error !== null && q.error !== undefined && <p role="alert">{forgeErrorText(q.error)}</p>}
       {(q.isPending || q.isPlaceholderData) && <p>Loading…</p>}
       {q.data?.not_migrated && <p>database not migrated</p>}
-      {q.data && !q.data.not_migrated && (
+      {q.data && !q.data.not_migrated && lines.length === 0 && <p>No coverage lines</p>}
+      {q.data && !q.data.not_migrated && lines.length > 0 && (
         <ul className="space-y-1 text-sm">
           {lines.map((l) => (
             <li key={l.key} className="flex flex-wrap gap-x-2">
