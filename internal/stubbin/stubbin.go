@@ -59,6 +59,13 @@ func Only(t *testing.T, dir string, keep ...string) {
 	t.Setenv("PATH", PathValue(t, dir, keep...))
 }
 
+// Alone sets the PATH to exactly dir, for tests that need isolation from every other tool. On
+// Windows only .cmd stubs run from it; a test that needs a real tool must use Only with keep.
+func Alone(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("PATH", dir)
+}
+
 // PathValue returns the PATH value itself, without setting it, for tests that pass the PATH through
 // cmd.Env. Without keep it is dir in front of the current PATH; with keep it is the form of Only.
 func PathValue(t *testing.T, dir string, keep ...string) string {

@@ -209,13 +209,13 @@ func wantMessage(t *testing.T, res hook.Result, want string) {
 	}
 }
 
-// shimGit puts a git on PATH, and only that, that runs script (a sh script).
+// shimGit puts a git on PATH, and only that (PATH is exactly its directory), that runs script (a sh script).
 func shimGit(t *testing.T, script string) {
 	t.Helper()
 	stubbin.RequirePOSIX(t, "the shim git is a sh script (locale branching, exec of the real git)")
 	bin := t.TempDir()
 	stubbin.MakeScript(t, bin, "git", script)
-	stubbin.Only(t, bin)
+	stubbin.Alone(t, bin)
 }
 
 func TestWorktreeCheckIsSilentOnAFeatureBranchInTheMainCheckout(t *testing.T) {

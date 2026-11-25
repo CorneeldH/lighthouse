@@ -336,7 +336,7 @@ func stubGit(t *testing.T, script string) {
 	stubbin.RequirePOSIX(t, "the stub git is a sh script (locale and exit-code branching)")
 	bin := t.TempDir()
 	stubbin.MakeScript(t, bin, "git", script)
-	stubbin.Only(t, bin)
+	stubbin.Alone(t, bin)
 }
 
 func TestMainCommitGateTargetWithoutARepository(t *testing.T) {

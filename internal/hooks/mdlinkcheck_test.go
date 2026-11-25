@@ -169,7 +169,7 @@ func fakeGit(t *testing.T) {
 	t.Helper()
 	bin := t.TempDir()
 	stubbin.Make(t, bin, "git", stubbin.Spec{Stderr: "fatal: broken\n", Exit: 128})
-	stubbin.Only(t, bin)
+	stubbin.Alone(t, bin)
 }
 
 func TestLinkCheckCouldNotCheck(t *testing.T) {

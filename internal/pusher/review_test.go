@@ -56,7 +56,7 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 	}
 	scripts = withEntry(scripts, "ok", answer(approveJSON))
 	for name, text := range scripts {
-		stubScript(t, bin, name, text)
+		stubScript(t, bin, name, "the fake reviewers and bwrap read stdin, write to $1 and use sh builtins", text)
 	}
 	if !withBwrap {
 		tools := t.TempDir()
@@ -72,6 +72,7 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+tools)
 		return e
 	}
+	// stubbin-guard: system dirs needed (real cat and bwrap)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 	return e
 }

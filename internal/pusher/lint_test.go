@@ -56,8 +56,9 @@ func fakeTools(t *testing.T, tools map[string]string) {
 	t.Helper()
 	bin := t.TempDir()
 	for name, text := range tools {
-		stubScript(t, bin, name, text)
+		stubScript(t, bin, name, "the fake linters are sh scripts (printf, $1 paths, exit codes)", text)
 	}
+	// stubbin-guard: system dirs needed (real sh tools the fake linters call)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 }
 

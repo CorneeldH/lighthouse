@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Make writes an executable stub name.cmd in dir (created when missing) and returns its path. The output lives in
-// side files next to the stub, so it needs no escaping.
+// Make writes an executable stub name.cmd in dir (created when missing) and returns its path.
+// The output lives in side files next to the stub, so it needs no escaping.
 func Make(t *testing.T, dir, name string, s Spec) string {
 	t.Helper()
 	mkdir(t, dir)

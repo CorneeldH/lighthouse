@@ -176,7 +176,7 @@ func fakeGit(t *testing.T, out string, code int) {
 	t.Helper()
 	bin := t.TempDir()
 	stubbin.Make(t, bin, "git", stubbin.Spec{Stdout: out, Exit: code})
-	stubbin.Only(t, bin)
+	stubbin.Alone(t, bin)
 }
 
 func TestHookGitFailures(t *testing.T) {

@@ -148,3 +148,11 @@ func TestMakeScriptCreatesMissingDir(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestAloneIsExactlyDir(t *testing.T) {
+	dir := t.TempDir()
+	Alone(t, dir)
+	if got := os.Getenv("PATH"); got != dir {
+		t.Fatalf("PATH = %q, want %q", got, dir)
+	}
+}

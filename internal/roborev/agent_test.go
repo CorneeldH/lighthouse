@@ -65,6 +65,9 @@ func TestReviewAgentFallbackIsClaude(t *testing.T) {
 func TestReviewAgentFallbackWithoutClaude(t *testing.T) {
 	newPushGateRepo(t)
 	strictPath(t, binOf(t))
+	if p, err := exec.LookPath("claude"); err == nil {
+		t.Skip("claude is findable on the strict PATH: " + p)
+	}
 	agent, reason := reviewAgent(fallbackBudget, noAlarm)
 	if want := "Codex-budget: fallback - 5h 93%; geen claude op PATH"; agent != "" || reason != want {
 		t.Fatalf("got (%q, %q), want reason %q", agent, reason, want)

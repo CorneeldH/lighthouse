@@ -243,7 +243,7 @@ func TestRoundRunsOnAPathWithOnlyCodex(t *testing.T) {
 	bin := t.TempDir()
 	stubbin.RequirePOSIX(t, "fakeCodex records argv with printf and shifts positional parameters")
 	stubbin.MakeScript(t, bin, "codex", fakeCodex)
-	stubbin.Only(t, bin)
+	stubbin.Alone(t, bin)
 	t.Setenv("LIGHTHOUSE_CODEX_BUDGET_CMD", writeSeam(t, `printf '%s\n' '{"decision": "codex", "reason": "ok"}'`))
 	if code := r.run(); code != 0 {
 		t.Fatalf("exit %d, stderr: %s", code, r.stderr.String())
