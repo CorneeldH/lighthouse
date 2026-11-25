@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -21,10 +22,7 @@ func hitAlarm() (usage.Alarm, bool) { return usage.Alarm{Kind: "venster", Pct: 9
 func withClaude(r *pushGateRepo) {
 	r.t.Helper()
 	bin := filepath.Dir(mustLookPath(r.t, "roborev"))
-	r.writeAbs(filepath.Join(bin, "claude"), "#!/bin/sh\n")
-	if err := os.Chmod(filepath.Join(bin, "claude"), 0o755); err != nil {
-		r.t.Fatal(err)
-	}
+	stubbin.Make(r.t, bin, "claude", stubbin.Spec{})
 }
 
 func mustLookPath(t *testing.T, name string) string {
@@ -43,7 +41,7 @@ func strictPath(t *testing.T, bin string) {
 	if _, err := os.Stat(filepath.Join(gitDir, "claude")); err == nil {
 		t.Skip("claude lives next to git")
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+gitDir)
+	stubbin.Only(t, bin, "git")
 }
 
 func binOf(t *testing.T) string { return filepath.Dir(mustLookPath(t, "roborev")) }
