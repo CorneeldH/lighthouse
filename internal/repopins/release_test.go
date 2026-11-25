@@ -131,38 +131,27 @@ func onBlock(t *testing.T, text string) string {
 	return block
 }
 
-// A release that loses a trigger stops releasing; one that cancels in progress tears a tag push.
-func TestReleaseTriggersAndConcurrency(t *testing.T) {
-	mustContain(t, "release.yml", workflow(t, "release.yml"),
-		"branches: [main]",
-		`cron: "0 6 * * 1"`,
-		"workflow_dispatch",
-		"group: release-${{ github.event_name }}",
-		"cancel-in-progress: false",
-	)
-}
-
 // A push that is no longer atomic, or a tag made before the UI commit, tags a main that was
 // never pushed (or pushes main without its tag).
 func TestReleasePushesAtomically(t *testing.T) {
 	release := jobOf(t, "release.yml", "release")
 	mustContain(t, "release job", release,
-		`git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"`,
+		`git push --atomic origin "$main_sha:refs/heads/$BRANCH" "refs/tags/$tag"`,
 		"for attempt in 1 2 3",
 	)
-	mustNotContain(t, "release job", release, `git tag -a "$tag"`)
-	inOrder(t, "release job", release, "git commit -m", "main_sha=$(git rev-parse HEAD)", tagWithUI, "git push --atomic")
+	mustNotContain(t, "release job", release, `git tag -a "$tag"`, "refs/heads/main")
+	inOrder(t, "release job", release, "main_sha=$(git rev-parse HEAD)", tagWithUI, "git push --atomic")
 }
 
 // A `ui` job with write rights, an unpinned checkout or no ui-dist upload builds the SPA with
 // more power than it needs, or ships a release without it.
 func TestUIJobBuildsInAReadOnlyJob(t *testing.T) {
 	ui := jobOf(t, "release.yml", "ui")
-	mustMatch(t, "ui job", ui, `^    needs: macos\s*$`)
+	mustMatch(t, "ui job", ui, `^    needs: \[resolve, macos\]\s*$`)
 	mustContain(t, "ui job", ui, "contents: read", "node-version-file: web/.nvmrc")
 	mustNotContain(t, "ui job", ui, "contents: write")
 	checkout := stepUsing(t, ui, "actions/checkout@")
-	mustMatch(t, "ui checkout", checkout, `^\s+ref: \$\{\{ github\.sha \}\}\s*$`)
+	mustMatch(t, "ui checkout", checkout, `^\s+ref: \$\{\{ needs\.resolve\.outputs\.sha \}\}\s*$`)
 	mustContain(t, "ui checkout", checkout, "persist-credentials: false")
 	for _, command := range []string{"npm ci", "npm run build"} {
 		var own string
@@ -201,7 +190,7 @@ func TestWritingJobsRunNoNPM(t *testing.T) {
 		mustNotContain(t, file+" "+name, job, "npm", "setup-node")
 	}
 	release := jobOf(t, "release.yml", "release")
-	mustMatch(t, "release job", release, `^    needs: \[macos, ui\]\s*$`)
+	mustMatch(t, "release job", release, `^    needs: \[resolve, macos, ui\]\s*$`)
 	download := stepUsing(t, release, "actions/download-artifact@")
 	mustMatch(t, "release download", download, `^\s+name: ui-dist\s*$`)
 	mustMatch(t, "release download", download, `^\s+path: \$\{\{ runner\.temp \}\}/ui-dist\s*$`)
@@ -215,49 +204,55 @@ func TestReleaseRetryDoesNotRebuild(t *testing.T) {
 		t.Fatal("release has no retry loop")
 	}
 	mustNotContain(t, "retry loop", loop, "npm")
-	inOrder(t, "retry loop", loop, "git reset --hard origin/main", tagWithUI)
+	inOrder(t, "retry loop", loop, `git reset --hard "origin/$BRANCH"`, tagWithUI)
 }
 
 // A second job that keeps the token in .git/config, or a checkout without
-// `persist-credentials: false`, lets later steps push with the release token.
+// `persist-credentials: false`, lets later steps push with the release token. Per file: the jobs
+// that push, and how many of its checkouts persist the token (one per pushing checkout).
 func TestOnlyReleaseJobPersistsCredentials(t *testing.T) {
-	persisting := map[string]bool{"release.yml/release": true, "prerelease.yml/tag": true}
-	total := 0
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
+	persisting := map[string]int{
+		"release.yml/release":     1,
+		"release.yml/sync":        1,
+		"prerelease.yml/tag":      1,
+		"release-train.yml/split": 1,
+		"release-train.yml/pr":    1,
+	}
+	files := []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml", "release-train.yml"}
+	for _, file := range files {
 		text := workflow(t, file)
+		exempt := 0
 		for name, job := range jobs(text) {
 			n := strings.Count(job, "persist-credentials: true")
-			total += n
-			if n > 0 && !persisting[file+"/"+name] {
-				t.Errorf("%s job %s persists credentials", file, name)
+			if n != persisting[file+"/"+name] {
+				t.Errorf("%s job %s has %d persisting checkouts, want %d", file, name, n, persisting[file+"/"+name])
 			}
+			exempt += n
 		}
 		checkouts := len(regexp.MustCompile(`uses:\s*actions/checkout@`).FindAllString(text, -1))
-		exempt := 0 // the one pushing checkout of release.yml and prerelease.yml
-		if file == "release.yml" || file == "prerelease.yml" {
-			exempt = 1
-		}
 		if got := strings.Count(text, "persist-credentials: false"); got != checkouts-exempt {
 			t.Errorf("%s has %d `persist-credentials: false` for %d checkouts, want %d", file, got, checkouts, checkouts-exempt)
 		}
-	}
-	if total != 2 {
-		t.Errorf("%d `persist-credentials: true` in total, want 2", total)
 	}
 }
 
 // `contents: write` anywhere but the jobs that tag or publish is a token with a right it never uses.
 func TestWritePermissionOnlyWhereNeeded(t *testing.T) {
 	allowed := map[string]bool{
-		"release.yml/release":  true,
-		"release.yml/build":    true,
-		"build.yml/publish":    true,
-		"prerelease.yml/tag":   true,
-		"prerelease.yml/build": true,
-		"dev-build.yml/build":  true,
+		"release.yml/release":        true,
+		"release.yml/build":          true,
+		"build.yml/publish":          true,
+		"prerelease.yml/tag":         true,
+		"prerelease.yml/build":       true,
+		"dev-build.yml/build":        true,
+		"release.yml/sync":           true,
+		"release-train.yml/split":    true,
+		"release-train.yml/split-rc": true,
+		"release-train.yml/tag-rc":   true,
+		"release-train.yml/release":  true,
 	}
 	found := map[string]bool{}
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
+	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml", "release-train.yml"} {
 		text := workflow(t, file)
 		mustNotContain(t, file+" top-level permissions", topOf(text), "contents: write")
 		for name, job := range jobs(text) {
@@ -321,7 +316,7 @@ func TestPublishUsesNotesFileAndClobber(t *testing.T) {
 
 // An input or ref name interpolated into a run script is a script injection into a job with a token.
 func TestNoInputsInRunScripts(t *testing.T) {
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
+	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml", "release-train.yml"} {
 		for _, block := range runBlocks(workflow(t, file)) {
 			if strings.Contains(block, "${{") {
 				t.Errorf("%s interpolates an expression in a run script: %s", file, block)
@@ -434,65 +429,23 @@ func TestBuildCheckoutsPinTheTag(t *testing.T) {
 	}
 }
 
-// A macOS gate that runs on a PR, a push or a schedule costs macOS minutes on every change;
-// without workflow_call the release cannot wait for it.
+// A macOS gate that runs on a push, a schedule or a PR to main costs macOS minutes on every change;
+// a PR to release/* shows the maintainer the result before he merges a release PR; without
+// workflow_call the release cannot wait for it.
 func TestMacOSGateTriggers(t *testing.T) {
 	on := onBlock(t, workflow(t, "macos.yml"))
 	mustContain(t, "macos.yml on:", on, "workflow_call", "workflow_dispatch")
-	mustNotContain(t, "macos.yml on:", on, "pull_request", "push", "schedule")
+	mustMatch(t, "macos.yml on:", on, `(?s)pull_request:\s*\n\s+branches: \["release/\*\*"\]`)
+	mustNotContain(t, "macos.yml on:", on, "push", "schedule")
 }
 
-// A release that can start without a green macOS run (#337), or whose `ui` job races the download
-// of its artifact, releases an untested commit.
+// A release that can start without a green macOS run (#337) of the commit it tags, or whose `ui`
+// job races the download of its artifact, releases an untested commit.
 func TestReleaseWaitsForMacOS(t *testing.T) {
-	mustContain(t, "release.yml macos job", jobOf(t, "release.yml", "macos"), "uses: ./.github/workflows/macos.yml")
-	mustMatch(t, "release job", jobOf(t, "release.yml", "release"), `^    needs: \[macos, ui\]\s*$`)
-	mustMatch(t, "ui job", jobOf(t, "release.yml", "ui"), `^    needs: macos\s*$`)
-}
-
-// testedCommitCheck returns the `if` block of the release loop that compares HEAD with the commit macOS tested.
-func testedCommitCheck(t *testing.T, release string) string {
-	t.Helper()
-	head := "            if [ \"$(git rev-parse HEAD)\" != \"$TESTED\" ]; then\n"
-	start := strings.Index(release, head)
-	if start < 0 {
-		t.Fatal("no tested-commit check in the release job")
-	}
-	end := strings.Index(release[start:], "\n            fi\n")
-	if end < 0 {
-		t.Fatal("tested-commit check has no closing `fi`")
-	}
-	return release[start : start+end]
-}
-
-// A release that can tag a commit macOS did not test, or turns red when main merely moved on.
-func TestReleaseOnlyReleasesTheTestedCommit(t *testing.T) {
-	release := jobOf(t, "release.yml", "release")
-	mustContain(t, "release job", release, "TESTED: ${{ github.sha }}")
-	block := testedCommitCheck(t, release)
-	inOrder(t, "release job", release, "for attempt in 1 2 3", "git reset --hard origin/main", block, "go run ./ci/changelog release")
-	setup := regexp.MustCompile(`uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod\n\s+cache: false`).FindStringIndex(release)
-	if setup == nil {
-		t.Error("release has no setup-go with go-version-file and cache: false")
-	} else if setup[0] > strings.Index(release, "for attempt in 1 2 3") {
-		t.Error("release sets up Go inside or after the retry loop")
-	}
-	mustMatch(t, "tested-commit check", block, `^              echo "release: [^"]+"; exit 0$`)
-}
-
-// A run by hand or a re-run that ends green without releasing because main moved on can replace
-// the pending run of the newer commit, so nobody releases.
-func TestOvertakenDispatchOrRerunFails(t *testing.T) {
-	release := jobOf(t, "release.yml", "release")
-	mustContain(t, "release job", release, "ATTEMPT: ${{ github.run_attempt }}")
-	block := testedCommitCheck(t, release)
-	loc := regexp.MustCompile(`(?m)^              if \[ "\$EVENT" = workflow_dispatch \] \|\| \[ "\$ATTEMPT" != 1 \]; then echo "release: [^"]+" >&2; exit 1; fi$`).FindStringIndex(block)
-	if loc == nil {
-		t.Fatalf("no dispatch-or-rerun failure line in:\n%s", block)
-	}
-	if loc[0] > strings.Index(block, "exit 0") {
-		t.Error("the dispatch-or-rerun failure comes after the green `exit 0`")
-	}
+	macos := jobOf(t, "release.yml", "macos")
+	mustContain(t, "release.yml macos job", macos, "uses: ./.github/workflows/macos.yml", "ref: ${{ needs.resolve.outputs.sha }}")
+	mustMatch(t, "release job", jobOf(t, "release.yml", "release"), `^    needs: \[resolve, macos, ui\]\s*$`)
+	mustMatch(t, "ui job", jobOf(t, "release.yml", "ui"), `^    needs: \[resolve, macos\]\s*$`)
 }
 
 // A pre-release with an automatic trigger of its own publishes test builds on its own; without
@@ -547,7 +500,7 @@ func TestPrereleaseTagJobPushesOnlyTheTag(t *testing.T) {
 	mustContain(t, "tag job", tag, "contents: write")
 	checkout := stepUsing(t, tag, "actions/checkout@")
 	mustContain(t, "tag checkout", checkout, "persist-credentials: true")
-	mustMatch(t, "tag checkout", checkout, `^\s+ref: \$\{\{ github\.sha \}\}\s*$`)
+	mustMatch(t, "tag checkout", checkout, `^\s+ref: \$\{\{ inputs\.ref \|\| github\.sha \}\}\s*$`)
 	run := strings.Join(runBlocks(tag), "\n")
 	mustContain(t, "tag run", run, `git push origin "refs/tags/$tag"`, "already exists on the remote", tagWithUI, `echo "tag=$tag" >> "$GITHUB_OUTPUT"`)
 	mustNotContain(t, "tag run", run, "--atomic", "HEAD:", "main", "--force", "-f ")

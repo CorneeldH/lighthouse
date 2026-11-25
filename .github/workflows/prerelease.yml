@@ -14,6 +14,11 @@ on:
         description: Pre-release tag, vX.Y.Z-dev.N or vX.Y.Z-rc.N
         type: string
         required: true
+      ref:
+        description: Commit to build and tag; empty builds the commit of the caller
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
     inputs:
       tag:
@@ -56,7 +61,7 @@ jobs:
           fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -85,7 +90,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
           # The only job that pushes: git needs the token in .git/config for the push.
           persist-credentials: true
