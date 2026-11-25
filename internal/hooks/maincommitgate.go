@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
@@ -111,6 +112,7 @@ func checkInvocation(ctx context.Context, inv gitinvocations.Invocation, protect
 	if err != nil {
 		root = ""
 	}
+	root = gitpath.Native(root)
 	if root == "" {
 		// '<target> is not a repo' is a real outcome and may pass; a git that breaks is not.
 		if containsAny(gitMessage, notARepo) || allowMain(cwdRoot) {
@@ -193,7 +195,7 @@ func repoRoot(ctx context.Context, dir string) string {
 	if err != nil {
 		return ""
 	}
-	return root
+	return gitpath.Native(root)
 }
 
 // allowMain reports whether the escape hatch is set in the repo at root.
