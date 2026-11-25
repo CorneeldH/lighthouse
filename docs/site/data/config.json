@@ -486,6 +486,7 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
@@ -500,6 +501,7 @@
               "example": "docs/strategy.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
                 "internal/direction/direction.go",
@@ -570,6 +572,7 @@
               "about": "The directories searched when starting an issue, and where the architecture scan counts its hotspots.",
               "readers": [
                 "internal/scheduled/archscan/corpus.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/start-issue"
               ]
             },
@@ -598,6 +601,7 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
                 "internal/initcmd/direction.go"
