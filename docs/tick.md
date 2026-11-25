@@ -157,7 +157,8 @@ head-SHA, zonder commit-titel en zonder branch-opruiming. Gaat de merge door, da
 met het token van tick, en een run krijgt nooit een token met `workflow`-scope
 (`workflow-push-gate` blokkeert zo'n `git push` in een controller-run). Alleen de eigen wijziging van de
 branch telt: commits die al op `origin/<default>` staan niet, en een pad uit de netto diff alleen als
-`HEAD` er ook van `origin/<default>` verschilt. Een merge van main die alleen de workflows van main
+`HEAD` er ook verschilt van de merge-base met `origin/<default>` (de main die de branch het laatst
+binnenhaalde). Een merge van main die alleen de workflows van main
 binnenbrengt (de update-merge van fix-pr) pusht de run dus zelf; een eigen workflow-wijziging naast die
 merge, of een conflict dat anders dan main is opgelost, telt wel. De run draait roborev over de
 ongepushte range en post een 🤖 Handoff met `next: push-workflows` (en, zolang er nog geen PR is,

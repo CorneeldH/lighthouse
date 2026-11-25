@@ -168,3 +168,13 @@ func TestCheckCountsAMergeOfMainWithoutOriginMain(t *testing.T) {
 	r.git("update-ref", "-d", "refs/remotes/origin/main")
 	wantPaths(t, r.check(), ".github/workflows/ci.yml")
 }
+
+// origin/main may move on after the merge (a fetch in another worktree shares the ref): a later
+// workflow change on main is still no change of the branch.
+func TestCheckIgnoresAMergeOfMainAfterMainMovedOn(t *testing.T) {
+	r := newRepo(t)
+	r.onMain(map[string]string{".github/workflows/ci.yml": "on: push\n"})
+	r.mergeMain()
+	r.onMain(map[string]string{".github/workflows/ci.yml": "on: pull_request\n"})
+	wantPaths(t, r.check())
+}

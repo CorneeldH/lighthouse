@@ -73,8 +73,9 @@ func remoteBranch(git Git, branch string) (string, error) {
 // upstream is origin/<default branch>, or "" when it does not exist. What is on it is no change of
 // the branch, so a merge of main does not make main's workflows the branch's: commits reachable
 // from upstream leave the per-commit list, and a path of the net diff counts only when tip also
-// differs from upstream there. A conflict resolved unlike main does differ, and counts. Without
-// upstream every path of the range counts.
+// differs there from merge-base(upstream, tip), the main the branch last took in: upstream may
+// have moved on since. A conflict resolved unlike main does differ, and counts. Without upstream
+// every path of the range counts.
 func Touched(git Git, base, tip, upstream string) ([]string, error) {
 	logArgs := []string{"log", "--no-ext-diff", "--no-textconv", "--no-renames", "--format=", "--name-only", "-z", base + ".." + tip}
 	if upstream != "" {
@@ -89,7 +90,11 @@ func Touched(git Git, base, tip, upstream string) ([]string, error) {
 		return nil, err
 	}
 	if upstream != "" {
-		fromUpstream, err := diffPaths(git, upstream, tip)
+		out, err := git("merge-base", upstream, tip)
+		if err != nil {
+			return nil, fmt.Errorf("no merge-base of %s and %s: %w", upstream, tip, err)
+		}
+		fromUpstream, err := diffPaths(git, strings.TrimSpace(out), tip)
 		if err != nil {
 			return nil, err
 		}
