@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // fakeReviewCodex records that it ran and the value of --cd, and answers with a clean result.
@@ -50,7 +52,7 @@ func reviewSandbox(t *testing.T) reviewEnv {
 	put(filepath.Join(bin, "codex"), fakeReviewCodex, 0o755)
 	put(filepath.Join(home, ".codex", "auth.json"), "{}", 0o600)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)

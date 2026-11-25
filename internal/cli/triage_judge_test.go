@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
@@ -213,10 +214,11 @@ func TestLoadJudgeConfig(t *testing.T) {
 
 func TestJudgeSettingsPath(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": "/c", "HOME": "/h"})); got != "/c/settings.json" {
+	c, h := testpath.Abs("c"), testpath.Abs("h")
+	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": c, "HOME": h})); got != filepath.Join(c, "settings.json") {
 		t.Errorf("got %q", got)
 	}
-	if got := judgeSettingsPath(env(map[string]string{"HOME": "/h"})); got != "/h/.claude/settings.json" {
+	if got := judgeSettingsPath(env(map[string]string{"HOME": h})); got != filepath.Join(h, ".claude", "settings.json") {
 		t.Errorf("got %q", got)
 	}
 	if got := judgeSettingsPath(env(nil)); got != "" {

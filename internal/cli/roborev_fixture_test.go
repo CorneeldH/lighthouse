@@ -16,6 +16,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -625,7 +626,7 @@ func TestRoborevGateStdoutIsOneOrderedLine(t *testing.T) {
 // strict Codex read fails and the gate skips as not measurable.
 func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
 	r := newGateRun(t, gateCase{})
-	t.Setenv("HOME", filepath.Join(r.tmp, "home"))
+	testpath.SetHome(t, filepath.Join(r.tmp, "home"))
 	t.Setenv("CODEX_HOME", filepath.Join(r.tmp, "codex-home"))
 	t.Chdir(r.repo)
 	var out, errOut bytes.Buffer
