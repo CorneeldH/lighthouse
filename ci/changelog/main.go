@@ -11,6 +11,7 @@
 //   - `release --version vX.Y.Z [--date YYYY-MM-DD]` writes the section into CHANGELOG.md, removes
 //     the fragments and prints the tag. Nothing releasable, or a version that has a tag, is exit 1.
 //   - `released` prints the fragment names an earlier `chore(release): vX.Y.Z` commit removed.
+//   - `next --kind K [--branch B]` prints the next dev, rc, test, minor, major or patch tag.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -36,6 +37,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -48,7 +50,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usageText = "usage: changelog <check|release|released|notes> [flags]"
+const usageText = "usage: changelog <check|release|released|next|notes> [flags]"
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -118,6 +120,38 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return usageError("invalid --version '" + *version + "' (want vX.Y.Z)")
 		}
 		return runRelease(*root, *version, *date, stdout, stderr)
+	case "next":
+		kind := fs.String("kind", "", "dev, rc, test, minor, major or patch")
+		branch := fs.String("branch", "", "release branch, release/vX.Y (rc and patch)")
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		if !contains(nextKind, *kind) {
+			return usageError("--kind is required: " + strings.Join(nextKind, ", "))
+		}
+		tags, err := allTags(*root)
+		if err == nil {
+			var branches []string
+			if branches, err = releaseBranches(*root); err == nil {
+				var tag string
+				tag, err = nextTag(*kind, *branch, tags, branches)
+				if err == nil {
+					say(stdout, tag)
+					return 0
+				}
+				if _, ok := err.(*releaseError); ok {
+					say(stderr, err)
+					return 1
+				}
+				return usageError(err.Error())
+			}
+		}
+		sayf(stderr, "COULD NOT CHECK: %v\n", err)
+		return 2
 	case "released":
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
