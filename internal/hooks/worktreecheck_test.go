@@ -41,7 +41,7 @@ func TestWorktreeCheckWarnsOnTheMainCheckoutOnMain(t *testing.T) {
 
 	want := "Worktree check: this writes into the main checkout while it is on 'main'.\n" +
 		"\n" +
-		"  " + dir + "/src/nieuw.py\n" +
+		"  " + filepath.Join(dir, "src", "nieuw.py") + "\n" +
 		"\n" +
 		"Convention: work that produces a commit starts in a worktree on its own\n" +
 		"branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).\n" +
@@ -127,9 +127,14 @@ func TestCanonMissing(t *testing.T) {
 		{"/", "/"},
 	}
 	for _, c := range cases {
+		// The result is native: backslashes on Windows. The bare root stays as it is.
+		want := c.want
+		if want != "/" {
+			want = filepath.FromSlash(want)
+		}
 		got, err := canonMissing(c.in)
-		if err != nil || got != c.want {
-			t.Errorf("canonMissing(%q) = %q, %v; want %q", c.in, got, err, c.want)
+		if err != nil || got != want {
+			t.Errorf("canonMissing(%q) = %q, %v; want %q", c.in, got, err, want)
 		}
 	}
 }
@@ -163,9 +168,10 @@ func TestCanonMissingKeepsALoopingLinkAsGNUDoes(t *testing.T) {
 		{"/l0/x", "/l60/x"},
 	}
 	for _, c := range cases {
+		want := root + filepath.FromSlash(c.want)
 		got, err := canonMissing(root + c.in)
-		if err != nil || got != root+c.want {
-			t.Errorf("canonMissing(%q) = %q, %v; want %q", c.in, got, err, root+c.want)
+		if err != nil || got != want {
+			t.Errorf("canonMissing(%q) = %q, %v; want %q", c.in, got, err, want)
 		}
 	}
 }
@@ -231,7 +237,7 @@ func TestWorktreeCheckWarnsWhenTheCwdIsAWorktreeButTheTargetIsTheMainCheckout(t 
 	gitIn(t, dir, "worktree", "add", "-q", "-b", "issue-1-iets", wt)
 
 	wantSilence(t, check(t, wt+"/src/nieuw.py", wt))
-	wantMessage(t, check(t, dir+"/README.md", wt), mainWarning("main", dir+"/README.md"))
+	wantMessage(t, check(t, dir+"/README.md", wt), mainWarning("main", filepath.Join(dir, "README.md")))
 }
 
 func TestWorktreeCheckIsSilentOutsideAGitRepository(t *testing.T) {
@@ -297,7 +303,7 @@ func TestWorktreeCheckFollowsTheDefaultBranch(t *testing.T) {
 	}
 	t.Setenv("LIGHTHOUSE_TOML", toml)
 
-	wantMessage(t, check(t, trunk+"/src/nieuw.py", trunk), mainWarning("trunk", trunk+"/src/nieuw.py"))
+	wantMessage(t, check(t, trunk+"/src/nieuw.py", trunk), mainWarning("trunk", filepath.Join(trunk, "src", "nieuw.py")))
 	wantSilence(t, check(t, onMain+"/src/nieuw.py", onMain))
 }
 
