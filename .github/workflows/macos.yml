@@ -1,11 +1,20 @@
 # The macOS gate for lighthouse (#337): the pack-python pytest job, the Go race tests and the
-# e2e tests on macos-latest. A pull request never runs it: release.yml calls it before every
-# release, so a release needs a green macOS run of its commit. Start it by hand
-# (workflow_dispatch) on a branch whose change touches portability.
+# e2e tests on macos-latest. A pull request to main never runs it. A pull request to a
+# release/* branch does, so the maintainer sees the result before the merge of a release PR; and
+# release.yml calls it with the commit it will tag, so a release needs a green macOS run of that
+# commit. Start it by hand (workflow_dispatch) on a branch whose change touches portability.
 name: macos
 
 on:
+  pull_request:
+    branches: ["release/**"]
   workflow_call:
+    inputs:
+      ref:
+        description: Commit to test; empty tests the commit of the caller
+        type: string
+        required: false
+        default: ""
   workflow_dispatch:
 
 permissions:
@@ -19,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       # The `lighthouse_bin` fixture builds cmd/lighthouse: skills and pack/python call it (#274).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -35,6 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -48,6 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

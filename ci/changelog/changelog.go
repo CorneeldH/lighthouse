@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -17,7 +18,6 @@ import (
 var (
 	types      = []string{"added", "changed", "fixed", "removed", "internal"}
 	releasable = types[:4]
-	bumps      = []string{"patch", "minor", "major"}
 )
 
 const (
@@ -44,11 +44,6 @@ type releaseError struct{ msg string }
 
 func (e *releaseError) Error() string { return e.msg }
 
-// tagError is a missing usable release tag (exit 2).
-type tagError struct{ msg string }
-
-func (e *tagError) Error() string { return e.msg }
-
 func contains(list []string, s string) bool {
 	for _, x := range list {
 		if x == s {
@@ -56,15 +51,6 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-func indexOf(list []string, s string) int {
-	for i, x := range list {
-		if x == s {
-			return i
-		}
-	}
-	return -1
 }
 
 // parseFragment parses one fragment: UTF-8 (BOM allowed), CRLF allowed, front matter with one
@@ -203,40 +189,6 @@ func addedFragments(root, base, head string) ([]string, error) {
 	return added, nil
 }
 
-// decideBump returns the bump for the open fragments, or "" when there is nothing to release.
-//
-// `push` releases only when a `fixed` is open (patch, or minor next to another type); `schedule`
-// and `workflow_dispatch` release anything releasable. A forced bump below what `schedule` would
-// pick, or without a releasable fragment, is refused.
-func decideBump(frags []fragment, event, forced string) (string, error) {
-	found := map[string]bool{}
-	for _, f := range frags {
-		if contains(releasable, f.typ) {
-			found[f.typ] = true
-		}
-	}
-	if len(found) == 0 {
-		if forced != "auto" {
-			return "", &releaseError{msg: "nothing to release: no releasable fragment for the forced bump"}
-		}
-		return "", nil
-	}
-	natural := "minor"
-	if len(found) == 1 && found["fixed"] {
-		natural = "patch"
-	}
-	if forced != "auto" {
-		if indexOf(bumps, forced) < indexOf(bumps, natural) {
-			return "", &releaseError{msg: fmt.Sprintf("forced bump %s is lower than the %s the fragments need", forced, natural)}
-		}
-		return forced, nil
-	}
-	if event == "push" && !found["fixed"] {
-		return "", nil
-	}
-	return natural, nil
-}
-
 func parseTag(tag string) ([3]int, bool) {
 	m := tagRe.FindStringSubmatch(tag)
 	if m == nil {
@@ -251,39 +203,6 @@ func parseTag(tag string) ([3]int, bool) {
 		v[i] = n
 	}
 	return v, true
-}
-
-// latestTag returns the highest `vX.Y.Z` tag by semver. Prereleases and other tags are ignored.
-func latestTag(tags []string) (string, error) {
-	best, bestVer, ok := "", [3]int{}, false
-	for _, tag := range tags {
-		v, valid := parseTag(tag)
-		if !valid {
-			continue
-		}
-		if !ok || v[0] > bestVer[0] || v[0] == bestVer[0] && (v[1] > bestVer[1] ||
-			v[1] == bestVer[1] && (v[2] > bestVer[2] || v[2] == bestVer[2] && tag > best)) {
-			best, bestVer, ok = tag, v, true
-		}
-	}
-	if !ok {
-		return "", &tagError{msg: "no vX.Y.Z release tag found (a checkout without tags?)"}
-	}
-	return best, nil
-}
-
-func nextVersion(tag, bump string) (string, error) {
-	v, ok := parseTag(tag)
-	if !ok || !contains(bumps, bump) {
-		return "", fmt.Errorf("cannot bump '%s' by '%s'", tag, bump)
-	}
-	switch bump {
-	case "major":
-		return fmt.Sprintf("v%d.0.0", v[0]+1), nil
-	case "minor":
-		return fmt.Sprintf("v%d.%d.0", v[0], v[1]+1), nil
-	}
-	return fmt.Sprintf("v%d.%d.%d", v[0], v[1], v[2]+1), nil
 }
 
 // renderSection renders a CHANGELOG.md section: groups in a fixed order, `internal` never.
@@ -370,39 +289,53 @@ func extractSection(changelog, tag string) (string, bool) {
 	return strings.TrimSpace(strings.Join(body, "\n")), true
 }
 
-// release writes the section for the open fragments into CHANGELOG.md and removes them. It
-// returns the new tag, or "" when nothing is released (the tree is left alone). The order is
-// fixed: tag, fragments and bump, then CHANGELOG.md, so a repo without tags always fails with a
-// tagError.
-func release(root, event, forced, date string, tags []string) (string, error) {
-	current, err := latestTag(tags)
+// release writes the section of version for the open fragments into CHANGELOG.md and removes
+// them. A fragment named in released went out in an earlier release: it is removed without
+// entering the section and reported on notes (nil is silent). It returns version. A version that
+// already has a tag, or no releasable fragment left, is refused (releaseError) and leaves the
+// tree alone.
+func release(root, version, date string, tags []string, released map[string]bool, notes io.Writer) (string, error) {
+	if contains(tags, version) {
+		return "", &releaseError{msg: version + " already has a tag"}
+	}
+	all, err := readFragments(filepath.Join(root, fragmentDir))
 	if err != nil {
 		return "", err
 	}
-	frags, err := readFragments(filepath.Join(root, fragmentDir))
-	if err != nil {
-		return "", err
+	var frags, skipped []fragment
+	for _, f := range all {
+		if released[filepath.Base(f.path)] {
+			skipped = append(skipped, f)
+		} else {
+			frags = append(frags, f)
+		}
 	}
-	bump, err := decideBump(frags, event, forced)
-	if err != nil || bump == "" {
-		return "", err
+	releasableFound := false
+	for _, f := range frags {
+		if contains(releasable, f.typ) {
+			releasableFound = true
+		}
+	}
+	if !releasableFound {
+		return "", &releaseError{msg: "nothing to release"}
 	}
 	p := filepath.Join(root, "CHANGELOG.md")
 	text, err := os.ReadFile(p)
 	if err != nil {
 		return "", &releaseError{msg: fmt.Sprintf("%s: cannot read: %v", p, err)}
 	}
-	version, err := nextVersion(current, bump)
-	if err != nil {
-		return "", err
-	}
 	out := insertSection(string(text), renderSection(version, date, frags))
 	if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
 		return "", err
 	}
-	for _, f := range frags {
+	for _, f := range all {
 		if err := os.Remove(f.path); err != nil {
 			return "", err
+		}
+	}
+	if notes != nil {
+		for _, f := range skipped {
+			say(notes, "skipped "+filepath.Base(f.path)+": already released")
 		}
 	}
 	return version, nil

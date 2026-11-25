@@ -1,38 +1,79 @@
-# Release for lighthouse: decides the bump from changelog.d, writes CHANGELOG.md and commits it
-# (C1, the one on main), then adds the built SPA in a second commit (C2) that only the tag points
-# at, and pushes main and the tag atomically, then calls build.yml for the tag. Runs on every push to main, on a
-# weekly cron (patch-only fragments wait for it) and by hand. The release waits for a green run of
-# macos.yml on its commit (#337).
+# Release for lighthouse: tags the tip of a release branch after its release PR was merged. The
+# tip must be a `chore(release): vX.Y.Z` commit (C1, already on the branch); this workflow waits
+# for a green macos.yml run of that commit (#337), adds the built SPA in a second commit (C2)
+# that only the tag points at, pushes the tag atomically with the unchanged branch tip, calls
+# build.yml for the tag, and then syncs the new CHANGELOG.md section and the removed fragments to
+# main in a step of its own. Called by release-train.yml, or started by hand with the branch to
+# repeat steps 5 and 6 of the flow after a merged release PR that got no tag (docs/releasing.md).
+# The workflow file and the ci/changelog code always come from main (the checkout `logic`); the
+# content of the release comes from the branch.
 name: release
 
 on:
-  push:
-    branches: [main]
-  schedule:
-    - cron: "0 6 * * 1"
+  workflow_call:
+    inputs:
+      branch:
+        description: Release branch, release/vX.Y
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
-      bump:
-        description: Force a bump level; auto derives it from the open fragments
-        type: choice
-        options: [auto, patch, minor, major]
-        default: auto
+      branch:
+        description: Release branch, release/vX.Y (repeats the release of its tip)
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.event_name }}
+  group: release-${{ inputs.branch }}
   cancel-in-progress: false
 
 jobs:
-  # macOS runs only here, not on a PR (#337): a release needs a green macOS run of its commit.
+  # Fixes the commit this run releases: the tip of the branch now. Everything below works on it.
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - id: resolve
+        env:
+          BRANCH: ${{ inputs.branch }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n' "$BRANCH" | grep -Eq '^release/v[0-9]+\.[0-9]+$'; then
+            echo "release: '$BRANCH' is not a release branch release/vX.Y" >&2
+            exit 1
+          fi
+          sha=$(gh api "repos/$REPO/git/ref/heads/$BRANCH" --jq .object.sha)
+          if [ -z "$sha" ]; then echo "release: no branch $BRANCH on the remote" >&2; exit 1; fi
+          subject=$(gh api "repos/$REPO/commits/$sha" --jq '.commit.message | split("\n")[0]')
+          if ! printf '%s\n' "$subject" | grep -Eq '^chore\(release\): v[0-9]+\.[0-9]+\.[0-9]+( \(#[0-9]+\))?$'; then
+            echo "release: the tip of $BRANCH is '$subject', not a chore(release) commit; nothing to release" >&2
+            exit 1
+          fi
+          version=$(printf '%s\n' "$subject" | grep -Eo '^chore\(release\): v[0-9]+\.[0-9]+\.[0-9]+' | cut -d' ' -f2)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # macOS runs only here and on a PR to release/* (#337): a release needs a green macOS run of the
+  # commit it tags. A red gate leaves no tag and the branch as it is.
   macos:
+    needs: resolve
     uses: ./.github/workflows/macos.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
 
   # Builds the SPA in a job with read rights only; the writing job below gets just the artifact.
   ui:
-    needs: macos
+    needs: [resolve, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -40,7 +81,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.resolve.outputs.sha }}
           persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -59,7 +100,7 @@ jobs:
           include-hidden-files: true
 
   release:
-    needs: [macos, ui]
+    needs: [resolve, macos, ui]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -67,51 +108,64 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
+      # The logic: the workflow's own repo at main, never the branch.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          path: logic
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+          path: branch
           fetch-depth: 0
-          # The only job that pushes: git needs the token in .git/config for the atomic push.
+          # The only job that pushes the tag: git needs the token in .git/config for the push.
           persist-credentials: true
       # Outside the worktree: `git reset --hard` in the retry loop must not remove it.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ui-dist
           path: ${{ runner.temp }}/ui-dist
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
       - id: release
         env:
-          EVENT: ${{ github.event_name }}
-          BUMP: ${{ inputs.bump || 'auto' }}
+          BRANCH: ${{ inputs.branch }}
           # The commit the macos job tested; a re-run of failed jobs keeps it.
-          TESTED: ${{ github.sha }}
-          ATTEMPT: ${{ github.run_attempt }}
+          TESTED: ${{ needs.resolve.outputs.sha }}
+          TAG: ${{ needs.resolve.outputs.version }}
         run: |
           set -euo pipefail
+          cd branch
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          tag=$TAG
           for attempt in 1 2 3; do
-            git fetch --force --tags origin main
-            git reset --hard origin/main
-            # Release only what macOS tested. A push or cron run that was overtaken ends green: the
-            # newer commit on main has its own release run. A run started by hand fails instead, so
-            # a forced bump never ends green without a release. So does a re-run: it can replace the
-            # pending run of the newer commit in the concurrency group, and then nobody releases.
+            git fetch --force --tags origin "$BRANCH"
+            git reset --hard "origin/$BRANCH"
+            # Release only what macOS tested: a branch that moved on gets a new release PR and run.
             if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then
-              if [ "$EVENT" = workflow_dispatch ] || [ "$ATTEMPT" != 1 ]; then echo "release: started for $TESTED, but main is at $(git rev-parse HEAD); start release by hand from main" >&2; exit 1; fi
-              echo "release: main moved past $TESTED, the commit macOS tested; the run of the newer commit releases it"; exit 0
+              echo "release: $BRANCH moved past $TESTED, the commit macOS tested; start release again from main" >&2
+              exit 1
             fi
-            tag=$(go run ./ci/changelog release --event "$EVENT" --bump "$BUMP")
-            if [ -z "$tag" ]; then echo "nothing to release"; exit 0; fi
-            git add -A CHANGELOG.md changelog.d
-            git commit -m "chore(release): $tag"
-            # C1 goes to main; C2 (C1 plus dist) carries the tag only.
+            # A tag that already stands on this release (a run repeated after a failed sync or build) is not made twice.
+            if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              echo "release: $tag already exists, no new tag"; exit 0
+            fi
+            # A milestone release (vX.Y.0) takes nothing that was merged after the release candidate
+            # was built: the parent of the release commit is the parent of the dist commit of the
+            # newest rc (vX.Y.0-rc.N^). A patch release has no rc and no such check.
+            case "$tag" in
+              *.0)
+                rc=$(git tag --list "$tag-rc.*" | sed 's/.*-rc\.//' | sort -n | tail -1)
+                if [ -z "$rc" ]; then echo "release: no release candidate $tag-rc.N to release" >&2; exit 1; fi
+                if [ "$(git rev-parse HEAD^)" != "$(git rev-parse "$tag-rc.$rc^")" ]; then
+                  echo "release: the parent of the release commit is not the source of $tag-rc.$rc; something was merged after the soak" >&2
+                  exit 1
+                fi
+                ;;
+            esac
+            # C1 is already on the branch; C2 (C1 plus dist) carries the tag only.
             main_sha=$(git rev-parse HEAD)
-            ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"
-            if git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"; then
+            ../logic/ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"
+            if git push --atomic origin "$main_sha:refs/heads/$BRANCH" "refs/tags/$tag"; then
               echo "tag=$tag" >> "$GITHUB_OUTPUT"; exit 0
             fi
             # A push can land server-side and still return non-zero (network error): if our own
@@ -134,3 +188,47 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
+
+  # Step 6, a step of its own after the tag, repeatable: the section of the tag and the names of
+  # the fragments its release commit removed go to main. It derives its work from the tag, so a
+  # main that is already up to date stays as it is. Only this step is repeated when its push fails.
+  sync:
+    needs: [resolve, release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          # The only job that pushes main.
+          persist-credentials: true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.version }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - env:
+          TAG: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch --force origin main
+            git reset --hard origin/main
+            go run ./ci/changelog sync --tag "$TAG" --source "$GITHUB_WORKSPACE/source"
+            if [ -z "$(git status --porcelain -- CHANGELOG.md changelog.d)" ]; then echo "sync: main is already up to date"; exit 0; fi
+            git add -A CHANGELOG.md changelog.d
+            git commit -m "chore(changelog): sync $TAG to main"
+            if git push origin HEAD:refs/heads/main; then exit 0; fi
+            sleep $((attempt * 5))
+          done
+          echo "sync: push refused three times; run the release workflow again with this branch" >&2; exit 1

@@ -60,7 +60,7 @@ func taggedRepo(t *testing.T, fragments map[string]string) string {
 
 func TestRunReleasePrintsTag(t *testing.T) {
 	root := taggedRepo(t, map[string]string{"a.md": "fixed"})
-	code, stdout, stderr := runCLI("release", "--event", "push", "--date", "2026-10-27", "--root", root)
+	code, stdout, stderr := runCLI("release", "--version", "v0.1.7", "--date", "2026-10-27", "--root", root)
 	if code != 0 || stdout != "v0.1.7\n" || stderr != "" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}
@@ -70,17 +70,9 @@ func TestRunReleasePrintsTag(t *testing.T) {
 	}
 }
 
-func TestRunReleaseNothingPrintsEmptyLine(t *testing.T) {
-	root := taggedRepo(t, map[string]string{"a.md": "added"})
-	code, stdout, _ := runCLI("release", "--event", "push", "--root", root)
-	if code != 0 || stdout != "\n" {
-		t.Fatalf("code=%d stdout=%q", code, stdout)
-	}
-}
-
 func TestRunReleaseDefaultDateIsToday(t *testing.T) {
 	root := taggedRepo(t, map[string]string{"a.md": "fixed"})
-	if code, _, stderr := runCLI("release", "--event", "push", "--root", root); code != 0 {
+	if code, _, stderr := runCLI("release", "--version", "v0.1.7", "--root", root); code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 	text, _ := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
@@ -89,30 +81,17 @@ func TestRunReleaseDefaultDateIsToday(t *testing.T) {
 	}
 }
 
-func TestRunReleaseWithoutTags(t *testing.T) {
-	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, preamble+oldRelease, true)
-	git(t, root, "init", "-q", "-b", "main")
-	code, stdout, stderr := runCLI("release", "--event", "push", "--root", root)
-	want := "COULD NOT CHECK: no vX.Y.Z release tag found (a checkout without tags?)\n"
-	if code != 2 || stdout != "" || stderr != want {
-		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
-	}
-	if _, err := os.Stat(filepath.Join(root, "changelog.d", "a.md")); err != nil {
-		t.Errorf("fragment removed: %v", err)
-	}
-}
-
 func TestRunReleaseGitFails(t *testing.T) {
-	code, _, stderr := runCLI("release", "--event", "push", "--root", filepath.Join(t.TempDir(), "nope"))
-	if code != 2 || !strings.HasPrefix(stderr, "COULD NOT CHECK: git tag failed: ") {
+	code, _, stderr := runCLI("release", "--version", "v0.1.7", "--root", filepath.Join(t.TempDir(), "nope"))
+	if code != 2 || !strings.HasPrefix(stderr, "COULD NOT CHECK: git tag ") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }
 
 func TestRunReleaseError(t *testing.T) {
 	root := taggedRepo(t, nil)
-	code, _, stderr := runCLI("release", "--event", "workflow_dispatch", "--bump", "minor", "--root", root)
-	want := "nothing to release: no releasable fragment for the forced bump\n"
+	code, _, stderr := runCLI("release", "--version", "v0.2.0", "--root", root)
+	want := "nothing to release\n"
 	if code != 1 || stderr != want {
 		t.Fatalf("code=%d stderr=%q, want 1 and %q", code, stderr, want)
 	}
@@ -120,7 +99,7 @@ func TestRunReleaseError(t *testing.T) {
 
 func TestRunReleaseFragmentError(t *testing.T) {
 	root := taggedRepo(t, map[string]string{"a.md": "bugfix"})
-	code, stdout, stderr := runCLI("release", "--event", "push", "--root", root)
+	code, stdout, stderr := runCLI("release", "--version", "v0.1.7", "--root", root)
 	want := filepath.Join(root, "changelog.d", "a.md") + ": unknown type 'bugfix', expected one of added, changed, fixed, removed, internal\n"
 	if code != 1 || stdout != "" || stderr != want {
 		t.Fatalf("code=%d stdout=%q stderr=%q, want 1, empty and %q", code, stdout, stderr, want)
@@ -138,9 +117,9 @@ func TestRunUsageErrors(t *testing.T) {
 		{[]string{"check", "--root", root, "--head", "x"}, "--base and --head are required"},
 		{[]string{"check", "--root", root, "--base", "x"}, "--base and --head are required"},
 		{[]string{"check", "--root", root, "--base", "x", "--head", "y", "extra"}, "unexpected argument 'extra'"},
-		{[]string{"release", "--root", root}, "--event is required"},
-		{[]string{"release", "--root", root, "--event", "tuesday"}, "invalid value 'tuesday' for --event"},
-		{[]string{"release", "--root", root, "--event", "push", "--bump", "huge"}, "invalid value 'huge' for --bump"},
+		{[]string{"release", "--root", root}, "--version is required"},
+		{[]string{"release", "--root", root, "--version", "0.30"}, "invalid --version '0.30'"},
+		{[]string{"release", "--root", root, "--version", "v0.30.0-rc.1"}, "invalid --version 'v0.30.0-rc.1'"},
 		{[]string{"notes", "--root", root}, "exactly one <tag> is required"},
 		{[]string{"notes", "--root", root, "a", "b"}, "exactly one <tag> is required"},
 		{[]string{"check", "--root", root, "--nope"}, "flag provided but not defined: -nope"},
@@ -156,5 +135,13 @@ func TestRunUsageErrors(t *testing.T) {
 		if !strings.Contains(stderr, "Usage of changelog") || !strings.Contains(stderr, "-root") {
 			t.Errorf("run(%v) stderr %q lacks the usage text", tt.args, stderr)
 		}
+	}
+}
+
+func TestRunReleaseRefusesExistingTag(t *testing.T) {
+	root := taggedRepo(t, map[string]string{"a.md": "fixed"})
+	code, _, stderr := runCLI("release", "--version", "v0.1.6", "--root", root)
+	if code != 1 || stderr != "v0.1.6 already has a tag\n" {
+		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }

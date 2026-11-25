@@ -71,7 +71,21 @@ jobs:
       - env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: go run ./ci/changelog check --base "$BASE" --head "$HEAD"
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          # A release PR only removes fragments: the one made by the release train (a branch of this
+          # repo, `release-bot/*`, titled `chore(release): vX.Y.Z`) needs no new one.
+          case "$HEAD_REF" in
+            release-bot/*)
+              if [ "$HEAD_REPO" = "$REPO" ] && printf '%s\n' "$TITLE" | grep -Eq '^chore\(release\): v[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "changelog: release PR, no new fragment needed"; exit 0
+              fi
+              ;;
+          esac
+          go run ./ci/changelog check --base "$BASE" --head "$HEAD"
 
   # Every PR, outside the domains too: a secret can land in any file (#194). The scan
   # covers the commits of the PR, base..head, so a secret added and removed again inside

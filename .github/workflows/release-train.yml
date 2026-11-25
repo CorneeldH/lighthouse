@@ -1,0 +1,323 @@
+# The release train for lighthouse (#582): splits a release branch off main when a release
+# milestone closes, and then looks every hour at each release/vX.Y and does what its state asks:
+# tag a release candidate, open or close the release PR, open a patch PR for a critical fix, or
+# repeat the release of a merged release PR that got no tag. All decisions are in ci/changelog
+# (`split`, `reconcile`, `next`); this file only runs what they print. See docs/releasing.md.
+#
+# Every job runs the workflow and the ci/changelog code of main (the checkout `logic`); the
+# content of a release branch is checked out apart (`branch`). A push to release/* triggers
+# nothing: the hourly run and the dispatch are the triggers, so the frozen copy of this file on a
+# release branch is never used.
+name: release-train
+
+on:
+  milestone:
+    types: [closed]
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: split (cut a release branch), reconcile (do what the state of the branches asks) or release (repeat the release of a branch)
+        type: choice
+        options: [split, reconcile, release]
+        default: reconcile
+      kind:
+        description: For split, the size of the release
+        type: choice
+        options: [minor, major]
+        default: minor
+      branch:
+        description: For release, the branch release/vX.Y; for reconcile, empty means every release branch
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-train
+  cancel-in-progress: false
+
+jobs:
+  # Cuts release/vX.Y off main for a release milestone (`Release: ja` in its description), or for
+  # a dispatch. While the previous release candidate has no release yet, main is merged into that
+  # branch instead and the next rc follows. Nothing releasable: no branch, and the run says so.
+  split:
+    if: github.event_name == 'milestone' || (github.event_name == 'workflow_dispatch' && inputs.action == 'split')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.split.outputs.tag }}
+      ref: ${{ steps.split.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          # The branch push needs the token in .git/config.
+          persist-credentials: true
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: split
+        env:
+          EVENT: ${{ github.event_name }}
+          KIND: ${{ inputs.kind }}
+          DESCRIPTION: ${{ github.event.milestone.description }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          kind=$KIND
+          if [ "$EVENT" = milestone ]; then
+            kind=minor
+            if [ "$(go run ./ci/changelog milestone-release --description "$DESCRIPTION")" != yes ]; then
+              echo "::notice::split: the milestone has no line 'Release: ja', nothing is split"
+              exit 0
+            fi
+          fi
+          verdict=$(go run ./ci/changelog split --kind "$kind")
+          read -r action branch rc <<< "$verdict"
+          case "$action" in
+            skip)
+              echo "::notice::split: $verdict"
+              exit 0
+              ;;
+            split)
+              git push origin "HEAD:refs/heads/$branch"
+              ;;
+            merge)
+              git fetch origin "$branch"
+              git checkout -B "$branch" "origin/$branch"
+              if ! git merge --no-edit --no-ff origin/main; then
+                git merge --abort
+                echo "::error::split: main does not merge into $branch without a conflict; merge it by hand, the next run tags the rc" >&2
+                exit 1
+              fi
+              git push origin "$branch"
+              ;;
+            *)
+              echo "split: unexpected verdict '$verdict'" >&2
+              exit 1
+              ;;
+          esac
+          echo "tag=$rc" >> "$GITHUB_OUTPUT"
+          echo "ref=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # A tag pushed with GITHUB_TOKEN triggers no push workflow, so prerelease.yml is called.
+  split-rc:
+    needs: split
+    if: needs.split.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/prerelease.yml
+    with:
+      tag: ${{ needs.split.outputs.tag }}
+      ref: ${{ needs.split.outputs.ref }}
+
+  # Reads the state of every release branch and says per branch what to do; changes nothing.
+  plan:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.action != 'split')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      rc: ${{ steps.plan.outputs.rc }}
+      prs: ${{ steps.plan.outputs.prs }}
+      release: ${{ steps.plan.outputs.release }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ inputs.action }}
+          ONLY: ${{ inputs.branch }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rc='[]'; prs='[]'; rel='[]'
+          if [ "$EVENT" = workflow_dispatch ] && [ "$ACTION" = release ]; then
+            if ! printf '%s\n' "$ONLY" | grep -Eq '^release/v[0-9]+\.[0-9]+$'; then
+              echo "plan: action release needs a branch release/vX.Y, got '$ONLY'" >&2
+              exit 1
+            fi
+            rel=$(jq -nc --arg b "$ONLY" '[{branch: $b}]')
+          else
+            now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/release); do
+              branch=${ref#origin/}
+              if ! printf '%s\n' "$branch" | grep -Eq '^release/v[0-9]+\.[0-9]+$'; then continue; fi
+              if [ -n "$ONLY" ] && [ "$branch" != "$ONLY" ]; then continue; fi
+              line=${branch#release/}
+              # The time since which a release PR closed without merge counts as closed by hand: the
+              # newest tag of an open branch, the newest commit of a released one (a new fix
+              # brings a new patch PR). The bot closes a PR with the marker below; that never counts.
+              newest=$(git tag --list "$line.*" --sort=-creatordate | head -1)
+              since=$(git log -1 --format=%cI "${newest:-origin/$branch}")
+              if git rev-parse -q --verify "refs/tags/$line.0" >/dev/null; then since=$(git log -1 --format=%cI "origin/$branch"); fi
+              since=$(date -u -d "$since" +%Y-%m-%dT%H:%M:%SZ)
+              pulls=$(gh pr list --repo "$REPO" --base "$branch" --state all --limit 100 --json title,state,mergedAt,closedAt,headRefOid,comments)
+              open=$(jq '[.[] | select(.state == "OPEN" and (.title | test("^chore\\(release\\): v")))] | length' <<< "$pulls")
+              hand=$(jq --arg since "$since" '[.[] | select(.state == "CLOSED" and .mergedAt == null and .closedAt > $since and (.title | test("^chore\\(release\\): v")) and ((.comments | map(.body) | join("")) | contains("release-train:auto-closed") | not))] | length' <<< "$pulls")
+              pr_open=false; [ "$open" -gt 0 ] && pr_open=true
+              closed_by_hand=false; [ "$hand" -gt 0 ] && closed_by_hand=true
+              # Stale: the open PR was cut on an older tip than the branch has now.
+              stale=false
+              oid=$(jq -r '[.[] | select(.state == "OPEN" and (.title | test("^chore\\(release\\): v")))][0].headRefOid // empty' <<< "$pulls")
+              if [ -n "$oid" ] && [ "$(git rev-parse -q --verify "$oid^" 2>/dev/null || echo none)" != "$(git rev-parse "origin/$branch")" ]; then stale=true; fi
+              action=$(go run ./ci/changelog reconcile --branch "$branch" --now "$now" --pr-open "$pr_open" --pr-closed-by-hand "$closed_by_hand" --pr-stale "$stale")
+              echo "plan: $branch -> $action"
+              case "$action" in
+                tag-rc)
+                  tag=$(go run ./ci/changelog next --kind rc --branch "$branch")
+                  rc=$(jq -c --arg b "$branch" --arg t "$tag" --arg r "$(git rev-parse "origin/$branch")" '. + [{branch: $b, tag: $t, ref: $r}]' <<< "$rc")
+                  ;;
+                open-release-pr|open-patch-pr|close-release-pr)
+                  prs=$(jq -c --arg b "$branch" --arg a "$action" '. + [{branch: $b, action: $a}]' <<< "$prs")
+                  ;;
+                release-tip|recover)
+                  rel=$(jq -c --arg b "$branch" '. + [{branch: $b}]' <<< "$rel")
+                  ;;
+                blocked)
+                  echo "::warning::plan: $branch has a release commit whose parent is not the source of the newest rc (something was merged after the soak); revert the release commit on the branch by hand, see docs/releasing.md"
+                  ;;
+              esac
+            done
+          fi
+          {
+            echo "rc=$rc"
+            echo "prs=$prs"
+            echo "release=$rel"
+          } >> "$GITHUB_OUTPUT"
+
+  # A new release candidate for a branch that got a commit after its newest rc.
+  tag-rc:
+    needs: plan
+    if: needs.plan.outputs.rc != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.rc) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/prerelease.yml
+    with:
+      tag: ${{ matrix.tag }}
+      ref: ${{ matrix.ref }}
+
+  # Opens the release PR (after the soak) or the patch PR (a critical fix, no wait), or closes a
+  # release PR a new rc overtook. They open with the token of the GitHub App from `[ci]` in
+  # lighthouse.toml: a PR opened with GITHUB_TOKEN starts no CI run, and the PR could never merge.
+  pr:
+    needs: plan
+    if: needs.plan.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.prs) }}
+    permissions:
+      contents: read
+    steps:
+      - id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.PAIA_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PAIA_BOT_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: logic
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.branch }}
+          path: branch
+          fetch-depth: 0
+          token: ${{ steps.app.outputs.token }}
+          # The push of the release PR branch needs the token in .git/config.
+          persist-credentials: true
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: logic/go.mod
+          cache: false
+      - env:
+          ACTION: ${{ matrix.action }}
+          BRANCH: ${{ matrix.branch }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          set -euo pipefail
+          cd branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          changelog() { (cd "$GITHUB_WORKSPACE/logic" && go run ./ci/changelog "$@" --root "$GITHUB_WORKSPACE/branch"); }
+          line=${BRANCH#release/}
+          case "$ACTION" in
+            close-release-pr)
+              for n in $(gh pr list --repo "$REPO" --base "$BRANCH" --state open --json number,title --jq '.[] | select(.title | test("^chore\\(release\\): v")) | .number'); do
+                gh pr close "$n" --repo "$REPO" --comment "<!-- release-train:auto-closed --> Er is een nieuwe commit op $BRANCH gekomen; deze release-PR is gesloten en er opent een nieuwe (bij een rc na de wachttijd van de nieuwe rc, bij een patch meteen)."
+              done
+              exit 0
+              ;;
+            open-release-pr)
+              version="$line.0"
+              rc=$(git tag --list "$version-rc.*" | sed 's/.*-rc\.//' | sort -n | tail -1)
+              intro="Release $version van $BRANCH. De nieuwste release candidate is $version-rc.$rc, gemaakt op $(git log -1 --format=%cs "$version-rc.$rc"); daarna zijn er 7 dagen op het devkanaal gedraaid."
+              ;;
+            open-patch-pr)
+              version=$(changelog next --kind patch --branch "$BRANCH")
+              intro="Patchrelease $version van $BRANCH voor een kritieke fix. Zonder wachttijd: een fix die niet kan wachten."
+              ;;
+            *)
+              echo "pr: unexpected action '$ACTION'" >&2
+              exit 1
+              ;;
+          esac
+          head="release-bot/$version"
+          git checkout -b "$head"
+          changelog release --version "$version"
+          git add -A CHANGELOG.md changelog.d
+          git commit -m "chore(release): $version"
+          git push --force origin "HEAD:refs/heads/$head"
+          {
+            echo "$intro"
+            echo
+            echo "Fragmenten in deze release:"
+            git diff --name-only --diff-filter=D "origin/$BRANCH" HEAD -- changelog.d | sed 's|^changelog.d/|- |'
+            echo
+            echo "Een nieuwe release candidate sluit deze PR. De merge start de release: macOS-gate, tag, build en sync naar main."
+          } > "$RUNNER_TEMP/body.md"
+          gh pr create --repo "$REPO" --base "$BRANCH" --head "$head" --title "chore(release): $version" --body-file "$RUNNER_TEMP/body.md"
+
+  # Step 5 and 6 of the flow for a branch whose tip is a merged release commit: the tag, the
+  # build and the sync (release.yml), or only the sync when the tag stands but main lacks it.
+  release:
+    needs: plan
+    if: needs.plan.outputs.release != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.release) }}
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      branch: ${{ matrix.branch }}
