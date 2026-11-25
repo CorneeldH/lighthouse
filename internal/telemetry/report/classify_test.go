@@ -77,6 +77,8 @@ func TestAssignmentOf(t *testing.T) {
 		{"same variant", []string{"variant:a=1", "variant:a=1"}, "variant:a=1"},
 		{"two variants", []string{"variant:a=1", "variant:b=2"}, "mixed"},
 		{"variant and standard", []string{"variant:a=1", "standard"}, "mixed"},
+		{"literal mixed", []string{"mixed"}, "mixed"},
+		{"variant and literal mixed", []string{"variant:a=1", "mixed"}, "mixed"},
 		{"variant and shadow", []string{"variant:a=1", "shadow:x"}, "mixed"},
 	}
 	for _, tt := range tests {

@@ -15,6 +15,8 @@ func TestComparisonLabel(t *testing.T) {
 		{"empty list", nil, LabelCorrelation},
 		{"single pure variant group", [][]string{{"variant:a=1", "variant:a=1"}}, LabelAssigned},
 		{"shadow counts standard", [][]string{{"shadow:x"}, {"standard"}}, LabelCorrelation},
+		{"literal mixed vs variant", [][]string{{"mixed"}, {"variant:a=1"}}, LabelCorrelation},
+		{"literal mixed alone", [][]string{{"mixed"}}, LabelCorrelation},
 		{"empty group", [][]string{{}, {"variant:a=1"}}, LabelAssigned},
 	}
 	for _, tt := range tests {

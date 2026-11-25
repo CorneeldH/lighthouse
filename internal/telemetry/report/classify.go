@@ -71,11 +71,14 @@ func LaneOf(lanes []string) string {
 
 // AssignmentOf folds assignments: "variant:<x>" when all carry the same
 // variant, "standard" when none is a variant (shadow counts as standard, an
-// empty list too), otherwise "mixed".
+// empty list too), otherwise "mixed". An input "mixed" stays "mixed".
 func AssignmentOf(assignments []string) string {
 	variant := ""
 	other := false
 	for _, a := range assignments {
+		if a == "mixed" {
+			return "mixed"
+		}
 		if !strings.HasPrefix(a, "variant:") {
 			other = true
 			continue
