@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/pins"
 )
 
 // Dimension is what a version change is about.
@@ -131,6 +133,7 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 	type seen struct {
 		last   string
 		values map[string]bool
+		max    *pins.Version // highest parseable value seen so far
 	}
 	bySeries := map[string]*seen{}
 	var out []VersionChange
@@ -138,18 +141,126 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 		series, val := r.series, r.val
 		s := bySeries[series]
 		if s == nil {
-			bySeries[series] = &seen{last: val, values: map[string]bool{val: true}}
+			s = &seen{last: val, values: map[string]bool{val: true}}
+			if v, err := pins.ParseVersion(val); err == nil {
+				s.max = &v
+			}
+			bySeries[series] = s
 			continue
 		}
 		if val == s.last || s.values[val] {
 			continue
 		}
+		skip := false
+		if v, err := pins.ParseVersion(val); err == nil {
+			if dim != DimModel && s.max != nil && versionLess(v, *s.max) {
+				skip = true
+			}
+			if s.max == nil || versionLess(*s.max, v) {
+				s.max = &v
+			}
+		}
 		out = append(out, VersionChange{
 			Dimension: dim, Series: series, Old: s.last, New: val,
-			RunID: r.runID, SessionID: r.sess, At: r.at,
+			RunID: r.runID, SessionID: r.sess, At: r.at, Skip: skip,
 		})
 		s.last = val
 		s.values[val] = true
 	}
 	return out, nil
+}
+
+// versionLess orders by major, minor, patch; at equal core a prerelease sorts below the release
+// and two prereleases compare as text (enough to tell "older than seen" apart).
+func versionLess(a, b pins.Version) bool {
+	if a.Major != b.Major {
+		return a.Major < b.Major
+	}
+	if a.Minor != b.Minor {
+		return a.Minor < b.Minor
+	}
+	if a.Patch != b.Patch {
+		return a.Patch < b.Patch
+	}
+	if a.Pre == b.Pre {
+		return false
+	}
+	if a.Pre == "" {
+		return false
+	}
+	if b.Pre == "" {
+		return true
+	}
+	return a.Pre < b.Pre
+}
+
+// VersionMarker is one version change placed on its ISO week for the charts.
+type VersionMarker struct {
+	Week time.Time // Monday 00:00 UTC of the ISO week of the change
+	Kind Dimension
+	Text string
+}
+
+// VersionMarkers returns a marker per version change, in the order of VersionChanges. It only reads.
+func VersionMarkers(ctx context.Context, db *sql.DB) ([]VersionMarker, error) {
+	changes, err := VersionChanges(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VersionMarker, 0, len(changes))
+	for _, c := range changes {
+		text := string(c.Dimension)
+		if c.Series != "" {
+			text += " " + c.Series
+		}
+		text += " " + c.Old + "→" + c.New
+		out = append(out, VersionMarker{Week: isoWeekStart(c.At), Kind: c.Dimension, Text: text})
+	}
+	return out, nil
+}
+
+func isoWeekStart(t time.Time) time.Time {
+	t = t.UTC()
+	back := (int(t.Weekday()) + 6) % 7 // Monday = 0
+	return time.Date(t.Year(), t.Month(), t.Day()-back, 0, 0, 0, 0, time.UTC)
+}
+
+// ComponentsFor names the components a change of the dimension can influence.
+func ComponentsFor(d Dimension) []string {
+	switch d {
+	case DimSuperpowers:
+		return []string{"task_review", "final_review"}
+	case DimModel:
+		return []string{"model"}
+	case DimHarness:
+		return []string{"harness"}
+	}
+	return nil
+}
+
+// LatestProposals keeps the last change per (dimension, series). A series whose last change is a
+// Skip gives nothing, not an earlier change.
+func LatestProposals(changes []VersionChange) []VersionChange {
+	type key struct {
+		d Dimension
+		s string
+	}
+	idx := map[key]int{}
+	var last []VersionChange
+	for _, c := range changes {
+		k := key{c.Dimension, c.Series}
+		if i, ok := idx[k]; ok {
+			last[i] = c
+			continue
+		}
+		idx[k] = len(last)
+		last = append(last, c)
+	}
+	var out []VersionChange
+	for _, c := range last {
+		if !c.Skip && len(ComponentsFor(c.Dimension)) > 0 {
+			out = append(out, c)
+		}
+	}
+	return out
 }
