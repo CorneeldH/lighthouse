@@ -65,7 +65,6 @@ func FindDecisionIssue(ctx context.Context, f forge.Forge, kind, label, state st
 		return nil, fmt.Errorf("decision issue state %q: want open or closed", state)
 	}
 	login, err := f.Login(ctx)
-	_ = login
 	if err != nil {
 		return nil, fmt.Errorf("login: %w", err)
 	}
