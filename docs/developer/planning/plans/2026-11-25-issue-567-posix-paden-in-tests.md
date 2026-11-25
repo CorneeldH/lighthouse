@@ -83,6 +83,7 @@ git commit -m "test(usage): absolute paden via testpath in usage, usageguard, st
 - Produces: niets.
 
 - [ ] **Step 1: Vervang `"/abs/instr.md"` en `"/abs/mcp.json"`** (`carrier_test.go:20,34,35,64`, `kennforge/contract_test.go:60`, `kennforge/adapter_test.go:555`, `local/contract_test.go:46`) door een package-variabele of helper, bv. `instrFile := testpath.Abs("abs", "instr.md")`, en gebruik die ook in de verwachte argumentenlijst (`--append-system-prompt-file`). `kennforge.TestSpawnAccepted` (`adapter_test.go` rond regel 580) moet de fout `carrier: instructions file … is not absolute` niet meer geven.
+- [ ] **Step 1b: Zet ook `"/state"`** om (de `stateDir` van elke `NewCarrier`-aanroep in `carrier_test.go:27,43,57,88,105,268,302,317`; `NewCarrier` weigert hem, `carrier.go:78`), samen met de verwachte `LIGHTHOUSE_STATE_DIR`, en `"/x"` in `git_test.go:203,206`. Maak er een grep over elk `"/…"`-literal in de genoemde bestanden van, niet alleen over de regels hierboven.
 - [ ] **Step 2: Doorloop de 14 treffers in `kennforge/client_test.go`** en de 4 in `transcript_test.go`: per treffer beslissen of het een invoer is die de code op `IsAbs` toetst (omzetten) of een kale string-join (laten staan, zoals `/d/usage-window.json` in `usage/state_test.go:42-54`). Zet in het commitbericht welke je liet staan.
 - [ ] **Step 3: Draai** `go test -race ./internal/workplace/...` (PASS) en `GOOS=windows go vet ./internal/workplace/...`.
 - [ ] **Step 4: Commit**
@@ -102,7 +103,7 @@ git commit -m "test(workplace): absolute paden via testpath in workplace en kenn
 - Produces: niets.
 
 - [ ] **Step 1: Omzetten volgens de regel van Task 2**: invoer en verwachting via `testpath.Abs` en `filepath.Join`.
-- [ ] **Step 2: `repoconfig` en `nodeserve`** vonden geen treffer in de eenvoudige scan; zoek ze op met `grep -n 'is not absolute\|neither XDG_STATE_HOME nor HOME' internal/repoconfig internal/nodeserve` en met de lijst uit het issue (de Windows-uitvoer van #559 staat in de run uit het issue). Gevallen waarin `"/abs"` bewust een foutpad toetst (`repoconfig_test.go:496`, `report.dir`) blijven op Linux een foutpad; op Windows geldt het nog steeds als niet-absoluut, dus daar is geen skip nodig, tenzij de test faalt.
+- [ ] **Step 2: `repoconfig` en `nodeserve`** vonden geen treffer in de eenvoudige scan; zoek ze op met `grep -rn '"/' internal/repoconfig internal/nodeserve --include=*_test.go` en met de lijst uit het issue (de Windows-uitvoer van #559 staat in de run uit het issue). De rij `absolute dir` (`repoconfig_test.go:496`, `report.dir = "/abs"`) hoort bij Task 6: op Windows is `/abs` niet absoluut en geeft de code geen fout, dus die rij krijgt daar een skip.
 - [ ] **Step 3: `dispatch.TestRelocate`**: lees de test, vervang de POSIX-wortel door `testpath.Abs` en bouw de verwachting met `filepath.Join`.
 - [ ] **Step 4: Draai** `go test -race` op deze packages en `GOOS=windows go vet` erop.
 - [ ] **Step 5: Commit** (één commit per package-groep mag, liever per package als de diff groot is):
@@ -135,7 +136,7 @@ git commit -m "test: HOME gaat samen met USERPROFILE via testpath.SetHome (#567)
 ### Task 6: Test die `/abs` als absoluut toetst slaat op Windows over
 
 **Files:**
-- Modify: de test die expres controleert dat een POSIX-pad absoluut geldt. Kandidaat: `internal/config/config_test.go:253` (`"/abs/./x" → "/abs/x"`). Zoek verder met `grep -rn 'IsAbs' internal --include=*_test.go`.
+- Modify: de test die expres controleert dat een POSIX-pad absoluut geldt. Kandidaat: de rij `absolute dir` in `internal/repoconfig/repoconfig_test.go:496` (`dir = "/abs"` moet een `report.dir`-fout geven, maar `filepath.IsAbs("/abs")` is op Windows onwaar, `internal/repoconfig/repoconfig.go:490`, dus daar wordt het pad geaccepteerd). `config.TestPyPath` (`internal/config/config_test.go:253`) is GEEN kandidaat: `pyPath` is zuivere `/`-stringverwerking en slaagt op Windows. Zoek verder met `grep -rn 'IsAbs' internal --include=*_test.go`.
 
 **Interfaces:**
 - Consumes: `testpath.SkipOnWindowsPOSIXAbs` (Task 1).
@@ -153,15 +154,15 @@ git commit -m "test: tests van POSIX-paden slaan op Windows over met reden (#567
 ### Task 7: Changelog en eindcontrole
 
 **Files:**
-- Create: `changelog.d/issue-567-posix-paden-in-tests.md`
+- Create: `changelog.d/issue-567-posix-paden-als-absoluut-pad-in-tests-en.md` (de branchnaam, zie `docs/releasing.md`)
 
-- [ ] **Step 1: Schrijf het fragment** in het Engels, met `type: changed`, in de vorm van `changelog.d/issue-91-lighthouse-uninstall.md` (front matter `---\ntype: …\n---`, één alinea die eindigt op `(#567)`). Inhoud: tests use one helper for absolute paths and set `USERPROFILE` with `HOME`, so they pass on Windows; no change to shipped behavior.
+- [ ] **Step 1: Schrijf het fragment** in het Engels, met `type: internal` (`docs/releasing.md`: tests starten geen release), in de vorm van `changelog.d/issue-91-lighthouse-uninstall.md` (front matter `---\ntype: …\n---`, één alinea die eindigt op `(#567)`). Inhoud: tests use one helper for absolute paths and set `USERPROFILE` with `HOME`, so they pass on Windows; no change to shipped behavior.
 - [ ] **Step 2: Volledige controle op Linux:** `go build ./... && go vet ./... && go test -race ./...` en `lighthouse imports check`; verwacht alles groen.
 - [ ] **Step 3: Cross-compile:** `GOOS=windows go vet ./...` en `GOOS=darwin go vet ./...`.
-- [ ] **Step 4: Leg vast wat dit niet bewijst.** `windows-measure.yml` draait de Windows-tests (`go test -shuffle=on ./...`, job `tests`) alleen bij een push naar `main` of `workflow_dispatch`, niet op PR's, en de stappen zijn `continue-on-error`. De laatste AC ("slagen op Windows in `windows-measure`") is dus pas na de merge te lezen: in de PR-body onder bewijs benoemen als *na merge te controleren* met het commando `gh workflow run windows-measure.yml` en het artefact `go-test.txt`, niet als bewezen.
+- [ ] **Step 4: Leg vast wat dit niet bewijst.** `windows-measure.yml` draait de Windows-tests (`go test -shuffle=on ./...`, job `tests`) alleen bij een push naar `main` of `workflow_dispatch`, niet op PR's, en de stappen zijn `continue-on-error`. De laatste AC ("slagen op Windows in `windows-measure`") is dus pas na de merge te lezen: in de PR-body onder bewijs benoemen als *na merge te controleren* met het commando `gh workflow run windows-measure.yml --ref <branch>` (zonder `--ref` meet het `main`; de job `tests` draait op elke ref) en het artefact `go-test.txt` van `windows-measure-tests`. Wacht er niet op en poll niet: dispatch na de push en noteer het in de PR-body, niet als bewezen.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add changelog.d/issue-567-posix-paden-in-tests.md
+git add changelog.d/issue-567-posix-paden-als-absoluut-pad-in-tests-en.md
 git commit -m "docs(changelog): fragment voor #567"
 ```
