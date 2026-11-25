@@ -145,9 +145,11 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
-    const STATE_LABELS = ['needs mind', 'to do', 'active', 'needs hands', 'done']
+    const PROGRESS = ['to do', 'active', 'done']
+    const LABELS = ['needs mind', 'blocked', 'needs hands']
     const milestones = () => within(screen.getByRole('list', { name: 'Milestones', hidden: false }))
-    const statusList = () => screen.getByRole('list', { name: 'Status' })
+    const progressList = () => screen.getByRole('list', { name: 'Progress' })
+    const labelsList = () => screen.getByRole('list', { name: 'Labels' })
     const legend = milestones
     const swatches = () =>
       Array.from(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li'))
@@ -180,45 +182,47 @@ describe('PrioritiesTab', () => {
       expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta'])
     })
 
-    it('has a Milestones list and a Status list with headings on each tab', async () => {
+    it('has a Milestones, a Progress and a Labels list with headings on each tab', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
       for (const name of [/^Dependencies/, /^Milestones/, /Without milestone/]) {
         fireEvent.click(screen.getByRole('button', { name }))
         expect(screen.getByRole('list', { name: 'Milestones' })).toBeTruthy()
-        expect(statusList()).toBeTruthy()
+        expect(progressList()).toBeTruthy()
+        expect(labelsList()).toBeTruthy()
+        expect(screen.queryByRole('list', { name: 'Status' })).toBeNull()
         expect(screen.getAllByText('Milestones', { selector: 'span,h3,p,div' }).length).toBeGreaterThan(0)
-        expect(screen.getAllByText('Status').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Progress').length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Labels').length).toBeGreaterThan(0)
+        expect(screen.queryByText('Status')).toBeNull()
         expect(screen.queryByRole('list', { name: 'Legend' })).toBeNull()
       }
     })
 
-    it('the Status list has the five states in order, no shaping item and no picked-up pill', async () => {
+    it('the Progress and Labels lists hold the shapes in order, the cross for blocked, no picked-up pill', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
-      const items = Array.from(statusList().querySelectorAll('li'))
-      expect(items.map((li) => li.textContent)).toEqual(STATE_LABELS)
-      const states = screen.getAllByTestId('legend-block')
-      expect(states.map((b) => b.getAttribute('data-state'))).toEqual([
-        'needs_mind',
-        'ready',
-        'active',
-        'needs_hands',
-        'done',
-      ])
-      expect(screen.queryByTestId('legend-shaping')).toBeNull()
-      expect(within(statusList()).queryByText('picked up')).toBeNull()
-      expect(within(statusList()).queryByText('needs a human')).toBeNull()
+      const text = (l: HTMLElement) => Array.from(l.querySelectorAll('li')).map((li) => li.textContent)
+      expect(text(progressList())).toEqual(PROGRESS)
+      expect(text(labelsList())).toEqual(LABELS)
+      const state = (l: HTMLElement) => Array.from(l.querySelectorAll('[data-testid="legend-block"]')).map((b) => b.getAttribute('data-state'))
+      expect(state(progressList())).toEqual(['ready', 'active', 'done'])
+      expect(state(labelsList())).toEqual(['needs_mind', 'ready', 'needs_hands'])
+      const blocks = labelsList().querySelectorAll('[data-testid="legend-block"]')
+      expect(blocks[0].querySelector('svg')).toBeNull()
+      expect(blocks[1].querySelector('svg')).not.toBeNull()
+      expect(blocks[2].querySelector('svg')).toBeNull()
+      expect(within(progressList()).queryByText('picked up')).toBeNull()
     })
 
     it('underlines only the labels needs mind and needs hands', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
-      const underlined = Array.from(statusList().querySelectorAll('li'))
-        .filter((li) => li.querySelector('[data-underlined="true"]') !== null)
+      const underlined = Array.from(document.querySelectorAll('li'))
+        .filter((li) => li.querySelector('span[data-underlined="true"]') !== null)
         .map((li) => li.textContent)
       expect(underlined).toEqual(['needs mind', 'needs hands'])
     })
@@ -250,7 +254,7 @@ describe('PrioritiesTab', () => {
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
       expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(0)
-      expect(Array.from(statusList().querySelectorAll('li')).map((li) => li.textContent)).toEqual(STATE_LABELS)
+      expect(Array.from(labelsList().querySelectorAll('li')).map((li) => li.textContent)).toEqual(LABELS)
     })
 
     it('a stored selection of only stale slugs counts as all on', async () => {

@@ -70,4 +70,20 @@ describe('Block shapes', () => {
       expect(block().querySelector('svg')).toBeNull()
     },
   )
+
+  it.each(['ready', 'needs_mind', 'active', 'needs_hands', 'done'] as IssueStateName[])(
+    'lays the cross over the shape of %s and keeps the number underline rule',
+    (state) => {
+      render(<Block state={state} blocked color="#2f5bd8" title="t" label={7} />)
+      expect(block().getAttribute('data-state')).toBe(state)
+      expect(block().querySelectorAll('svg')).toHaveLength(1)
+      expect(screen.getByText('7').getAttribute('data-underlined') === 'true').toBe(UNDERLINED.includes(state))
+    },
+  )
+
+  it('keeps the dashed outline of needs_mind under the cross', () => {
+    render(<Block state="needs_mind" blocked color="#2f5bd8" title="t" />)
+    expect(block().style.outline).toBe('1.5px dashed var(--foreground)')
+    expect(block().querySelector('svg')).not.toBeNull()
+  })
 })

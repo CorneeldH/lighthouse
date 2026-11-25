@@ -238,6 +238,14 @@ describe('DepsView', () => {
     expect(within(card).getByTestId('card-status').getAttribute('data-state')).toBe('ready')
   })
 
+  it('draws the cross in the status block of a blocked card, also for needs_mind', () => {
+    view([repo(A, [iss(1, [], { labels: ['blocked_external'] }), iss(2, [], { labels: ['needs_mind', 'blocked_external'] }), iss(3)])], [A])
+    const cross = (nr: number) => within(screen.getByTestId(`loose-${A}#${nr}`)).getByTestId('card-status').querySelector('svg')
+    expect(cross(1)).not.toBeNull()
+    expect(cross(2)).not.toBeNull()
+    expect(cross(3)).toBeNull()
+  })
+
   it('positions a graph card absolutely through its inline style', () => {
     view(CHAIN, [A])
     const card = node(`${A}#1`)
