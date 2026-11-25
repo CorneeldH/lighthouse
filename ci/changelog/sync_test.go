@@ -78,7 +78,7 @@ func TestSyncPatchSectionOrder(t *testing.T) {
 	}
 	got := changelogOf(t, main)
 	i20, i17, i16 := strings.Index(got, "## [v0.2.0]"), strings.Index(got, "## [v0.1.7]"), strings.Index(got, "## [v0.1.6]")
-	if i20 < 0 || i17 < 0 || i16 < 0 || !(i20 < i17 && i17 < i16) {
+	if i20 < 0 || i17 < 0 || i16 < 0 || i20 >= i17 || i17 >= i16 {
 		t.Fatalf("order wrong (v0.2.0 %d, v0.1.7 %d, v0.1.6 %d):\n%s", i20, i17, i16, got)
 	}
 }

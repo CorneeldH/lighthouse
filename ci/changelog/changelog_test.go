@@ -241,16 +241,6 @@ func TestCheck(t *testing.T) {
 	})
 }
 
-func frag(typ string) fragment { return fragment{path: "f.md", typ: typ, text: "Entry."} }
-
-func fragsOf(types ...string) []fragment {
-	var out []fragment
-	for _, typ := range types {
-		out = append(out, frag(typ))
-	}
-	return out
-}
-
 func TestRenderSection(t *testing.T) {
 	frags := []fragment{
 		{typ: "removed", text: "Gone."}, {typ: "internal", text: "Secret."},
