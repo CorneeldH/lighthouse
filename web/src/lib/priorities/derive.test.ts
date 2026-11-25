@@ -23,9 +23,8 @@ const iss = (
   title: `t${number}`,
   url: `u${number}`,
   status: 'To do',
-  label: '',
+  labels: [],
   open_question: false,
-  needs_label: false,
   prio_weight: 0,
   factor: 0,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
@@ -200,45 +199,32 @@ interface StateCase {
   run?: string
   blockers?: Array<{ issue: number; state: string }>
   open_question?: boolean
-  want: { state: string }
+  want: { state: string; blocked: boolean }
 }
-
-// Rank of the label keys, lowest first, as the API reports the one winning key.
-const LABEL_RANK = [
-  'needs_mind',
-  'blocked_issue',
-  'blocked_external',
-  'needs_hands',
-]
-
-// Any needs_* label on the issue, built from the fixture labels like the server does.
-const NEEDS_LABELS = ['needs_mind', 'needs_hands']
 
 describe('issueState follows the shared state fixture', () => {
   const openCases = (cases as StateCase[]).filter((c) => !c.closed)
   it.each(openCases)('$name', (c) => {
-    const label = LABEL_RANK.find((k) => c.labels?.includes(k)) ?? ''
     const open = (c.blockers ?? []).filter((b) => b.state === 'OPEN')
     const issue = iss(1, [], {
       status: c.status ?? '',
-      label,
-      needs_label: NEEDS_LABELS.some((k) => c.labels?.includes(k)),
+      labels: c.labels ?? [],
       open_question: c.open_question ?? false,
       blocked_by: open.length > 0 ? open.map((b) => ({ repo: R, issue: b.issue })) : null,
     })
     const runs: Run[] = c.run ? [{ repo: R, issue: 1, state: c.run, phase: 'sdd' }] : []
-    expect(issueState(issue, runs, R)).toBe(c.want.state)
+    expect(issueState(issue, runs, R)).toEqual(c.want)
   })
 })
 
 describe('issueState / isUphill', () => {
   const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
   it('a done run does not make an issue active', () => {
-    expect(issueState(iss(1), [run('done', 'sdd')], R)).toBe('ready')
+    expect(issueState(iss(1), [run('done', 'sdd')], R).state).toBe('ready')
   })
   it('a run of another issue does not make an issue active', () => {
     const other: Run = { repo: R, issue: 2, state: 'open', phase: 'sdd' }
-    expect(issueState(iss(1), [other], R)).toBe('ready')
+    expect(issueState(iss(1), [other], R).state).toBe('ready')
   })
   it('unknown phase is downhill, spec-review is uphill', () => {
     expect(isUphill(undefined)).toBe(false)
@@ -369,12 +355,13 @@ describe('milestoneRows blocks', () => {
     return milestoneRows(rs, buildGraph(rs, []))[0]
   }
 
-  it('groups done, needs_human, active, ready, needs_shaping, blocked in that order, by work order inside a group', () => {
+  it('groups done, needs_hands, active, ready (without a cross first), needs_mind in that order, by work order inside a group', () => {
     const row = mk([
       iss(1, [[R, 9]], { milestone: ref }),
-      iss(2, [], { milestone: ref, label: 'needs_mind' }),
+      iss(7, [], { milestone: ref, labels: ['blocked_external'] }),
+      iss(2, [], { milestone: ref, labels: ['needs_mind'] }),
       iss(3, [], { milestone: ref }),
-      iss(4, [], { milestone: ref, status: 'In progress', open_question: true }),
+      iss(4, [], { milestone: ref, status: 'In progress', labels: ['needs_hands'] }),
       iss(5, [[R, 3]], { milestone: ref }),
       iss(6, [], { milestone: ref, status: 'Controller' }),
       iss(9, [], { milestone: ref }),
@@ -382,13 +369,21 @@ describe('milestoneRows blocks', () => {
     expect(row.blocks.map((b) => [b.nr, b.state])).toEqual([
       [20, 'done'],
       [30, 'done'],
-      [4, 'needs_human'],
+      [4, 'needs_hands'],
       [6, 'active'],
       [3, 'ready'],
       [9, 'ready'],
-      [2, 'needs_shaping'],
-      [1, 'blocked'],
-      [5, 'blocked'],
+      [7, 'ready'],
+      [1, 'ready'],
+      [5, 'ready'],
+      [2, 'needs_mind'],
+    ])
+    expect(row.blocks.filter((b) => b.state === 'ready').map((b) => b.blocked)).toEqual([
+      false,
+      false,
+      true,
+      true,
+      true,
     ])
     expect(row.blocks[0]).toEqual({
       nr: 20,
@@ -396,15 +391,16 @@ describe('milestoneRows blocks', () => {
       title: 'c20',
       url: 'u20',
       state: 'done',
+      blocked: false,
     })
   })
 
   it('orders a group by dependency depth before number', () => {
     const row = mk([
-      iss(1, [[R, 5]], { milestone: ref, label: 'needs_mind' }),
-      iss(5, [], { milestone: ref, label: 'needs_mind' }),
+      iss(1, [[R, 5]], { milestone: ref, labels: ['needs_mind'] }),
+      iss(5, [], { milestone: ref, labels: ['needs_mind'] }),
     ])
-    expect(row.blocks.filter((b) => b.state === 'needs_shaping').map((b) => b.nr)).toEqual([5, 1])
+    expect(row.blocks.filter((b) => b.state === 'needs_mind').map((b) => b.nr)).toEqual([5, 1])
   })
 
   it('an outside blocker without issue data is in outside, not in blocks', () => {

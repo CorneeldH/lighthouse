@@ -13,6 +13,7 @@ export interface GNode {
   external: boolean
   active: boolean
   state: IssueStateName
+  blocked: boolean
   uphill: boolean
   depth: number
   waiting: number
@@ -48,31 +49,31 @@ function liveRun(runs: Run[], repo: string, nr: number): Run | undefined {
   )
 }
 
-export type IssueStateName =
-  | 'done'
-  | 'needs_shaping'
-  | 'needs_human'
-  | 'active'
-  | 'ready'
-  | 'blocked'
+export type IssueStateName = 'done' | 'needs_mind' | 'needs_hands' | 'active' | 'ready'
 
-const NEEDS_LATER = new Set(['needs_hands'])
-
-// The state of an open issue: the first row of the state table that fits (same rows as
-// issuestate.Of in Go); a done issue is never in `issues`.
-export function issueState(issue: Issue, runs: Run[], repo: string): IssueStateName {
+// The state of an open issue and whether a blockade lies on it: the first row that fits (same
+// rows as issuestate.Of in Go); a done issue is never in `issues`. A blockade is a blocked_*
+// label or an open blocker.
+export function issueState(
+  issue: Issue,
+  runs: Run[],
+  repo: string,
+): { state: IssueStateName; blocked: boolean } {
+  const labels = issue.labels ?? []
+  const blocked =
+    labels.includes('blocked_issue') ||
+    labels.includes('blocked_external') ||
+    (issue.blocked_by?.length ?? 0) > 0
+  if (labels.includes('needs_mind') || issue.open_question) return { state: 'needs_mind', blocked }
+  if (labels.includes('needs_hands') && !blocked) return { state: 'needs_hands', blocked }
   if (
     liveRun(runs, repo, issue.number) !== undefined ||
-    issue.status === 'In progress' ||
-    issue.status === 'Controller'
+    issue.status === 'Controller' ||
+    (issue.status === 'In progress' && !blocked)
   ) {
-    if (issue.label === 'needs_mind') return 'needs_shaping'
-    return issue.needs_label || issue.open_question ? 'needs_human' : 'active'
+    return { state: 'active', blocked }
   }
-  if (issue.label === 'needs_mind') return 'needs_shaping'
-  if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) return 'blocked'
-  if (NEEDS_LATER.has(issue.label)) return 'needs_human'
-  return 'ready'
+  return { state: 'ready', blocked }
 }
 
 export function isUphill(run: Run | undefined): boolean {
@@ -141,6 +142,7 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     external: true,
     active: false,
     state: 'ready',
+    blocked: false,
     uphill: false,
     depth: 0,
     waiting: 0,
@@ -154,9 +156,9 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   for (const repo of repos) {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
-      const state = issueState(issue, runs, repo.slug)
-      // `active` = the issue is being worked on, whatever its final status (needs_human and
-      // needs_shaping can hold for an issue with a live run).
+      const { state, blocked } = issueState(issue, runs, repo.slug)
+      // `active` = the issue is being worked on, whatever its final status (needs_hands and
+      // needs_mind can hold for an issue with a live run).
       const active =
         run !== undefined || issue.status === 'In progress' || issue.status === 'Controller'
       const key = keyOf(repo.slug, issue.number)
@@ -168,6 +170,7 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
         external: false,
         active,
         state,
+        blocked,
         uphill: active && isUphill(run),
         factor: issue.factor,
         prioWeight: issue.prio_weight,
@@ -278,16 +281,10 @@ export interface Block {
   title: string
   url: string
   state: IssueStateName
+  blocked: boolean
 }
 
-const GROUP_ORDER: IssueStateName[] = [
-  'done',
-  'needs_human',
-  'active',
-  'ready',
-  'needs_shaping',
-  'blocked',
-]
+const GROUP_ORDER: IssueStateName[] = ['done', 'needs_hands', 'active', 'ready', 'needs_mind']
 
 export interface MilestoneRow {
   blocks: Block[]
@@ -352,6 +349,7 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         title: n.title,
         url: n.url,
         state: n.state,
+        blocked: n.blocked,
       })
       const doneBlocks: Block[] = [...(m.closed ?? [])]
         .sort((a, b) => a.number - b.number)
@@ -361,14 +359,19 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
           title: c.title,
           url: c.url,
           state: 'done',
+          blocked: false,
         }))
       // Outside blockers have their own column (row.outside); blocks holds the milestone's own.
       const workBlocks = order.map(toBlock)
       const blocks = [
         ...doneBlocks,
-        ...GROUP_ORDER.filter((g) => g !== 'done').flatMap((g) =>
-          workBlocks.filter((b) => b.state === g),
-        ),
+        ...GROUP_ORDER.filter((g) => g !== 'done').flatMap((g) => {
+          const group = workBlocks.filter((b) => b.state === g)
+          // To do: the ones without a cross go first.
+          return g === 'ready'
+            ? [...group.filter((b) => !b.blocked), ...group.filter((b) => b.blocked)]
+            : group
+        }),
       ]
       const open = own.length
       const empty = open === 0 && m.done === 0

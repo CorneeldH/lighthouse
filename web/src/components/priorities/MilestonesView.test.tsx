@@ -44,9 +44,8 @@ const iss = (
   title: `title-${number}`,
   url: `https://forge/${number}`,
   status: 'To do',
-  label: '',
+  labels: [],
   open_question: false,
-  needs_label: false,
   prio_weight: 0,
   factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
@@ -93,14 +92,14 @@ describe('MilestonesView', () => {
     expect(within(row(`${A}#m1`)).getByText(/· 2 outside blockers$/)).toBeTruthy()
   })
 
-  it('draws one block per issue grouped by state: done, needs human, active, ready, needs shaping, blocked', () => {
+  it('draws one block per issue grouped by state: done, needs hands, active, ready, needs mind', () => {
     const r = repo(
       A,
       [
         iss(1, 1, [[A, 2]]),
-        iss(2, 1, [], { label: 'needs_mind' }),
+        iss(2, 1, [], { labels: ['needs_mind'] }),
         iss(3, 1),
-        iss(4, 1, [], { status: 'In progress', open_question: true }),
+        iss(4, 1, [], { status: 'In progress', labels: ['needs_hands'] }),
         iss(5, 1, [], { status: 'In progress' }),
       ],
       [{ ...ms(1, 1, 5), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
@@ -110,23 +109,23 @@ describe('MilestonesView', () => {
       blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.title]),
     ).toEqual([
       ['done', '9 c9'],
-      ['needs_human', '4 title-4'],
+      ['needs_hands', '4 title-4'],
       ['active', '5 title-5'],
       ['ready', '3 title-3'],
-      ['needs_shaping', '2 title-2'],
-      ['blocked', '1 title-1'],
+      ['ready', '1 title-1'],
+      ['needs_mind', '2 title-2'],
     ])
   })
 
-  it('draws a needs_shaping block as a dashed shape and a needs_human block as stripes', () => {
+  it('draws a needs_mind block as a dashed shape and a needs_hands block as stripes', () => {
     view([
-      repo(A, [iss(1, 1, [], { label: 'needs_mind' }), iss(2, 1, [], { status: 'In progress', open_question: true })], [ms(1, 0, 2)]),
+      repo(A, [iss(1, 1, [], { labels: ['needs_mind'] }), iss(2, 1, [], { status: 'In progress', labels: ['needs_hands'] })], [ms(1, 0, 2)]),
     ])
-    const [human, shaping] = blocks(`${A}#m1`)
-    expect(human.getAttribute('data-state')).toBe('needs_human')
-    expect(human.className).toContain('lh-stripe')
-    expect(shaping.getAttribute('data-state')).toBe('needs_shaping')
-    expect(shaping.style.outline).toBe('1.5px dashed var(--foreground)')
+    const [hands, mind] = blocks(`${A}#m1`)
+    expect(hands.getAttribute('data-state')).toBe('needs_hands')
+    expect(hands.className).toContain('lh-stripe')
+    expect(mind.getAttribute('data-state')).toBe('needs_mind')
+    expect(mind.style.outline).toBe('1.5px dashed var(--foreground)')
     expect(blocks(`${A}#m1`).every((x) => !x.hasAttribute('data-needs-human'))).toBe(true)
   })
 

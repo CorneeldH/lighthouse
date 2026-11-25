@@ -29,7 +29,8 @@ type stateCase struct {
 	} `json:"blockers"`
 	OpenQuestion bool `json:"open_question"`
 	Want         struct {
-		State string `json:"state"`
+		State   string `json:"state"`
+		Blocked bool   `json:"blocked"`
 	} `json:"want"`
 }
 
@@ -51,7 +52,7 @@ func TestOfCases(t *testing.T) {
 			for _, b := range c.Blockers {
 				in.Blockers = append(in.Blockers, forge.Blocker{Issue: b.Issue, State: b.State})
 			}
-			want := Result{State: State(c.Want.State)}
+			want := Result{State: State(c.Want.State), Blocked: c.Want.Blocked}
 			if got := Of(in, keyLabels); got != want {
 				t.Errorf("Of = %+v, want %+v", got, want)
 			}

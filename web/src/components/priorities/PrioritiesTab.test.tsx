@@ -14,9 +14,9 @@ const PRIORITIES = {
     {
       slug: 'a/x',
       issues: [
-        { number: 1, title: 't1', url: 'u1', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null, milestone: M },
-        { number: 2, title: 't2', url: 'u2', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
-        { number: 3, title: 't3', url: 'u3', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null },
+        { number: 1, title: 't1', url: 'u1', status: 'To do', labels: [], open_question: false, blocked_by: null, milestone: M },
+        { number: 2, title: 't2', url: 'u2', status: 'To do', labels: [], open_question: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
+        { number: 3, title: 't3', url: 'u3', status: 'To do', labels: [], open_question: false, blocked_by: null },
       ],
       milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2 }],
     },
@@ -134,7 +134,7 @@ describe('PrioritiesTab', () => {
 
   describe('legend and colours', () => {
     const iss = (n: number, ms: { number: number; title: string } | null) => ({
-      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null,
+      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', labels: [], open_question: false, blocked_by: null,
       ...(ms ? { milestone: { ...ms, state: 'open' } } : {}),
     })
     const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1 })
@@ -145,7 +145,7 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
-    const STATE_LABELS = ['blocked', 'needs shaping', 'to do', 'active', 'needs human', 'done']
+    const STATE_LABELS = ['needs mind', 'to do', 'active', 'needs hands', 'done']
     const milestones = () => within(screen.getByRole('list', { name: 'Milestones', hidden: false }))
     const statusList = () => screen.getByRole('list', { name: 'Status' })
     const legend = milestones
@@ -194,7 +194,7 @@ describe('PrioritiesTab', () => {
       }
     })
 
-    it('the Status list has the six states in order, no shaping item and no picked-up pill', async () => {
+    it('the Status list has the five states in order, no shaping item and no picked-up pill', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
@@ -202,11 +202,10 @@ describe('PrioritiesTab', () => {
       expect(items.map((li) => li.textContent)).toEqual(STATE_LABELS)
       const states = screen.getAllByTestId('legend-block')
       expect(states.map((b) => b.getAttribute('data-state'))).toEqual([
-        'blocked',
-        'needs_shaping',
+        'needs_mind',
         'ready',
         'active',
-        'needs_human',
+        'needs_hands',
         'done',
       ])
       expect(screen.queryByTestId('legend-shaping')).toBeNull()
@@ -214,14 +213,14 @@ describe('PrioritiesTab', () => {
       expect(within(statusList()).queryByText('needs a human')).toBeNull()
     })
 
-    it('underlines only the labels needs shaping and needs human', async () => {
+    it('underlines only the labels needs mind and needs hands', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
       const underlined = Array.from(statusList().querySelectorAll('li'))
         .filter((li) => li.querySelector('[data-underlined="true"]') !== null)
         .map((li) => li.textContent)
-      expect(underlined).toEqual(['needs shaping', 'needs human'])
+      expect(underlined).toEqual(['needs mind', 'needs hands'])
     })
 
     it('adds a grey Without milestone item once issues without a milestone are in view', async () => {
@@ -264,8 +263,8 @@ describe('PrioritiesTab', () => {
 
   describe('deps sort switch', () => {
     const I = (number: number, by: number[], prio_weight = 0) => ({
-      number, title: `t${number}`, url: `u${number}`, status: 'To do', label: '', open_question: false,
-      needs_label: false, prio_weight, factor: 0, blocked_by: by.length ? by.map((issue) => ({ repo: 'a/x', issue })) : null,
+      number, title: `t${number}`, url: `u${number}`, status: 'To do', labels: [], open_question: false,
+      prio_weight, factor: 0, blocked_by: by.length ? by.map((issue) => ({ repo: 'a/x', issue })) : null,
     })
     // Column 0: 1, 2, 3. Weights: 3 blocks two issues (2), 1 and 2 one each. Prio-weights run the other way round.
     const SORT = {

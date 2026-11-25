@@ -94,19 +94,18 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
   bordstatus `In progress` of `Controller` is (zoals `issueState` en de
   [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
-- **Toestand van een issue.** `issueState` kiest de eerste passende regel; een gesloten issue is
-  *done*. Een actief issue (live run, bordstatus `In progress` of `Controller`) is *needs shaping*
-  bij het label `needs_mind`, anders *needs human* bij een open vraag of bij `needs_hands`, anders
-  *active*. Een niet-actief issue is *needs shaping* bij `needs_mind`, *blocked* bij een label
-  `blocked_*` of open blockers, *needs human* bij `needs_hands`, anders *to do* (intern `ready`). De
-  milestone-balk tekent die zes toestanden met één vormentaal en groepeert de blokjes per
-  toestand, van links naar rechts: done, needs human, active, to do, needs shaping, blocked. De
-  legenda heeft de kopjes *Milestones* en *Status*; de volgorde onder *Status* is blocked, needs
-  shaping, to do, active, needs human, done. `lighthouse state show` drukt dezelfde status af
-  (`state: #<nr> <status>`) zonder vlag erbij. De API levert daarvoor per issue
-  `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
-  ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
-  gesloten issues (`closed`).
+- **Toestand van een issue.** `issueState` kiest de eerste passende regel: een gesloten issue is
+  *done*; het label `needs_mind` of een open vraag geeft *needs mind*; `needs_hands` zonder
+  blokkade geeft *needs hands*; een live run, bordstatus `Controller` of `In progress` zonder
+  blokkade geeft *active*; de rest is *to do* (intern `ready`). Een blokkade (label
+  `blocked_issue` of `blocked_external`, of een open blocker) is geen toestand maar een vlag
+  (`blocked`): het kruis over de vorm. Een gesloten issue is nooit geblokkeerd. De
+  milestone-balk groepeert de blokjes per toestand, van links naar rechts: done, needs hands,
+  active, to do (eerst zonder kruis), needs mind. `lighthouse state show` drukt dezelfde status
+  af (`state: #<nr> <status>`, met `, blocked` erachter bij een blokkade). De API levert daarvoor
+  per issue `labels` (de sleutels van de `needs_*`- en `blocked_*`-labels op het issue, nooit
+  `null` bij de server), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per
+  milestone de gesloten issues (`closed`, zonder labels).
 - **Prio-gewicht.** De regel van #445 (`internal/prioweight`). Elke open milestone met een rang
   (`Priority: N`) krijgt een factor: bij M zulke milestones is dat M min de plaats, vanaf 0,
   waarop zijn rang voor het eerst staat in de oplopend gesorteerde rangen; gelijke rangen delen

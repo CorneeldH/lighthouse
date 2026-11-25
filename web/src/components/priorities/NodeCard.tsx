@@ -39,7 +39,7 @@ export function NodeCard({
   onMouseLeave,
   onClick,
 }: Props): JSX.Element {
-  const underlined = node.state === 'needs_shaping' || node.state === 'needs_human'
+  const underlined = node.state === 'needs_mind' || node.state === 'needs_hands'
   return (
     <a
       href={grey && node.url === '' ? undefined : node.url}

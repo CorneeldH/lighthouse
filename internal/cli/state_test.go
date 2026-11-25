@@ -96,14 +96,16 @@ func TestStateShow(t *testing.T) {
 		want             string
 	}{
 		{name: "In progress is active", optionID: "opt-progress", status: "In progress", want: "state: #7 active\n"},
-		{name: "open blocker beats needs_hands", labels: []string{"3-needs-hands"}, optionID: "opt-todo", status: "To do",
-			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 blocked\n"},
+		{name: "open blocker keeps needs_hands from showing", labels: []string{"3-needs-hands"}, optionID: "opt-todo", status: "To do",
+			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 ready, blocked\n"},
+		{name: "open blocker on an active issue", optionID: "opt-ctrl", status: "Controller",
+			blockers: []map[string]any{{"number": 5, "state": "open"}}, want: "state: #7 active, blocked\n"},
 		{name: "parked run is active", optionID: "opt-todo", status: "To do",
 			runs: []dispatch.RunView{{Repo: "Owner/repo", Issue: 8, State: "open"}, {Repo: "Owner/repo", Issue: 7, State: "parked"}},
 			want: "state: #7 active\n"},
 		{name: "active with needs_hands needs a human", labels: []string{"3-needs-hands"}, optionID: "opt-ctrl", status: "Controller",
-			want: "state: #7 needs_human\n"},
-		{name: "not on the board", labels: []string{"3-needs-mind"}, want: "state: #7 needs_shaping\n"},
+			want: "state: #7 needs_hands\n"},
+		{name: "not on the board", labels: []string{"3-needs-mind"}, want: "state: #7 needs_mind\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateToml(t, stateLabels, true)
@@ -258,13 +260,13 @@ func TestStateRunsOpenNextToAServe(t *testing.T) {
 	}
 }
 
-// Red when Show stops writing "needs human" for an open 🤖 Vraag on an active issue.
-func TestStateShowReportsOpenQuestionNeedsHuman(t *testing.T) {
+// Red when Show stops writing "needs_mind" for an open 🤖 Vraag on an active issue.
+func TestStateShowReportsOpenQuestionNeedsMind(t *testing.T) {
 	stateToml(t, stateLabels, true)
 	srv := stateServer(t, nil, "opt-ctrl", "Controller")
 	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "🤖 Vraag\n\nWelke kant op?", "user": map[string]any{"login": "lh-bot"}}}}
 	code, out, errOut := runState(t, srv, nil, "show", "7")
-	if want := "state: #7 needs_human\n"; code != 0 || out != want || errOut != "" {
+	if want := "state: #7 needs_mind\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state show 7 = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
 }

@@ -100,7 +100,11 @@ func Show(ctx context.Context, env Env, nrArg string, out io.Writer) int {
 		return fail(out, err, "")
 	}
 	r := Of(in, t.labels)
-	_, _ = fmt.Fprintf(out, "state: #%d %s\n", nr, r.State)
+	suffix := ""
+	if r.Blocked {
+		suffix = ", blocked"
+	}
+	_, _ = fmt.Fprintf(out, "state: #%d %s%s\n", nr, r.State, suffix)
 	return 0
 }
 

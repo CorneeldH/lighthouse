@@ -133,6 +133,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
                 key={n.key}
                 testId="outside"
                 state={n.state}
+                blocked={n.blocked}
                 color={colorOf(colors, n)}
                 borderColor={colorOf(colors, n)}
                 title={`${n.number} ${n.title}`}
@@ -171,6 +172,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
                 <Block
                   key={`${b.repo}#${b.nr}`}
                   state={b.state}
+                  blocked={b.blocked}
                   color={color}
                   title={`${b.nr} ${b.title}`}
                   href={b.url || undefined}

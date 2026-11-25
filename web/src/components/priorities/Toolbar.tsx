@@ -25,15 +25,14 @@ interface ToolbarProps {
 }
 
 const STATES: Array<{ key: IssueStateName; label: string }> = [
-  { key: 'blocked', label: 'blocked' },
-  { key: 'needs_shaping', label: 'needs shaping' },
+  { key: 'needs_mind', label: 'needs mind' },
   { key: 'ready', label: 'to do' },
   { key: 'active', label: 'active' },
-  { key: 'needs_human', label: 'needs human' },
+  { key: 'needs_hands', label: 'needs hands' },
   { key: 'done', label: 'done' },
 ]
 
-const UNDERLINED: ReadonlySet<IssueStateName> = new Set(['needs_shaping', 'needs_human'])
+const UNDERLINED: ReadonlySet<IssueStateName> = new Set(['needs_mind', 'needs_hands'])
 
 const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground'
 
