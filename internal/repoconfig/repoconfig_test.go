@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/levels"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const full = `[forge]
@@ -500,6 +501,10 @@ func TestLoadReport(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "absolute dir" {
+				// "/abs" is a POSIX absolute path; filepath.IsAbs rejects it on Windows (no drive).
+				testpath.SkipOnWindowsPOSIXAbs(t)
+			}
 			r, err := Load(write(t, full+tt.table))
 			if err != nil {
 				t.Fatalf("Load failed: %v", err)
