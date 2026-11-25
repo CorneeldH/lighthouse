@@ -30,6 +30,40 @@ export interface ClosedIssue {
   url: string;
 }
 
+/**
+ * @nullable
+ */
+export type ResetCredits = {
+  available: number;
+  expires: string[];
+} | null;
+
+export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
+
+
+export const WindowReportState = {
+  ok: 'ok',
+  stale: 'stale',
+  not_measurable: 'not_measurable',
+} as const;
+
+export interface WindowReport {
+  /** @nullable */
+  age_s: number | null;
+  lower_bound: boolean;
+  /** @nullable */
+  pct: number | null;
+  reason?: string;
+  reset_at: string;
+  state: WindowReportState;
+}
+
+export interface CodexReport {
+  reset_credits: ResetCredits | null;
+  session: WindowReport;
+  week: WindowReport;
+}
+
 export interface DeferredView {
   at: string;
   issue: number;
@@ -153,26 +187,6 @@ export interface Repo {
   slug: string;
 }
 
-export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
-
-
-export const WindowReportState = {
-  ok: 'ok',
-  stale: 'stale',
-  not_measurable: 'not_measurable',
-} as const;
-
-export interface WindowReport {
-  /** @nullable */
-  age_s: number | null;
-  lower_bound: boolean;
-  /** @nullable */
-  pct: number | null;
-  reason?: string;
-  reset_at: string;
-  state: WindowReportState;
-}
-
 export interface SourceReport {
   session: WindowReport;
   week: WindowReport;
@@ -180,7 +194,7 @@ export interface SourceReport {
 
 export interface Report {
   claude: SourceReport;
-  codex: SourceReport;
+  codex: CodexReport;
 }
 
 export interface Run {
