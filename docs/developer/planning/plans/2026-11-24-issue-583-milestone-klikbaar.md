@@ -15,7 +15,7 @@
 
 ## Globale randvoorwaarden
 
-- Artefacten (commits, changelog, docs) Nederlands; code, namen en commentaar Engels (`code_language`).
+- Artefacten (commits, docs) Nederlands, het changelog-fragment Engels; code, namen en commentaar Engels (`code_language`).
 - Atomaire Conventional Commits; nooit `--no-verify`.
 - Voor elke commit: `lighthouse imports check` naast `[test_gate] command`.
 - Elke PR krijgt een fragment in `changelog.d/` (zie Taak 4).
@@ -35,35 +35,35 @@
 | Bestand | Verandering |
 |---|---|
 | `internal/forge/issues.go` | `Milestone.URL`; embedded milestone van de issue-lijst leest `html_url` |
-| `internal/forge/write_issue.go` | `ghMilestone.URL` (`html_url`); conversie `Milestone(m)` blijft veld-voor-veld gelijk |
+| `internal/forge/write_issue.go` | `ghMilestone.URL` (`json:"html_url"`, zelfde veldnaam en positie als `Milestone.URL`); conversie `Milestone(m)` blijft veld-voor-veld gelijk |
 | `internal/forge/gitlab_write.go` | `glMilestone.WebURL` (`web_url`) in `milestone()` |
 | `internal/forge/gitlab_planning.go` | `glPlanMilestone.WebURL`; beide handmatige `Milestone{…}`-literals nemen hem over |
-| `internal/forge/planning.go` | `Milestone`-literal op :129 neemt `URL` over |
-| `internal/forge/forgetest/server.go`, `internal/forge/gitlabtest/server_write.go` | fake-JSON met `html_url` / `web_url` |
+| `internal/forge/github_contract_test.go`, `internal/forge/gitlab_contract_test.go` | fixture-JSON (`AddIssue`, `AddMilestone`, `AddNamedMilestone`) zet `html_url` / `web_url` uit `m.URL` als die gevuld is |
 | `internal/forge/forgesuite/suite.go` | gedeelde suite toetst `URL` voor beide forges |
 | `internal/priorities/priorities.go` | `MilestoneRef.URL`, `Milestone.URL` (JSON `url`) |
 | `web/openapi.json`, `web/src/api/*` | regenereren |
 | `web/src/lib/priorities/derive.ts` | `MilestoneRow.url`, `UnassignedRow.closedMilestone` krijgt titel + url |
 | `web/src/components/priorities/{MilestonesView,Toolbar,PrioritiesTab,UnassignedView}.tsx` | links |
-| `web/e2e/fake-github.ts` | milestone met `html_url` |
-| `docs/developer/areas/server.md` | één zin over de klikbare milestone |
-| `changelog.d/issue-583-milestone-klikbaar.md` | fragment |
+| `web/src/components/priorities/MilestoneTitle.tsx` | nieuw gedeeld component |
+| `web/src/**/*.test.ts(x)` met getypeerde milestone-fixtures | `url` toevoegen (Taak 2) |
+| `docs/developer/areas/server.md` | één bullet onder *Leidend beleid* |
+| `changelog.d/issue-583-milestone-in-lighthouse-serve-klikbaar.md` | fragment (Engels, zie Taak 4) |
 
 ---
 
 ### Taak 1: Forge-lezers leveren `Milestone.URL`
 
 **Bestanden:**
-- Wijzig: `internal/forge/issues.go:13-19,49-54,73-75`, `internal/forge/write_issue.go:143-155`, `internal/forge/gitlab_write.go:19-35`, `internal/forge/gitlab_planning.go:28-42,87`, `internal/forge/planning.go:111-133`
-- Wijzig (fakes): `internal/forge/forgetest/server.go:80-82`, `internal/forge/gitlabtest/server_write.go`
+- Wijzig: `internal/forge/issues.go:13-19,49-54,73-75`, `internal/forge/write_issue.go:143-155`, `internal/forge/gitlab_write.go:19-35`, `internal/forge/gitlab_planning.go:28-42,87`
+- Wijzig (fixtures): `internal/forge/github_contract_test.go:75-82,107-109,134-137` en `internal/forge/gitlab_contract_test.go:102,204-209` (`AddIssue`, `AddMilestone`, `AddNamedMilestone` schrijven `html_url` / `web_url` uit `m.URL` als die gevuld is; de fakes in `forgetest` en `gitlabtest` geven de JSON ongewijzigd door)
 - Test: `internal/forge/forgesuite/suite.go` (gedeeld; draait op beide fakes), plus de bestaande `_test.go` van `internal/forge` die `Milestone` vergelijken
 
 **Interfaces:**
 - Produceert: `forge.Milestone.URL string` — de web-URL van de milestone op de forge; leeg als de forge hem niet geeft. Gevuld voor `Milestones(ctx, state)`, voor `Issue.Milestone`, voor `Planning` (open milestones en de milestone van elke issue) en voor `PrioInputs.Milestones`.
 
-- [ ] **Stap 1: Schrijf de falende tests.** In `forgesuite/suite.go`: breid de fake-milestones uit met een URL (`https://forge.example/m/<n>`) en voeg `TestMilestoneURL` toe (naam in de suite-stijl) die controleert dat `URL` gevuld is in (a) `Milestones`, (b) de `Milestone` van een issue uit `Issues`, (c) `Planning.Milestones` en de milestone van een `PlanIssue`. Voeg een geval toe met een milestone zonder URL in de fake-JSON: verwacht `URL == ""` en geen fout.
-- [ ] **Stap 2: Draai ze rood.** `go test ./internal/forge/... -run MilestoneURL` — verwacht FAIL (veld bestaat niet / lege URL).
-- [ ] **Stap 3: Implementeer.** Voeg `URL string` toe aan `forge.Milestone` en `HTMLURL string \`json:"html_url"\`` aan `ghMilestone` op dezelfde positie, zodat `Milestone(m)` blijft compileren (veldnamen en -volgorde identiek; `OpenIssues`/`ClosedIssues` blijven daarna). Voeg `html_url` toe aan de anonieme milestone-struct van `issueItem` en kopieer hem in `issue()`. GitLab: `WebURL string \`json:"web_url"\`` op `glMilestone` en `glPlanMilestone`, overnemen in `milestone()` en in de twee handmatige literals (`gitlab_planning.go:32,87`); `planning.go:129` neemt `URL` mee. Bouw nergens zelf een URL; leeg blijft leeg.
+- [ ] **Stap 1: Schrijf de falende tests.** In `forgesuite/suite.go`: breid de fake-milestones uit met een URL (`https://forge.example/m/<n>`) en voeg een Case `{"MilestoneURL", milestoneURL}` toe aan `forgesuite.Cases` die controleert dat `URL` gevuld is in (a) `Milestones`, (b) de `Milestone` van een issue uit `Issues`, (c) `Planning.Milestones` en de milestone van een `PlanIssue`. Voeg een geval toe met een milestone zonder URL in de fake-JSON: verwacht `URL == ""` en geen fout.
+- [ ] **Stap 2: Draai ze rood.** `go test ./internal/forge/... -run 'Conformance/MilestoneURL'` — verwacht FAIL (eerst compilatiefout, na het toevoegen van het veld alleen: lege URL). Controleer dat het commando daadwerkelijk subtests draait, niet `[no tests to run]`.
+- [ ] **Stap 3: Implementeer.** Voeg `URL string` toe aan `forge.Milestone` en `URL string \`json:"html_url"\`` aan `ghMilestone`, op dezelfde positie in beide structs, zodat `Milestone(m)` blijft compileren (een Go-structconversie eist identieke veldnamen en -volgorde; tags tellen niet mee; `OpenIssues`/`ClosedIssues` blijven daarna). Voeg `html_url` toe aan de anonieme milestone-struct van `issueItem` en kopieer hem in `issue()`. GitLab: `WebURL string \`json:"web_url"\`` op `glMilestone` en `glPlanMilestone`, overnemen in `milestone()` en in de twee handmatige literals (`gitlab_planning.go:32,87`); `planning.go:129` kopieert de hele `Milestone` al (`Milestone: m`) en hoeft niet te veranderen. Bouw nergens zelf een URL; leeg blijft leeg.
 - [ ] **Stap 4: Draai groen.** `go test ./internal/forge/...` — verwacht PASS.
 - [ ] **Stap 5: Commit.** `git add internal/forge && git commit -m "feat(forge): milestone-URL van de forge-lezers (#583)"`
 
@@ -73,6 +73,7 @@
 - Wijzig: `internal/priorities/priorities.go:23-28,66-75,124-126,137`
 - Test: `internal/priorities/priorities_test.go:57`, `internal/server/priorities_test.go:28`, `internal/server/openapi_snapshot_test.go`
 - Regenereer: `web/openapi.json`, `web/src/api/*`
+- Wijzig (typecheck): de getypeerde milestone-fixtures in `web/src/components/priorities/MilestonesView.test.tsx`, `UnassignedView.test.tsx`, `PrioritiesTab.test.tsx` en `web/src/lib/priorities/derive.test.ts` krijgen `url` (verplicht veld), zodat `tsc -b` groen blijft
 
 **Interfaces:**
 - Consumeert: `forge.Milestone.URL`, en de URL op de milestone in `forge.Planning` (Taak 1).
@@ -82,7 +83,7 @@
 - [ ] **Stap 2: Draai rood.** `go test ./internal/priorities/... ./internal/server/...` — verwacht FAIL.
 - [ ] **Stap 3: Implementeer.** `URL string \`json:"url"\`` op beide structs; `Build` zet hem uit `pi.Milestone.URL` (`priorities.go:125`) en `m.URL` (`:137`). Controleer eerst hoe `PlanIssue.Milestone` zijn type heeft (`forge.Milestone`) zodat de URL daar al in zit.
 - [ ] **Stap 4: Regenereer.** `go test ./internal/server -run TestOpenAPISnapshot -update`, dan `cd web && npm run gen`. Verwacht: `MilestoneRef` en `Milestone` hebben `url` in `web/openapi.json` en `web/src/api`.
-- [ ] **Stap 5: Draai groen.** `go test ./internal/forge/... ./internal/priorities/... ./internal/server/...` — verwacht PASS.
+- [ ] **Stap 5: Draai groen.** Voeg `url` toe aan de getypeerde web-fixtures (zie Bestanden) en draai `go test ./internal/forge/... ./internal/priorities/... ./internal/server/...` en `cd web && npm run typecheck && npm test` — verwacht PASS.
 - [ ] **Stap 6: Commit.** `git add internal web && git commit -m "feat(priorities): milestone-URL in de API en de gegenereerde client (#583)"`
 
 ### Taak 3: SPA toont milestone-titels als link
@@ -90,13 +91,12 @@
 **Bestanden:**
 - Wijzig: `web/src/lib/priorities/derive.ts:293-297,380,476`, `web/src/components/priorities/MilestonesView.tsx:111`, `Toolbar.tsx:148-158`, `PrioritiesTab.tsx:56-59,81`, `UnassignedView.tsx:29`
 - Test: `MilestonesView.test.tsx`, `PrioritiesTab.test.tsx`, `UnassignedView.test.tsx`, `web/src/lib/priorities/derive.test.ts`
-- Wijzig: `web/e2e/fake-github.ts` (milestone met `html_url`), `web/e2e` mits een bestaande spec de titel raakt
 
 **Interfaces:**
 - Consumeert: `MilestoneRef.url` en `Milestone.url` (Taak 2).
-- Produceert: een gedeeld component `MilestoneTitle({ title, url })` in `web/src/components/priorities/MilestoneTitle.tsx` dat `<a href={url} target="_blank" rel="noreferrer">{title}</a>` rendert, en bij `url === ''` alleen de titel als tekst. `MilestoneRow.url: string`; `UnassignedRow.closedMilestone: { title: string; url: string } | null`; de legenda-items van de Toolbar dragen `url`.
+- Produceert: een gedeeld component `MilestoneTitle({ title, url })` in `web/src/components/priorities/MilestoneTitle.tsx` dat `<a href={url} target="_blank" rel="noreferrer">{title}</a>` rendert, en bij een lege of ontbrekende `url` (`!url`) alleen de titel als tekst. `MilestoneRow.url: string`; `UnassignedRow.closedMilestone: { title: string; url: string } | null`; de legenda-items van de Toolbar dragen `url` (optioneel; het item `none` heeft er geen).
 
-- [ ] **Stap 1: Schrijf de falende tests.** (a) `MilestoneTitle.test.tsx`: met url → `getByRole('link', {name: 'M'})` heeft `href` en `target="_blank"` en `rel` met `noreferrer`; zonder url → geen link (`queryByRole('link', {name: 'M'})` is `null`). (b) `MilestonesView.test.tsx`: de rijtitel is een link naar de `url` uit de fixture. (c) `PrioritiesTab.test.tsx`: de legenda-label is een link. (d) `UnassignedView.test.tsx`: een gesloten milestone toont “<titel> · closed” met de titel als link; een issue zonder milestone (het blok zonder milestone) toont geen milestone-link. (e) `derive.test.ts`: `MilestoneRow.url` en `closedMilestone.url` komen uit de `MilestoneRef` van het issue, niet uit een lookup.
+- [ ] **Stap 1: Schrijf de falende tests.** (a) `MilestoneTitle.test.tsx`: met url → `getByRole('link', {name: 'M'})` heeft `href` en `target="_blank"` en `rel` met `noreferrer`; zonder url → geen link (`queryByRole('link', {name: 'M'})` is `null`). (b) `MilestonesView.test.tsx`: de rijtitel is een link naar de `url` uit de fixture. (c) `PrioritiesTab.test.tsx`: de legenda-label is een link; het legenda-item `Without milestone` bevat geen `<a>`. (d) `UnassignedView.test.tsx`: een gesloten milestone toont “<titel> · closed” met de titel als link; een issue zonder milestone (het blok zonder milestone) toont geen milestone-link. (e) `derive.test.ts`: `MilestoneRow.url` komt uit `Milestone.url` van `repo.milestones` (ook voor een milestone zonder issues); `closedMilestone.url` komt uit de `MilestoneRef` van het issue; geen lookup of opbouw in de SPA.
 - [ ] **Stap 2: Draai rood.** `cd web && npm test -- MilestoneTitle MilestonesView PrioritiesTab UnassignedView derive` — verwacht FAIL.
 - [ ] **Stap 3: Implementeer.** Maak `MilestoneTitle`; gebruik het in de drie plekken; breid `derive.ts` uit zoals bij Interfaces. Hergebruik de link-opmaak van `Block.tsx:96-97`. Geen URL samenstellen in de SPA.
 - [ ] **Stap 4: Verifieer.** `cd web && npm run lint && npm run typecheck && npm test && npm run gen` en `git status --short web/src/api` is leeg (CI-controle, `ci.yml:325-326`). Verwacht: alles groen. Draai `npm run e2e` als Playwright beschikbaar is; zo niet, meld dat uitdrukkelijk.
@@ -105,11 +105,11 @@
 ### Taak 4: Documentatie, changelog en eindcontrole
 
 **Bestanden:**
-- Wijzig: `docs/developer/areas/server.md` (sectie over milestones, regels ~31-36)
-- Maak: `changelog.d/issue-583-milestone-klikbaar.md`
+- Wijzig: `docs/developer/areas/server.md` (sectie *Leidend beleid*, niet *Bewust niet*)
+- Maak: `changelog.d/issue-583-milestone-in-lighthouse-serve-klikbaar.md` (bestandsnaam = branchnaam)
 
-- [ ] **Stap 1: Docs.** Voeg bij de milestone-beschrijving één zin toe: de milestone-titel linkt naar de forge-URL die de forge-lezer levert (`forge.Milestone.URL`), zonder link bij een lege URL.
-- [ ] **Stap 2: Changelog-fragment** met frontmatter `type: added` en een Nederlandse zin: milestone-titels in `lighthouse serve` zijn klikbaar naar de forge, in een nieuw tabblad (#583).
+- [ ] **Stap 1: Docs.** Voeg onder *Leidend beleid* één bullet toe: de milestone-titel linkt naar de forge-URL die de forge-lezer levert (`forge.Milestone.URL`), zonder link bij een lege URL.
+- [ ] **Stap 2: Changelog-fragment** met frontmatter `type: added` en één Engelse zin voor een gebruiker (`docs/releasing.md`, ongeacht `[project] language`): milestone-titels in `lighthouse serve` zijn klikbaar naar de forge, in een nieuw tabblad (#583).
 - [ ] **Stap 3: Eindcontrole.** `[test_gate] command` uit `lighthouse.toml`, `lighthouse imports check` en `go test ./...`; verwacht groen. Dogfood (`init --upgrade`) is niet nodig: er verandert niets onder `pack/` of in de `init`-uitvoer; bevestig dat met `go run ./cmd/lighthouse init --upgrade` → `No changes.`
 - [ ] **Stap 4: Commit.** `git add docs changelog.d && git commit -m "docs(server): klikbare milestone en changelog-fragment (#583)"`
 
