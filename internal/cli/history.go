@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/agentaudit"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	hist "github.com/CorneeldH/lighthouse/internal/history"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
@@ -93,7 +94,7 @@ func runHistory(ctx context.Context, env historyEnv, sources bool, since, projec
 		}
 		return usageErr(fmt.Errorf("lighthouse history: %s is not a git repository", cwd))
 	}
-	root := filepath.Clean(strings.TrimSpace(string(top)))
+	root := gitpath.Native(string(top))
 
 	if projectsDir == "" {
 		if projectsDir, err = defaultProjectsDir(env.Getenv); err != nil {
