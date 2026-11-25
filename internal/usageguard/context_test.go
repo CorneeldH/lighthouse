@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestPathsFollowXDG(t *testing.T) {
@@ -35,18 +37,19 @@ func TestStateDirKeepsOldName(t *testing.T) {
 }
 
 func TestRelativeXDGIsIgnored(t *testing.T) {
+	home := testpath.Abs("home", "u")
 	d, err := DirsFromEnv(envFunc(map[string]string{
 		"XDG_STATE_HOME": "rel",
 		"XDG_DATA_HOME":  "rel",
-		"HOME":           "/home/u",
+		"HOME":           home,
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "/home/u/.local/state/lighthouse/usage-guard"; d.State != want {
+	if want := filepath.Join(home, ".local", "state", "lighthouse", "usage-guard"); d.State != want {
 		t.Errorf("State = %q, want %q", d.State, want)
 	}
-	if want := "/home/u/.local/share/lighthouse/resume"; d.Resume != want {
+	if want := filepath.Join(home, ".local", "share", "lighthouse", "resume"); d.Resume != want {
 		t.Errorf("Resume = %q, want %q", d.Resume, want)
 	}
 }

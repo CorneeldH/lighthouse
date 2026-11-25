@@ -7,23 +7,34 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestPath(t *testing.T) {
 	t.Run("env override", func(t *testing.T) {
-		t.Setenv("LIGHTHOUSE_HOST_TOML", "/a/b.toml")
-		if got := Path(); got != "/a/b.toml" {
-			t.Errorf("Path() = %q, want /a/b.toml", got)
+		want := testpath.Abs("a", "b.toml")
+		t.Setenv("LIGHTHOUSE_HOST_TOML", want)
+		if got := Path(); got != want {
+			t.Errorf("Path() = %q, want %s", got, want)
 		}
 	})
 	t.Run("home default", func(t *testing.T) {
 		t.Setenv("LIGHTHOUSE_HOST_TOML", "")
-		t.Setenv("HOME", "/h")
-		if got := Path(); got != "/h/.config/lighthouse/host.toml" {
-			t.Errorf("Path() = %q, want /h/.config/lighthouse/host.toml", got)
+		home := testpath.Abs("h")
+		testpath.SetHome(t, home)
+		want := filepath.Join(home, ".config", "lighthouse", "host.toml")
+		if got := Path(); got != want {
+			t.Errorf("Path() = %q, want %s", got, want)
 		}
 	})
 }
+
+// lit quotes s as a TOML literal string, so a Windows path keeps its backslashes.
+func lit(s string) string { return "'" + s + "'" }
+
+// tokT is a TOML literal for an absolute token file path that only has to be absolute.
+var tokT = lit(testpath.Abs("t"))
 
 func writeHost(t *testing.T, body string) string {
 	t.Helper()
@@ -73,13 +84,14 @@ func TestLoadDispatchDefaults(t *testing.T) {
 }
 
 func TestLoadDispatchRepos(t *testing.T) {
-	p := writeHost(t, "[dispatch]\nrepos = [\"/srv/b\", \"/srv/a\"]\nslots = 6\nmax_runtime = \"2h30m\"\n"+
+	srvB, srvA := testpath.Abs("srv", "b"), testpath.Abs("srv", "a")
+	p := writeHost(t, "[dispatch]\nrepos = ["+lit(srvB)+", "+lit(srvA)+"]\nslots = 6\nmax_runtime = \"2h30m\"\n"+
 		"[dispatch.forge]\nurl = \"http://x:1\"\n")
 	got, err := LoadDispatch(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got.Repos, []string{"/srv/b", "/srv/a"}) {
+	if !reflect.DeepEqual(got.Repos, []string{srvB, srvA}) {
 		t.Errorf("Repos = %v", got.Repos)
 	}
 	if got.Slots != 6 || got.MaxSoftware != 2 {
@@ -94,7 +106,7 @@ func TestLoadDispatchRepos(t *testing.T) {
 }
 
 func TestLoadDispatchRelativeRepo(t *testing.T) {
-	_, err := LoadDispatch(writeHost(t, "[dispatch]\nrepos = [\"/ok\", \"rel/repo\"]\n"))
+	_, err := LoadDispatch(writeHost(t, "[dispatch]\nrepos = ["+lit(testpath.Abs("ok"))+", \"rel/repo\"]\n"))
 	if err == nil {
 		t.Fatal("want error")
 	}
@@ -132,7 +144,7 @@ func TestLoadDispatchInvalid(t *testing.T) {
 
 func TestLoadDispatchUnknownKey(t *testing.T) {
 	cases := []struct{ body, key string }{
-		{"[dispatch]\nrepo = [\"/a\"]\n", "dispatch.repo"},
+		{"[dispatch]\nrepo = [" + lit(testpath.Abs("a")) + "]\n", "dispatch.repo"},
 		{"[dispatch]\nmax_runtme = \"1h\"\n", "dispatch.max_runtme"},
 		{"[dispatch.forge]\nurll = \"x\"\n", "dispatch.forge.urll"},
 		{"[dispatch.profiles.x]\ntarget = \"y\"\n", "dispatch.profiles.x.target"},
@@ -253,16 +265,17 @@ func TestDefaultDispatchHasNoUnitPrefix(t *testing.T) {
 }
 
 func TestLoadDispatchNodes(t *testing.T) {
+	tokA, tokB := testpath.Abs("tok", "a"), testpath.Abs("tok", "b")
 	d, err := LoadDispatch(writeHost(t, `[dispatch.nodes.a]
 node_id = "node-a"
 slots = 1
 serve_url = "https://a.test"
-serve_token_file = "/tok/a"
+serve_token_file = `+lit(tokA)+`
 [dispatch.nodes.b]
 node_id = "node-b"
 slots = 2
 serve_url = "http://127.0.0.1:9"
-serve_token_file = "/tok/b"
+serve_token_file = `+lit(tokB)+`
 [dispatch.profiles.p]
 node = "a"
 [dispatch.profiles.software]
@@ -271,10 +284,10 @@ target_key = "x"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := d.Nodes["a"]; got != (Node{"node-a", 1, "https://a.test", "/tok/a"}) {
+	if got := d.Nodes["a"]; got != (Node{"node-a", 1, "https://a.test", tokA}) {
 		t.Errorf("Nodes[a] = %+v", got)
 	}
-	if got := d.Nodes["b"]; got != (Node{"node-b", 2, "http://127.0.0.1:9", "/tok/b"}) {
+	if got := d.Nodes["b"]; got != (Node{"node-b", 2, "http://127.0.0.1:9", tokB}) {
 		t.Errorf("Nodes[b] = %+v", got)
 	}
 	if got := d.NodeID("p"); got != "node-a" {
@@ -306,12 +319,12 @@ func TestLoadDispatchWithoutNodes(t *testing.T) {
 
 func TestLoadDispatchNodeErrors(t *testing.T) {
 	cases := []struct{ name, body, key string }{
-		{"missing node_id", "[dispatch.nodes.a]\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.a.node_id"},
+		{"missing node_id", "[dispatch.nodes.a]\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\n", "dispatch.nodes.a.node_id"},
 		{"zero slots", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 0\n", "dispatch.nodes.a.slots"},
-		{"duplicate node_id", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n[dispatch.nodes.b]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "node_id"},
-		{"reserved name", "[dispatch.nodes.self]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.self"},
-		{"node_id self", "[dispatch.nodes.a]\nnode_id = \"self\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.a.node_id"},
-		{"unknown key", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\nhost = \"h\"\n", "dispatch.nodes.a.host"},
+		{"duplicate node_id", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\n[dispatch.nodes.b]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\n", "node_id"},
+		{"reserved name", "[dispatch.nodes.self]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\n", "dispatch.nodes.self"},
+		{"node_id self", "[dispatch.nodes.a]\nnode_id = \"self\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\n", "dispatch.nodes.a.node_id"},
+		{"unknown key", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = " + tokT + "\nhost = \"h\"\n", "dispatch.nodes.a.host"},
 		{"unknown node of profile", "[dispatch.profiles.p]\nnode = \"x\"\n", "dispatch.profiles.p.node"},
 	}
 	for _, c := range cases {
@@ -346,7 +359,7 @@ command = ["claude", "-p", "--tools", ""]
 
 func TestLoadDispatchWorkflowPush(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	d, err := LoadDispatch(writeHost(t, workflowPushFull))
 	if err != nil {
 		t.Fatal(err)
@@ -419,7 +432,7 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			testpath.SetHome(t, t.TempDir())
 			_, err := LoadDispatch(writeHost(t, tt.body))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)
@@ -434,9 +447,9 @@ func nodeBody(extra string) string {
 
 func TestNodeRequiresServeKeys(t *testing.T) {
 	cases := []struct{ name, body, key string }{
-		{"no serve_url", nodeBody("serve_token_file = \"/t\"\n"), "dispatch.nodes.a.serve_url"},
+		{"no serve_url", nodeBody("serve_token_file = " + tokT + "\n"), "dispatch.nodes.a.serve_url"},
 		{"no serve_token_file", nodeBody("serve_url = \"https://x\"\n"), "dispatch.nodes.a.serve_token_file"},
-		{"empty serve_url", nodeBody("serve_url = \"\"\nserve_token_file = \"/t\"\n"), "dispatch.nodes.a.serve_url"},
+		{"empty serve_url", nodeBody("serve_url = \"\"\nserve_token_file = " + tokT + "\n"), "dispatch.nodes.a.serve_url"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -467,7 +480,7 @@ func TestServeURLScheme(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.url, func(t *testing.T) {
-			_, err := LoadDispatch(writeHost(t, nodeBody("serve_url = \""+c.url+"\"\nserve_token_file = \"/t\"\n")))
+			_, err := LoadDispatch(writeHost(t, nodeBody("serve_url = \""+c.url+"\"\nserve_token_file = "+tokT+"\n")))
 			if c.ok && err != nil {
 				t.Fatalf("err = %v", err)
 			}
@@ -479,7 +492,7 @@ func TestServeURLScheme(t *testing.T) {
 }
 
 func TestLoadDispatchWorkflowPushNoHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	body := "[dispatch.workflow_push]\ntoken_file = \"~/t\"\n"
 	if _, err := LoadDispatch(writeHost(t, body)); err == nil || !strings.Contains(err.Error(), "home") {
 		t.Errorf("err = %v, want a home directory error", err)
@@ -498,9 +511,9 @@ func TestLoadDispatchWorkflowPushAbsoluteBindUnderConfig(t *testing.T) {
 		"dotdotsub": protected + "/a/../host.toml",
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("HOME", home)
+			testpath.SetHome(t, home)
 			body := "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[[dispatch.workflow_push.reviewers]]\n" +
-				"topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"" + bind + "\"]\n"
+				"topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [" + lit(bind) + "]\n"
 			if _, err := LoadDispatch(writeHost(t, body)); err == nil || !strings.Contains(err.Error(), "binds") {
 				t.Errorf("err = %v, want a binds error", err)
 			}
@@ -517,8 +530,8 @@ func TestServeTokenFileMustBeAbsolute(t *testing.T) {
 
 func TestIntentReviewerRead(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	body := "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[dispatch.workflow_push.intent]\n" +
+	testpath.SetHome(t, home)
+	body := "[dispatch.workflow_push]\ntoken_file = " + tokT + "\n[dispatch.workflow_push.intent]\n" +
 		"command = [\"claude\", \"-p\"]\nbinds = [\"~/x\"]\nenv = [\"CODEX_HOME\"]\n"
 	d, err := LoadDispatch(writeHost(t, body))
 	if err != nil {
@@ -534,7 +547,7 @@ func TestIntentReviewerRead(t *testing.T) {
 }
 
 func TestIntentReviewerAbsent(t *testing.T) {
-	d, err := LoadDispatch(writeHost(t, "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n"))
+	d, err := LoadDispatch(writeHost(t, "[dispatch.workflow_push]\ntoken_file = "+tokT+"\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -544,7 +557,7 @@ func TestIntentReviewerAbsent(t *testing.T) {
 }
 
 func TestIntentReviewerInvalid(t *testing.T) {
-	const head = "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[dispatch.workflow_push.intent]\n"
+	head := "[dispatch.workflow_push]\ntoken_file = " + tokT + "\n[dispatch.workflow_push.intent]\n"
 	tests := []struct{ name, body, want string }{
 		{"no command", head + "binds = [\"~/x\"]\n", "intent.command"},
 		{"GH_TOKEN", head + "command = [\"a\"]\nenv = [\"GH_TOKEN\"]\n", "GH_TOKEN"},
@@ -552,11 +565,49 @@ func TestIntentReviewerInvalid(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("HOME", t.TempDir())
+			testpath.SetHome(t, t.TempDir())
 			_, err := LoadDispatch(writeHost(t, tt.body))
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want one containing %q", err, tt.want)
 			}
 		})
 	}
+}
+
+func TestLoadTelemetry(t *testing.T) {
+	cases := []struct {
+		name, path, want string
+	}{
+		{"no path", "", ""},
+		{"missing file", filepath.Join(t.TempDir(), "nope.toml"), ""},
+		{"no table", writeHost(t, "[dispatch]\nslots = 2\n"), ""},
+		{"table without key", writeHost(t, "[telemetry]\n"), ""},
+		{"set", writeHost(t, "[telemetry]\nproposals_repo = \"o/r\"\n"), "o/r"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := LoadTelemetry(c.path)
+			if err != nil || got.ProposalsRepo != c.want {
+				t.Errorf("LoadTelemetry = %+v, %v; want %q", got, err, c.want)
+			}
+		})
+	}
+	for name, body := range map[string]string{
+		"no slash":    "[telemetry]\nproposals_repo = \"nope\"\n",
+		"three parts": "[telemetry]\nproposals_repo = \"a/b/c\"\n",
+		"empty part":  "[telemetry]\nproposals_repo = \"a/\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadTelemetry(writeHost(t, body))
+			if err == nil || !strings.Contains(err.Error(), "proposals_repo") {
+				t.Errorf("err = %v, want one naming proposals_repo", err)
+			}
+		})
+	}
+	t.Run("unknown key", func(t *testing.T) {
+		_, err := LoadTelemetry(writeHost(t, "[telemetry]\nproposal_repo = \"o/r\"\n"))
+		if err == nil || !strings.Contains(err.Error(), "proposal_repo") {
+			t.Errorf("err = %v, want one naming the key", err)
+		}
+	})
 }

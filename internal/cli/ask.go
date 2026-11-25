@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -200,7 +201,7 @@ func ask(ctx context.Context, env askEnv, in askInput, out, errOut io.Writer) er
 // the worktree; cwd itself when git gives no top.
 func askRoot(cwd string) string {
 	out, err := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel").Output()
-	if top := strings.TrimSpace(string(out)); err == nil && top != "" {
+	if top := gitpath.Native(string(out)); err == nil && top != "" {
 		return top
 	}
 	return cwd

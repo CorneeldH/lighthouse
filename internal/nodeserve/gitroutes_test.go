@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -251,6 +252,7 @@ func relocate(f fixture, id, command string) *httptest.ResponseRecorder {
 }
 
 func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
+	testpath.SkipOnWindowsPOSIXAbs(t)
 	repo := gitRepo(t)
 	if err := os.MkdirAll(filepath.Join(repo, "plans"), 0o750); err != nil {
 		t.Fatal(err)
@@ -270,7 +272,7 @@ func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "/lighthouse-x " + root + "/plans/p.md"; got.Command != want {
+	if want := "/lighthouse-x " + filepath.Join(root, "plans", "p.md"); got.Command != want {
 		t.Errorf("command = %q, want %q", got.Command, want)
 	}
 }

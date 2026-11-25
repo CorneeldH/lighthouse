@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
 
@@ -53,7 +54,7 @@ func StateDir(root string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(gitDir, "lighthouse", "roborev"), nil
+	return filepath.Join(gitpath.Native(gitDir), "lighthouse", "roborev"), nil
 }
 
 // BranchStem is the branch with `/` turned into `-`.

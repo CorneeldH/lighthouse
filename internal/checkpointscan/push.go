@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 )
 
 // PushChunk is the most refspecs one `git push` of Push gets: a bound on the command line.
@@ -133,7 +135,7 @@ func push(repo, remote string, opts PushOptions, out, errOut io.Writer) (int, er
 	if err != nil {
 		return 0, err
 	}
-	settings, err := ReadEntireSettings(strings.TrimSpace(top))
+	settings, err := ReadEntireSettings(gitpath.Native(top))
 	if err != nil {
 		return 0, err
 	}

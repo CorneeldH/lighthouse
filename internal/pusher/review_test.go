@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const (
@@ -56,9 +57,7 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 	}
 	scripts = withEntry(scripts, "ok", answer(approveJSON))
 	for name, text := range scripts {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubScript(t, bin, name, "the fake reviewers and bwrap read stdin, write to $1 and use sh builtins", text)
 	}
 	if !withBwrap {
 		tools := t.TempDir()
@@ -74,6 +73,7 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 		t.Setenv("PATH", bin+string(os.PathListSeparator)+tools)
 		return e
 	}
+	// stubbin-guard: system dirs needed (real cat and bwrap)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 	return e
 }
@@ -281,7 +281,7 @@ func TestReviewerEnvHasNoToken(t *testing.T) {
 	t.Setenv("WORKFLOW_PUSH_TOKEN", workflowTok)
 	t.Setenv("SNEAKY", workflowTok)
 	t.Setenv("API_KEY", "model-key")
-	t.Setenv("HOME", t.TempDir())
+	testpath.SetHome(t, t.TempDir())
 	r := rv("secrets", "r1")
 	r.Env = []string{"API_KEY", "SNEAKY", "GH_TOKEN"}
 	v := Review(context.Background(), solo(time.Minute, r), sampleDiff, []string{forgeTok, workflowTok}, nil)
@@ -304,13 +304,14 @@ func TestReviewerEnvHasNoToken(t *testing.T) {
 }
 
 func TestReviewerEnvBuild(t *testing.T) {
-	t.Setenv("PATH", "/usr/bin:/bin")
+	path := "first" + string(os.PathListSeparator) + "second"
+	t.Setenv("PATH", path)
 	t.Setenv("API_KEY", "k")
 	t.Setenv("GH_TOKEN", forgeTok)
 	t.Setenv("GITHUB_TOKEN", "ghs_notInTheScrubList")
 	t.Setenv("COPY", forgeTok)
 	got := reviewerEnv([]string{"API_KEY", "GH_TOKEN", "GITHUB_TOKEN", "COPY", "UNSET_VAR", "PATH"}, []string{forgeTok})
-	want := []string{"PATH=/usr/bin:/bin", "API_KEY=k"}
+	want := []string{"PATH=" + path, "API_KEY=k"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("reviewerEnv = %q, want %q", got, want)
 	}
@@ -437,7 +438,7 @@ func TestReviewRunsUnderBwrapWithConfigBinds(t *testing.T) {
 func TestReviewRefusesGuardedBinds(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(approveJSON)})
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	mk := func(p string) string {
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			t.Fatal(err)
@@ -671,7 +672,7 @@ func TestReviewerCannotReadTokenFile(t *testing.T) {
 	if err := os.WriteFile(token, []byte(workflowTok), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	reader := "#!/bin/sh\ncat >/dev/null\nread=\n" +
 		"cat " + token + " >/dev/null 2>&1 && read=\"$read token\"\n" +
 		"ls " + home + " >/dev/null 2>&1 && read=\"$read home\"\n" +

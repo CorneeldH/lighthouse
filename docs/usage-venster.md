@@ -137,8 +137,11 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
   meetbaar, ook bij een configfout: `not measurable: <reden>` op stderr en exitcode 1.
 - `codex-usage budget` beslist vóór een review-ronde of Codex nog past, en print één regel JSON met
   `decision` (`codex`, `fallback` of `not_measurable`), `reason`, `window`, `reset_at`,
-  `session_pct`, `week_pct`, `source`, `lower_bound` en `thresholds`. Exitcode 6 bij `fallback`,
-  anders 0. De drempels komen uit `[codex_usage] review_pct_session` (90) en `review_pct_week` (95).
+  `session_pct`, `week_pct`, `source`, `lower_bound`, `thresholds` en als laatste sleutel
+  `reset_credits` (`{"available": N, "expires": [...]}` of `null` als onbekend, nooit 0). Exitcode 6
+  bij `fallback`, anders 0. Bij `fallback` met `available > 0` noemt `reason` de reset (`; reset
+  available (N, first expires <tijd>)`). De beslissing verandert daar niet door: Lighthouse zet een
+  reset nooit zelf in. De drempels komen uit `[codex_usage] review_pct_session` (90) en `review_pct_week` (95).
   Bij een configfout staat `codex-usage: config: <fout>` op stderr en is de uitkomst `not_measurable`.
 - Een gebruiksfout (onbekend subcommando, extra argument) is exitcode 2.
 
@@ -147,6 +150,10 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
 `lighthouse serve` biedt `GET /api/usage`. Het antwoord heeft de vorm
 `{"claude": {"session": W, "week": W}, "codex": {"session": W, "week": W}}`, met voor elk venster `W`:
 `state`, `pct`, `reset_at`, `age_s`, `lower_bound` en (alleen bij een reden) `reason`.
+
+Alleen `codex` heeft daarnaast `reset_credits`: `{"available": N, "expires": [...]}` (UTC, oudste
+eerst) of `null` als dat onbekend is (sessielog, onleesbare credits, niet meetbaar), nooit `0`.
+`{"available": 0, "expires": []}` is wel een bekende stand. `claude` heeft het veld niet.
 
 - **Toestanden.** `ok` (recente meting), `stale` (meting ouder dan 900 s; de grens is `> 900`, niet
   `>=`) en `not_measurable`. Bij `not_measurable` zijn `pct` en `age_s` JSON `null`, nooit 0.

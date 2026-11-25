@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // items is ITEMS of the pytest suite of the Python model chain (gone since #276).
@@ -188,7 +189,7 @@ func TestChainFrom(t *testing.T) {
 	home := t.TempDir()
 	env := filepath.Join(home, "env")
 	writeFile(t, env, []byte("K=1\n"))
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	full := "[code_language_llm]\nurl = \"http://h:8099/v1\"\nmodels = [\"a\", \"b\"]\n" +
 		"key_env = \"K\"\nenv_file = \"~/env\"\n"
 	got, err := ChainFrom(parseTOML(t, full))
@@ -196,6 +197,7 @@ func TestChainFrom(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("full: got %+v, %v; want %+v", got, err, want)
 	}
+	noEnv := testpath.Abs("no", "such", "env")
 	for _, c := range []struct{ body, want string }{
 		{"[code_language_llm]\n", "key code_language_llm.url is missing"},
 		{"[code_language_llm]\nmodels = [\"a\"]\n", "key code_language_llm.url is missing"},
@@ -203,11 +205,11 @@ func TestChainFrom(t *testing.T) {
 		{"[code_language_llm]\nurl = \"u\"\nmodels = []\n", "key code_language_llm.models is missing or empty"},
 		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = \"rel/env\"\n",
 			"code_language_llm.env_file is relative: rel/env"},
-		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = \"/no/such/env\"\n",
-			"code_language_llm.env_file does not exist: /no/such/env"},
+		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = '" + noEnv + "'\n",
+			"code_language_llm.env_file does not exist: " + noEnv},
 		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = \"~/missing\"\n",
 			"code_language_llm.env_file does not exist: " + filepath.Join(home, "missing")},
-		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = \"" + home + "\"\n",
+		{"[code_language_llm]\nurl = \"u\"\nmodels = [\"a\"]\nenv_file = '" + home + "'\n",
 			"code_language_llm.env_file does not exist: " + home},
 	} {
 		got, err := ChainFrom(parseTOML(t, c.body))

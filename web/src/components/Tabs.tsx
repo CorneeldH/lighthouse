@@ -1,14 +1,28 @@
 import { type JSX, useCallback, useEffect, useState } from 'react'
 
-export type TabId = 'controller' | 'priorities'
+export type TabId = 'controller' | 'priorities' | 'telemetry'
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'controller', label: 'Controller' },
   { id: 'priorities', label: 'Priorities' },
+  { id: 'telemetry', label: 'Telemetry' },
 ]
 
 function fromHash(): TabId {
-  return window.location.hash === '#priorities' ? 'priorities' : 'controller'
+  const hash = window.location.hash
+  if (hash === '#priorities') return 'priorities'
+  if (hash === '#telemetry' || hash.startsWith('#telemetry/')) return 'telemetry'
+  return 'controller'
+}
+
+export type TelemetryRoute = { view: 'overview' } | { view: 'trajectory'; id: number }
+
+// The telemetry view the hash asks for; anything but `#telemetry/trajectory/<id>` is the overview.
+// Beside the tab bar that owns the hash.
+// eslint-disable-next-line react-refresh/only-export-components
+export function telemetryRoute(): TelemetryRoute {
+  const m = /^#telemetry\/trajectory\/(\d+)$/.exec(window.location.hash)
+  return m === null ? { view: 'overview' } : { view: 'trajectory', id: Number(m[1]) }
 }
 
 // The hook lives beside the component it drives (one tab bar, one hook).

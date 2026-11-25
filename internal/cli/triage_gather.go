@@ -12,6 +12,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
@@ -224,7 +225,7 @@ func readWork(ctx context.Context, f forge.Forge, db *sql.DB, repo repoconfig.Re
 	var path string
 	for _, line := range lines(out) {
 		if p, ok := strings.CutPrefix(line, "worktree "); ok {
-			path = p
+			path = gitpath.Native(p)
 		} else if b, ok := strings.CutPrefix(line, "branch refs/heads/"); ok {
 			w.worktrees = append(w.worktrees, [2]string{path, b})
 		}

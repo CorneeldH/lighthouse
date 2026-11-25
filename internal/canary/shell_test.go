@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (
@@ -279,11 +281,11 @@ func fakeShellcheck(t *testing.T, rc string) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	bin := filepath.Join(dir, "shellcheck")
-	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho boom >&2\nexit "+rc+"\n"), 0o755); err != nil {
+	code, err := strconv.Atoi(rc)
+	if err != nil {
 		t.Fatal(err)
 	}
-	return bin
+	return stubbin.Make(t, dir, "shellcheck", stubbin.Spec{Stderr: "boom\n", Exit: code})
 }
 
 // The failure branches of --check-floor: none of them is a pass or a floor finding.

@@ -26,6 +26,9 @@ type BudgetOutcome struct {
 	Source     *string           `json:"source"`
 	LowerBound *bool             `json:"lower_bound"`
 	Thresholds *BudgetThresholds `json:"thresholds"`
+	// ResetCredits is last so the key order of the other fields stays; nil (null) when the
+	// credits are unknown (no reading, rollout-log, unreadable).
+	ResetCredits *ResetCredits `json:"reset_credits"`
 }
 
 // DecideBudget decides before a review round whether Codex still fits. First hit wins.
@@ -39,12 +42,13 @@ func DecideBudget(r *CodexState, review5h, reviewWeek int, now time.Time) Budget
 	if r == nil {
 		return BudgetOutcome{Decision: "not_measurable", Reason: "not measurable", Thresholds: thresholds}
 	}
+	credits := r.Credits()
 	outcome := func(decision, reason string) BudgetOutcome {
 		session, week, source, lowerBound := r.Session.Pct, r.Week.Pct, r.Source, r.LowerBound
 		return BudgetOutcome{
 			Decision: decision, Reason: reason,
 			SessionPct: &session, WeekPct: &week, Source: &source, LowerBound: &lowerBound,
-			Thresholds: thresholds,
+			Thresholds: thresholds, ResetCredits: credits,
 		}
 	}
 	if r.LowerBound && (passed(r.Session.ResetAt, now) || passed(r.Week.ResetAt, now)) {
@@ -66,7 +70,15 @@ func DecideBudget(r *CodexState, review5h, reviewWeek int, now time.Time) Budget
 			return outcome("not_measurable",
 				fmt.Sprintf("not measurable: window still rolling (reset %s has passed)", w.window.ResetAt))
 		}
-		out := outcome("fallback", fmt.Sprintf("%s %d%% ≥ %d%%", w.label, w.window.Pct, w.threshold))
+		reason := fmt.Sprintf("%s %d%% ≥ %d%%", w.label, w.window.Pct, w.threshold)
+		if credits != nil && credits.Available > 0 {
+			if len(credits.Expires) > 0 {
+				reason += fmt.Sprintf("; reset available (%d, first expires %s)", credits.Available, credits.Expires[0])
+			} else {
+				reason += fmt.Sprintf("; reset available (%d)", credits.Available)
+			}
+		}
+		out := outcome("fallback", reason)
 		out.Window, out.ResetAt = &w.name, &w.window.ResetAt
 		return out
 	}

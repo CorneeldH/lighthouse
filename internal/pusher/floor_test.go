@@ -18,6 +18,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -510,11 +511,8 @@ func TestForgeTokenOnlyInFetchEnv(t *testing.T) {
 	}
 	bin := filepath.Join(f.dir, "bin")
 	log := filepath.Join(f.dir, "git.log")
-	write(t, filepath.Join(bin, "git"), "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | grep -e '^GIT_CONFIG' -e '^GH_TOKEN' -e '^GIT_DIR' | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
-	if err := os.Chmod(filepath.Join(bin, "git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubScript(t, bin, "git", "exec of the real git after logging argv and env", "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | grep -e '^GIT_CONFIG' -e '^GH_TOKEN' -e '^GIT_DIR' | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
+	stubbin.Prepend(t, bin)
 	const token = "ghp_SECRETtoken123"
 	f.req.ForgeToken = token
 	// The pusher's own process has the forge token and a stray GIT_DIR; no git command sees them.

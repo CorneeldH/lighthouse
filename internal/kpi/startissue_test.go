@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // gitIn runs git in dir with a fixed identity and the given commit date.
@@ -64,13 +67,14 @@ func runStartIssue(opts Options) (int, string, string) {
 // with the wrong character replacement.
 func TestTranscriptDirFromRepoRoot(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("LIGHTHOUSE_REPO_ROOT", "/srv/my_repo.d")
+	testpath.SetHome(t, home)
+	root := testpath.Abs("srv", "my_repo.d")
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", root)
 	got, err := defaultTranscriptDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".claude", "projects", "-srv-my-repo-d")
+	want := filepath.Join(home, ".claude", "projects", regexp.MustCompile("[^A-Za-z0-9]").ReplaceAllString(root, "-"))
 	if got != want {
 		t.Fatalf("dir %q, want %q", got, want)
 	}

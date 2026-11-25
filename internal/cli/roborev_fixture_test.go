@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -16,6 +18,8 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -111,13 +115,13 @@ func newGateRun(t *testing.T, c gateCase) *gateRun {
 	gateGit(t, r.repo, "checkout", "-b", "feat")
 	gateCommitLines(t, r.repo, 100, "x.go")
 	bin := filepath.Join(dir, "bin")
-	for _, tool := range []string{"roborev", "codex"} {
-		gateWrite(t, filepath.Join(bin, tool), "#!/bin/sh\n")
-		if err := os.Chmod(filepath.Join(bin, tool), 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	for _, tool := range []string{"roborev", "codex"} {
+		stubbin.Make(t, bin, tool, stubbin.Spec{})
+	}
+	stubbin.Only(t, bin, "git")
 	r.vars["base"] = gateGit(t, r.repo, "rev-parse", "origin/main")
 	return r
 }
@@ -140,7 +144,7 @@ func (r *gateRun) sub(v any) any {
 		for _, k := range keys {
 			x = strings.ReplaceAll(x, "$"+k, r.vars[k])
 		}
-		return x
+		return nativePaths(x, r.vars)
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
@@ -155,6 +159,22 @@ func (r *gateRun) sub(v any) any {
 		return out
 	}
 	return v
+}
+
+// nativePaths gives the path tail after an absolute variable value the native separator: a fixture
+// writes "$state/feat.json", the code under test returns "...\\feat.json" on Windows.
+func nativePaths(x string, vars map[string]string) string {
+	if runtime.GOOS != "windows" {
+		return x
+	}
+	for _, v := range vars {
+		if !filepath.IsAbs(v) {
+			continue
+		}
+		re := regexp.MustCompile(regexp.QuoteMeta(v) + `[/\w.\-]*`)
+		x = re.ReplaceAllStringFunc(x, filepath.FromSlash)
+	}
+	return x
 }
 
 func gateStr(m map[string]any, key string) string { s, _ := m[key].(string); return s }
@@ -175,6 +195,11 @@ func (r *gateRun) setup(actions []map[string]any) {
 			onlyGit := filepath.Join(r.tmp, "only-git")
 			if err := os.Mkdir(onlyGit, 0o755); err != nil {
 				t.Fatal(err)
+			}
+			if runtime.GOOS == "windows" {
+				// git.exe needs its sibling DLLs, so a symlink or copy of it does not run.
+				stubbin.Only(t, onlyGit, "git")
+				break
 			}
 			git, err := exec.LookPath("git")
 			if err != nil {
@@ -625,7 +650,7 @@ func TestRoborevGateStdoutIsOneOrderedLine(t *testing.T) {
 // strict Codex read fails and the gate skips as not measurable.
 func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
 	r := newGateRun(t, gateCase{})
-	t.Setenv("HOME", filepath.Join(r.tmp, "home"))
+	testpath.SetHome(t, filepath.Join(r.tmp, "home"))
 	t.Setenv("CODEX_HOME", filepath.Join(r.tmp, "codex-home"))
 	t.Chdir(r.repo)
 	var out, errOut bytes.Buffer

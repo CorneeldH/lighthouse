@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // write-issue: what lives only in skill text. The relation comes before the blocked-issue label,
@@ -246,12 +248,11 @@ func TestWriteIssueInvariantCheckRunsAgainstTheForge(t *testing.T) {
 	// The forge is the boundary: `lighthouse forge issue list` answers from a page in the JSON
 	// shape of the wrapper and refuses any other argv the way the real command refuses an unknown
 	// flag. Every other call runs this test binary as lighthouse (TestMain).
-	stub := "#!/bin/sh\nif [ \"$1\" = forge ]; then\n" +
+	stubbin.RequirePOSIX(t, "test on $1 and $*, exec of cat and of the real lighthouse")
+	stub := "if [ \"$1\" = forge ]; then\n" +
 		"  [ \"$*\" = \"forge issue list --state open\" ] || { echo \"unknown flag: $*\" >&2; exit 2; }\n" +
 		"  exec cat \"$FORGE_PAGE\"\nfi\nexec \"$REAL_LIGHTHOUSE\" \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "lighthouse"), []byte(stub), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubbin.MakeScript(t, bin, "lighthouse", stub)
 	self, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

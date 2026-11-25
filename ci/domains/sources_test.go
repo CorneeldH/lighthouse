@@ -128,6 +128,9 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/repoconfig/repoconfig_test.go":
 		// docs/... are the Document paths of a labels document inside a test string, never read from this repo.
 		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/cli/tick_versions.go":
+		// docs/... is the spec path printed in the proposal issue as a pointer, never read from this repo.
+		return strings.ReplaceAll(text, "docs/", "")
 	case strings.HasPrefix(rel, "internal/scheduled/mapplanned/"):
 		// docs/... are map documents and changelog.d is the fragment directory of the target repo of
 		// the job (a temp repo in tests), never this repo's.
