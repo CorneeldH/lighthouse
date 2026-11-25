@@ -20,6 +20,9 @@ type fpItem struct {
 	IssueUpdatedAt time.Time   `json:"issue_updated_at"`
 	Blockers       []fpBlocker `json:"blockers"`
 	PRs            []fpPR      `json:"prs"`
+	// PushedQuestion is Item.PushedQuestion: a push by hand changes no board field. Zero hashes
+	// as before it existed.
+	PushedQuestion int64 `json:"pushed_question,omitempty"`
 }
 
 type fpBlocker struct {
@@ -58,7 +61,8 @@ type fpMarker struct {
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of parked items (To do, which Prepare keeps only with an own
 // 🤖 Parked or an open run, and the On hold remnant), the PRs of items with an open run, and the
-// open runs with the stand of their session, the resume markers, the unreadable marker files,
+// open runs with the stand of their session, the open pusher Vraag whose SHA origin holds
+// (Item.PushedQuestion), the resume markers, the unreadable marker files,
 // whether a node's markers could not be read, and the end of the pause.
 // Comments are left out: a new comment moves IssueUpdatedAt. Activity and permission prompts
 // are left out too: they change every tick, and Boundaries makes the tick look when their
@@ -88,7 +92,7 @@ func Fingerprint(pre Pre) string {
 		f := fpItem{
 			Issue: it.Issue, Status: it.Status, Priority: it.Priority,
 			ItemUpdatedAt: it.ItemUpdatedAt.UTC(), IssueUpdatedAt: it.IssueUpdatedAt.UTC(),
-			Blockers: []fpBlocker{}, PRs: []fpPR{},
+			Blockers: []fpBlocker{}, PRs: []fpPR{}, PushedQuestion: it.PushedQuestion,
 		}
 		if it.Status == statusToDo || it.Status == statusOnHold {
 			for _, b := range it.BlockedBy {

@@ -1,6 +1,7 @@
 package dispatch
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -45,11 +46,14 @@ type ToDoMark struct {
 // ToDoProbe is what Prepare needs to find the To do items the tick parked itself. Known are the
 // marks of the previous precheck (TickState.ToDo): an item whose IssueUpdatedAt still equals
 // its mark is not read again, since a new comment moves IssueUpdatedAt. TokenLogin is called
-// only when an item must be read, Trust only for a protocol comment of another author.
+// only when an item must be read, Trust only for a protocol comment of another author. Trust
+// also filters the comments of an item with a push row closed on a question (pushedQuestion),
+// and Log takes the line of a forge error there; nil discards it.
 type ToDoProbe struct {
 	Known      map[int]ToDoMark
 	TokenLogin func() (string, error)
 	Trust      *Trust
+	Log        io.Writer
 }
 
 // SameToDo reports whether two sets of marks are equal, comparing times as instants.
@@ -99,6 +103,10 @@ type Pre struct {
 	// Blockers is the blocker graph of the prio weight (BlockerGraph of the whole board of the
 	// repo, not only the items). Complete reads the weights with it; the fingerprint does not.
 	Blockers map[int][]int
+	// PushedIncomplete is whether a forge error left an item's PushedQuestion unread: no start of
+	// a push by hand in this tick, and the caller does not save the fingerprint, so the next tick
+	// reads it again.
+	PushedIncomplete bool
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
@@ -109,8 +117,12 @@ type Pre struct {
 // open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
 // so a merged PR that does not close the issue stays visible after its run closed. Each open
 // scheduled run with a branch gets the PRs of that branch in ScheduledPRs: it has no board item.
+// pushRows names the issues whose last run is a push row closed on a question
+// (PushQuestionRows): such an item in Controller gets its PushedQuestion (pushedQuestion), at two
+// forge calls. A forge error there fails nothing: the item keeps 0, the error goes to probe.Log
+// and Pre.PushedIncomplete is set.
 func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string,
-	probe ToDoProbe) (Pre, error) {
+	pushRows map[int]bool, probe ToDoProbe) (Pre, error) {
 	if repo.Board == nil {
 		return Pre{}, fmt.Errorf("dispatch: %s: missing [forge.board]", repo.Slug)
 	}
@@ -175,6 +187,7 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 		return Pre{}, err
 	}
 	var items []Item
+	pushedIncomplete := false
 	for _, bi := range board {
 		status := known(bi.Status)
 		held := dispatchStatuses[status] || hasRun[bi.Issue] || status == statusToDo && toDo[bi.Issue].OwnParked
@@ -197,6 +210,16 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 			it.PRs = mergePRs(bi.ClosingPRs, onBranch)
 		}
 		slices.SortFunc(it.PRs, func(x, y forge.PR) int { return x.Number - y.Number })
+		if status == statusController && pushRows[it.Issue] {
+			id, err := pushedQuestion(ctx, f, it.Issue, probe.Trust)
+			if err != nil {
+				pushedIncomplete = true
+				log := cmp.Or[io.Writer](probe.Log, io.Discard)
+				_, _ = fmt.Fprintf(log, "lighthouse: %s#%d: push by hand not checked: %s\n", repo.Slug, it.Issue,
+					strings.ReplaceAll(err.Error(), "\n", "; "))
+			}
+			it.PushedQuestion = id
+		}
 		items = append(items, it)
 	}
 	slices.SortFunc(items, func(x, y Item) int { return x.Issue - y.Issue })
@@ -205,7 +228,61 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 		return Pre{}, err
 	}
 	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open, ScheduledPRs: scheduledPRs, ToDo: toDo,
-		Blockers: BlockerGraph(board, repo.Slug)}, nil
+		Blockers: BlockerGraph(board, repo.Slug), PushedIncomplete: pushedIncomplete}, nil
+}
+
+// PushQuestionRows is the set of issues whose last run in history (oldest first) is a push row
+// that closed on a question: the issues whose pusher Vraag may wait on a push by hand.
+func PushQuestionRows(history []runs.Row) map[int]bool {
+	last := map[int]runs.Row{}
+	for _, r := range history {
+		last[r.Issue] = r
+	}
+	out := map[int]bool{}
+	for issue, r := range last {
+		if isPush(r) && !r.Open && r.Outcome == runs.Question {
+			out[issue] = true
+		}
+	}
+	return out
+}
+
+// pushedQuestion is the id of the open pusher Vraag of issue whose SHA origin holds, 0 when there
+// is none. It reads the comments with the trust filter of Complete, takes the last turn as decide
+// does, and asks the forge only when that is a pusher Vraag nobody answered (answerTo) that names
+// a SHA, a worktree and a safe branch (validQuestionTarget). Every comment after the Vraag that
+// can answer counts, 🚀 or not: an answer here only holds the start back, which is the safe side.
+func pushedQuestion(ctx context.Context, f forge.Forge, issue int, trust *Trust) (int64, error) {
+	if trust == nil {
+		return 0, errors.New("no trust to read the comments")
+	}
+	all, err := f.Comments(ctx, issue)
+	if err != nil {
+		return 0, err
+	}
+	var kept []Comment
+	for _, pc := range all {
+		ok, err := trust.Trusted(ctx, pc.Author)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			kept = append(kept, Comment{ID: pc.ID, Author: pc.Author, Body: pc.Body, CreatedAt: pc.CreatedAt, URL: pc.URL})
+		}
+	}
+	c := issueCtx{it: Item{Issue: issue, Comments: kept}}
+	q := lastTurn(headers(c.it))
+	if q == nil || !pusherQuestion(q.Header) || !validQuestionTarget(q.Header) {
+		return 0, nil
+	}
+	if _, answered := c.answerTo(q.Comment.ID); answered {
+		return 0, nil
+	}
+	has, err := f.BranchContains(ctx, q.Header.Fields["branch"], q.Header.Fields["sha"])
+	if err != nil || !has {
+		return 0, err
+	}
+	return q.Comment.ID, nil
 }
 
 // prioWeights is the PrioWeight per issue of pre. The blocker graph is pre.Blockers, the BlockedBy

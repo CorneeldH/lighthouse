@@ -673,6 +673,25 @@ func TestLoadReadsPaths(t *testing.T) {
 	}
 }
 
+// Fails when Load does not read [paths] specs and plans, or leaves them empty without a default:
+// the pusher then gives the intent reviewer no spec and no plan.
+func TestRepoPaths(t *testing.T) {
+	d, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.SpecsDir != "docs/developer/planning/specs" || d.PlansDir != "docs/developer/planning/plans" {
+		t.Errorf("defaults SpecsDir %q, PlansDir %q", d.SpecsDir, d.PlansDir)
+	}
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[paths]\nspecs = \"s/specs\"\nplans = \"s/plans\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.SpecsDir != "s/specs" || r.PlansDir != "s/plans" {
+		t.Errorf("SpecsDir %q, PlansDir %q, want s/specs and s/plans", r.SpecsDir, r.PlansDir)
+	}
+}
+
 func writeInstalled(t *testing.T, dir string, components map[string]levels.Stand) {
 	t.Helper()
 	data := levels.Installed{Level: "x", Since: "2026-01-01T00:00:00Z", Components: components}.Marshal()

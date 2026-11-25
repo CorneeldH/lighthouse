@@ -53,6 +53,9 @@ type questionInput struct {
 	sha, worktree, branch, after, lane, diff, attachment string
 	verdict                                              *Verdict
 	hint                                                 hint
+	// noReviewers and noIntent are [dispatch.workflow_push] without reviewers and without an
+	// intent table: a Vraag of the review says so, and how to set them.
+	noReviewers, noIntent bool
 }
 
 // postTimeout bounds posting a comment and closing the row, after the work's deadline
@@ -231,6 +234,7 @@ func renderQuestion(q questionInput, language string) string {
 		lines = append(lines, "", "**"+h("question_label")+":** "+h(key), "", h("question_close"))
 	}
 	lines = append(lines, redLines(q, language)...)
+	lines = append(lines, missingLines(q, language)...)
 	if q.verdict != nil {
 		lines = append(lines, "", "**"+h("question_push_verdict")+":**")
 		lines = append(lines, verdictLines(*q.verdict)...)
@@ -297,6 +301,22 @@ func pushFields(q questionInput) []string {
 func redLines(q questionInput, language string) []string {
 	lines := []string{"", "**" + protocol.Heading("question_push_step", language) + ":** " + prose(q.red.Step, maxProse)}
 	return append(lines, fenced("text", noFooter(capRunes(strings.TrimSpace(q.red.Why), maxWhy)))...)
+}
+
+// missingLines say, in a Vraag of the review, which part of [dispatch.workflow_push] is not set
+// and how to set it. They stand before the diff, so a cut diff (fitQuestion) keeps them.
+func missingLines(q questionInput, language string) []string {
+	if q.hint != hintPermit || q.red.Step != StepReview {
+		return nil
+	}
+	var lines []string
+	if q.noReviewers {
+		lines = append(lines, "", protocol.Heading("question_push_no_reviewers", language))
+	}
+	if q.noIntent {
+		lines = append(lines, "", protocol.Heading("question_push_no_intent", language))
+	}
+	return lines
 }
 
 // attachmentLines names the file with the full diff, when the diff in the text is cut.

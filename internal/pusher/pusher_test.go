@@ -35,6 +35,19 @@ type fakeForge struct {
 	refuse func(body string) bool
 	// reads counts the BranchPRs reads of a wrapper that changes its answer.
 	reads int
+	// issue is issue 1; issueErr makes Issue fail.
+	issue    forge.Issue
+	issueErr error
+}
+
+func (f *fakeForge) Issue(_ context.Context, n int) (forge.Issue, error) {
+	if n != 1 {
+		return forge.Issue{}, errors.New("fake forge: only issue 1")
+	}
+	if f.issueErr != nil {
+		return forge.Issue{}, f.issueErr
+	}
+	return f.issue, nil
 }
 
 func (f *fakeForge) Comments(_ context.Context, n int) ([]protocol.Comment, error) {
@@ -119,7 +132,7 @@ func newRunFix(t *testing.T, review string, scripts map[string]string) *runFix {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
-	r := &runFix{fixture: f, db: s.DB, forge: &fakeForge{}, t0: time.Now().UTC().Add(-time.Hour).Truncate(time.Second),
+	r := &runFix{fixture: f, db: s.DB, forge: &fakeForge{issue: forge.Issue{Number: 1, Title: issueTitle, Body: issueBody}}, t0: time.Now().UTC().Add(-time.Hour).Truncate(time.Second),
 		marker: filepath.Join(f.dir, "reviewer-ran")}
 	run, err := runs.Take(ctx, s.DB, runs.Claim{Repo: "o/r", Issue: 1, SessionID: runs.NewSessionID(), Mode: "start",
 		Trigger: "manual", TriggerKey: "start:1", Command: "/lighthouse-start-issue 1", Branch: branch, Now: r.t0})
@@ -525,6 +538,72 @@ func TestLintRedPostsRepair(t *testing.T) {
 	wantClosed(t, r.row(), runs.Handoff)
 }
 
+// A roborev record that is a skip, or missing, is no review of the SHA: the run that wrote the
+// handoff can run roborev and write a new handoff, so it is a Herstel, not a Teruggegeven (#551).
+func TestRoborevRedPostsRepair(t *testing.T) {
+	for name, record := range map[string]func(r *runFix){
+		"skip": func(r *runFix) {
+			r.branchRecord(map[string]any{"uitkomst": "skip", "reden": "build session ran no review"})
+		},
+		"no record": func(r *runFix) {
+			gitDir := tgit(r.t, r.wt, "rev-parse", "--absolute-git-dir")
+			if err := os.Remove(filepath.Join(gitDir, "lighthouse", "roborev", branch+".json")); err != nil {
+				r.t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRunFix(t, hostconfig.ReviewShadow, nil)
+			r.commitWorkflow("nightly.yml", scheduleWF)
+			record(r)
+			r.run()
+			repair(t, r.forge.last(t), StepRoborev, r.wt)
+			if got := r.remoteHead(); got != "" {
+				t.Errorf("pushed %s without a review", got)
+			}
+			wantClosed(t, r.row(), runs.Handoff)
+		})
+	}
+}
+
+// A SHA origin already has, here under a merge pushed by hand, closes the row as after a push of
+// its own: the handoff to after, the SHA recorded, origin untouched. Neither the skip record nor
+// the shadow review stops it: there is nothing left to push (#551, 9187eeda under 18e3a81).
+func TestAlreadyOnOriginClosesWithoutPush(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.branchRecord(map[string]any{"uitkomst": "skip", "reden": "build session ran no review"})
+	tgit(t, r.wt, "push", "-q", "origin", branch)
+	merge := r.mergeOnOrigin()
+	base := tgit(t, r.main, "rev-parse", "main~1")
+	r.run()
+	if got := r.remoteHead(); got != merge {
+		t.Fatalf("origin/%s = %q, want the hand-made merge %s left alone", branch, got, merge)
+	}
+	if r.reviewerRan() {
+		t.Error("a reviewer ran for a SHA origin already has")
+	}
+	h, ok := protocol.ParseHeader(r.forge.last(t))
+	if !ok {
+		t.Fatalf("not a protocol comment:\n%s", r.forge.last(t))
+	}
+	ho, err := protocol.ParseHandoff(h)
+	if err != nil {
+		t.Fatalf("ParseHandoff: %v", err)
+	}
+	if ho.Next != after || ho.Branch != branch {
+		t.Errorf("handoff %+v, want next %q on %s", ho, after, branch)
+	}
+	if h.Fields["range"] != base+".."+head {
+		t.Errorf("range %q, want %s..%s", h.Fields["range"], base, head)
+	}
+	wantClosed(t, r.row(), runs.Handoff)
+	if got := r.row().PushedSHA; got != head {
+		t.Errorf("row pushed %q, want %s", got, head)
+	}
+}
+
 // A step that could not run is no mistake of the branch: it stays a Teruggegeven.
 func TestCouldNotCheckStaysReturned(t *testing.T) {
 	cases := map[string]struct {
@@ -576,6 +655,8 @@ func TestRepairableClassifiesOnPrefix(t *testing.T) {
 		{Red{StepPolicy, violationText([]Violation{{"a.yml", RuleParse, "a.yml cannot be parsed"}})}, true},
 		{Red{StepPolicy, "COULD NOT CHECK: x"}, false},
 		{Red{StepLint, "COULD NOT CHECK: x"}, false},
+		{Red{StepRoborev, `no roborev review covers abc (x.json: uitkomst "skip", not done)`}, true},
+		{Red{StepRoborev, "COULD NOT CHECK: x"}, false},
 		{Red{StepReview, "x"}, false},
 		{Red{StepToken, "x"}, false},
 		{Red{StepPush, "x"}, false},
@@ -1292,4 +1373,408 @@ func TestLaneReachesThePushedHandoff(t *testing.T) {
 		r.run()
 		wantLane(t, r.forge.last(t))
 	})
+}
+
+// The issue the intent reviewer reads in a runFix.
+const (
+	issueTitle = "Werk de CI bij"
+	issueBody  = "Zet FOO in de build op baz."
+)
+
+// intentBase puts baseWF on origin/main and merges it into the branch, so the merge-base has
+// it: a change to it on the branch can be in the class intent.
+func (r *runFix) intentBase() {
+	r.t.Helper()
+	write(r.t, filepath.Join(r.main, ".github/workflows/ci.yml"), baseWF)
+	tgit(r.t, r.main, "add", ".")
+	tgit(r.t, r.main, "commit", "-q", "-m", "workflows")
+	tgit(r.t, r.main, "push", "-q", "origin", "main")
+	tgit(r.t, r.wt, "merge", "-q", "--no-edit", "main")
+}
+
+// inClassChange is a change of ci.yml inside the class intent: only an env value.
+func (r *runFix) inClassChange() string {
+	r.t.Helper()
+	r.intentBase()
+	return r.commitWorkflow("ci.yml", swap(r.t, baseWF, "FOO: bar", "FOO: baz"))
+}
+
+// intentReviewer makes the intent reviewer of r a script that touches a marker of its own, copies
+// its stdin to a file and answers text; it returns whether it ran and the stdin it read.
+func (r *runFix) intentReviewer(text string) (ran func() bool, stdin func() string) {
+	r.t.Helper()
+	marker, in := filepath.Join(r.dir, "intent-ran"), filepath.Join(r.dir, "intent-stdin")
+	write(r.t, filepath.Join(r.bin, "intent"), "#!/bin/sh\ntouch "+marker+"\ncat > "+in+"\nprintf '%s' '"+text+"' > \"$1\"\n")
+	if err := os.Chmod(filepath.Join(r.bin, "intent"), 0o755); err != nil {
+		r.t.Fatal(err)
+	}
+	r.cfg.Intent = &hostconfig.Reviewer{Command: []string{"intent", "{out}", "-"}}
+	ran = func() bool { _, err := os.Stat(marker); return err == nil }
+	stdin = func() string {
+		text, err := os.ReadFile(in)
+		if err != nil {
+			r.t.Fatalf("the intent reviewer read no stdin: %v", err)
+		}
+		return string(text)
+	}
+	return ran, stdin
+}
+
+func shadowLine() string { return protocol.Heading("question_push_shadow", "nl") }
+
+// An approving intent reviewer replaces the security review for a change in the class: the
+// pusher pushes in shadow and in enforce, and no security reviewer runs. Fails when
+// pushUnderLock does not act on the intent verdict.
+func TestIntentApprovePushesInShadow(t *testing.T) {
+	for _, review := range []string{hostconfig.ReviewShadow, hostconfig.ReviewEnforce} {
+		t.Run(review, func(t *testing.T) {
+			r := newRunFix(t, review, nil)
+			r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+			ran, _ := r.intentReviewer(approveJSON)
+			head := r.inClassChange()
+			r.run()
+			if got := r.remoteHead(); got != head {
+				t.Fatalf("origin/%s = %q, want the pushed %s:\n%s", branch, got, head, r.forge.last(t))
+			}
+			if !ran() {
+				t.Error("the intent reviewer did not run")
+			}
+			if r.reviewerRan() {
+				t.Error("a security reviewer ran after an intent approve")
+			}
+			if strings.Contains(r.forge.last(t), "🤖 Vraag") {
+				t.Errorf("a Vraag after an intent approve:\n%s", r.forge.last(t))
+			}
+			wantClosed(t, r.row(), runs.Handoff)
+		})
+	}
+}
+
+// An intent reject is a Vraag that permits the SHA, with the intent verdict, and no push, also in
+// enforce with security reviewers that would approve.
+func TestIntentRejectAsksWithVerdict(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewEnforce, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	ran, _ := r.intentReviewer(rejectJSON)
+	head := r.inClassChange()
+	r.run()
+	if got := r.remoteHead(); got != "" {
+		t.Fatalf("pushed %s after an intent reject", got)
+	}
+	if !ran() {
+		t.Fatal("the intent reviewer did not run")
+	}
+	if r.reviewerRan() {
+		t.Error("a security reviewer ran after an intent reject")
+	}
+	body := r.forge.last(t)
+	h := question(t, body, head, r.wt)
+	if h.Fields["step"] != StepReview {
+		t.Errorf("step %q, want %s", h.Fields["step"], StepReview)
+	}
+	verdict := "**" + protocol.Heading("question_push_verdict", "nl") + ":**\n- intent: reject"
+	for _, want := range []string{permitLine(), verdict, "unpinned action", "uses: foo/bar@v1"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("intent Vraag lacks %q:\n%s", want, body)
+		}
+	}
+	wantClosed(t, r.row(), runs.Question)
+}
+
+// ordinaryRoad checks the shadow Vraag of the security review: the reviewers ran, nothing pushed.
+func (r *runFix) ordinaryRoad(head string) {
+	r.t.Helper()
+	if got := r.remoteHead(); got != "" {
+		r.t.Fatalf("pushed %s on the ordinary road in shadow", got)
+	}
+	if !r.reviewerRan() {
+		r.t.Error("the security reviewers did not run")
+	}
+	body := r.forge.last(r.t)
+	question(r.t, body, head, r.wt)
+	if !strings.Contains(body, shadowLine()) || strings.Contains(body, "- intent:") {
+		r.t.Errorf("not the shadow Vraag of the security review:\n%s", body)
+	}
+}
+
+// Without [dispatch.workflow_push.intent] a change in the class takes the ordinary road, not a
+// COULD NOT CHECK reject of a missing intent reviewer.
+func TestNoIntentTableTakesOrdinaryRoad(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	head := r.inClassChange()
+	r.run()
+	r.ordinaryRoad(head)
+}
+
+// An issue the forge does not give takes the ordinary road: the intent reviewer never judges
+// without the one anchor from outside the run.
+func TestIssueUnreadableTakesOrdinaryRoad(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	ran, _ := r.intentReviewer(approveJSON)
+	r.forge.issueErr = errors.New("fake forge: 502")
+	head := r.inClassChange()
+	r.run()
+	r.ordinaryRoad(head)
+	if ran() {
+		t.Error("the intent reviewer ran without the issue")
+	}
+}
+
+// A new action puts the change outside the class: the intent reviewer is never asked.
+func TestOutsideClassNeverRunsIntentReviewer(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	ran, _ := r.intentReviewer(approveJSON)
+	r.intentBase()
+	head := r.commitWorkflow("ci.yml", swap(t, baseWF, "      - run: make\n", "      - uses: actions/setup-go@"+pin+"\n      - run: make\n"))
+	r.run()
+	r.ordinaryRoad(head)
+	if ran() {
+		t.Error("the intent reviewer ran for a change with a new action")
+	}
+}
+
+// The Vraag of the review says what is missing: no reviewers, no intent table. Each line stands
+// only when it holds, and a cut diff keeps them.
+func TestQuestionNamesMissingReviewers(t *testing.T) {
+	noReviewers := protocol.Heading("question_push_no_reviewers", "nl")
+	noIntent := protocol.Heading("question_push_no_intent", "nl")
+	for _, line := range []string{noReviewers, noIntent} {
+		for _, want := range []string{"docs/tick.md", "De review"} {
+			if !strings.Contains(line, want) {
+				t.Errorf("%q does not name %q", line, want)
+			}
+		}
+	}
+	for _, want := range []string{"[[dispatch.workflow_push.reviewers]]", `review = "enforce"`} {
+		if !strings.Contains(noReviewers, want) {
+			t.Errorf("%q does not name %q", noReviewers, want)
+		}
+	}
+	if !strings.Contains(noIntent, "[dispatch.workflow_push.intent]") {
+		t.Errorf("%q does not name the intent table", noIntent)
+	}
+	cases := []struct {
+		name                  string
+		reviewers             []hostconfig.Reviewer
+		intent                bool
+		wantNoRevs, wantNoInt bool
+	}{
+		{"no reviewers and no intent", nil, false, true, true},
+		{"reviewers and no intent", []hostconfig.Reviewer{rv("supply-chain", "approve"), rv("injection", "approve")}, false, false, true},
+		{"reviewers and intent", []hostconfig.Reviewer{rv("supply-chain", "approve"), rv("injection", "approve")}, true, false, false},
+		{"intent and no reviewers", nil, true, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := newRunFix(t, hostconfig.ReviewShadow, nil)
+			r.cfg.Reviewers = tc.reviewers
+			if tc.intent {
+				r.intentReviewer(approveJSON)
+			}
+			head := r.commitWorkflow("ci.yml", preMergeWF) // a new workflow: outside the class
+			r.run()
+			body := r.forge.last(t)
+			question(t, body, head, r.wt)
+			if got := strings.Contains(body, noReviewers); got != tc.wantNoRevs {
+				t.Errorf("no-reviewers line %v, want %v:\n%s", got, tc.wantNoRevs, body)
+			}
+			if got := strings.Contains(body, noIntent); got != tc.wantNoInt {
+				t.Errorf("no-intent line %v, want %v:\n%s", got, tc.wantNoInt, body)
+			}
+		})
+	}
+	t.Run("a cut diff keeps the lines", func(t *testing.T) {
+		q := questionInput{red: Red{StepReview, "x"}, sha: strings.Repeat("a", 40), worktree: "/w", branch: branch,
+			diff: strings.Repeat("+line\n", maxComment), hint: hintPermit, noReviewers: true, noIntent: true}
+		body := fitQuestion(q, "nl", nil, func(string) (string, error) { return "/s/x.diff", nil })
+		if !strings.Contains(body, noReviewers) || !strings.Contains(body, noIntent) {
+			t.Errorf("the cut Vraag lost a line:\n%s", body[:2000])
+		}
+	})
+	t.Run("only on a review Vraag", func(t *testing.T) {
+		q := questionInput{red: Red{StepPermit, "moved"}, sha: strings.Repeat("a", 40), worktree: "/w", branch: branch,
+			hint: hintMoved, noReviewers: true, noIntent: true}
+		body := renderQuestion(q, "nl")
+		if strings.Contains(body, noReviewers) || strings.Contains(body, noIntent) {
+			t.Errorf("a moved Vraag names the review config:\n%s", body)
+		}
+	})
+}
+
+// The spec and the plan the branch adds or changes reach the intent reviewer, with the issue; a
+// spec the branch does not touch, a file outside the two dirs and a symlink do not.
+func TestSpecAndPlanOfBranchReachReviewer(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.req.SpecsDir, r.req.PlansDir = "design/specs", "design/plans"
+	_, stdin := r.intentReviewer(approveJSON)
+	write(t, filepath.Join(r.main, "design/specs/old.md"), "OLD-SPEC-TEXT\n")
+	r.intentBase()
+	r.commit("design/specs/new-design.md", "NEW-SPEC-TEXT\n")
+	r.commit("design/plans/new.md", "NEW-PLAN-TEXT\n")
+	r.commit("design/other.md", "OTHER-TEXT\n")
+	secret := filepath.Join(r.dir, "outside.md")
+	write(t, secret, "OUTSIDE-TEXT\n")
+	if err := os.Symlink(secret, filepath.Join(r.wt, "design/specs/link.md")); err != nil {
+		t.Fatal(err)
+	}
+	tgit(t, r.wt, "add", "design/specs/link.md")
+	tgit(t, r.wt, "commit", "-q", "-m", "link")
+	head := r.commitWorkflow("ci.yml", swap(t, baseWF, "FOO: bar", "FOO: baz"))
+	r.run()
+	if got := r.remoteHead(); got != head {
+		t.Fatalf("origin/%s = %q, want the pushed %s:\n%s", branch, got, head, r.forge.last(t))
+	}
+	in := stdin()
+	for _, want := range []string{issueTitle, issueBody, "design/specs/new-design.md", "NEW-SPEC-TEXT", "design/plans/new.md", "NEW-PLAN-TEXT", "FOO: baz"} {
+		if !strings.Contains(in, want) {
+			t.Errorf("the intent reviewer did not get %q:\n%s", want, in)
+		}
+	}
+	if !strings.Contains(in, "Path: design/specs/link.md\n\n[not read: ") {
+		t.Errorf("the symlink is not named as not read:\n%s", in)
+	}
+	// A symlink's blob is its target: read as a file, the target path would reach the reviewer.
+	for _, not := range []string{"OLD-SPEC-TEXT", "OTHER-TEXT", "OUTSIDE-TEXT", secret} {
+		if strings.Contains(in, not) {
+			t.Errorf("the intent reviewer got %q:\n%s", not, in)
+		}
+	}
+}
+
+// pushedQuestion is the pusher Vraag of sha in wt as renderQuestion writes it, with after and lane.
+func pushedQuestion(sha, wt string) string {
+	return renderQuestion(questionInput{sha: sha, worktree: wt, branch: branch, after: after, lane: "native",
+		red: Red{StepReview, "shadow"}, hint: hintPermit}, "nl")
+}
+
+const pushedSHA = "0123456789abcdef0123456789abcdef01234567"
+
+// A pushed:<id> key names the pusher Vraag with that id: its worktree, branch, after and lane at
+// the time of the Vraag, and no permit. Fails when targetOf does not know pushed, or gives the
+// Vraag's SHA as a permit: nobody answered, so nothing lifts the review.
+func TestTargetOfPushed(t *testing.T) {
+	at := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	comments := []protocol.Comment{
+		{ID: 7, Body: handoffBody("/w", after), CreatedAt: at.Add(-time.Hour).Format(time.RFC3339)},
+		{ID: 8, Body: pushedQuestion(pushedSHA, "/w"), CreatedAt: at.Format(time.RFC3339)},
+	}
+	got, err := targetOf(comments, "pushed:8")
+	if err != nil {
+		t.Fatalf("targetOf: %v", err)
+	}
+	want := target{worktree: "/w", branch: branch, after: after, lane: "native", at: at}
+	if got != want {
+		t.Errorf("targetOf = %+v, want %+v", got, want)
+	}
+}
+
+// Only a pusher Vraag starts a pushed row: a handoff, a Vraag of a session, a Herstel with a sha,
+// a Vraag without a usable sha and a gone comment are refused.
+func TestTargetOfPushedRejectsNonQuestion(t *testing.T) {
+	at := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	q := pushedQuestion(pushedSHA, "/w")
+	cases := map[string]string{
+		"handoff":           handoffBody("/w", after),
+		"question of a run": q + "\n<sub>session " + runs.NewSessionID() + "</sub>",
+		"herstel":           strings.Replace(q, protocol.Heading("kind_question", "nl"), protocol.Heading("kind_repair", "nl"), 1),
+		"no sha":            pushedQuestion("", "/w"),
+		"short sha":         pushedQuestion("0123abc", "/w"),
+		"relative wt":       pushedQuestion(pushedSHA, "w"),
+		"not a protocol":    "push",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := targetOf([]protocol.Comment{{ID: 8, Body: body, CreatedAt: at}}, "pushed:8"); err == nil {
+				t.Errorf("targetOf accepted %s:\n%s", name, body)
+			}
+		})
+	}
+	t.Run("gone", func(t *testing.T) {
+		if _, err := targetOf([]protocol.Comment{{ID: 8, Body: q, CreatedAt: at}}, "pushed:9"); err == nil {
+			t.Error("targetOf accepted the id of a comment that is not there")
+		}
+	})
+}
+
+// lastQuestion is the id of the last comment the pusher posted, which must be a pusher Vraag of sha.
+func (r *runFix) lastQuestion(sha string) int64 {
+	r.t.Helper()
+	body := r.forge.last(r.t)
+	question(r.t, body, sha, r.wt)
+	r.forge.mu.Lock()
+	defer r.forge.mu.Unlock()
+	for i := len(r.forge.comments) - 1; i >= 0; i-- {
+		if r.forge.comments[i].Body == body {
+			return r.forge.comments[i].ID
+		}
+	}
+	r.t.Fatal("the last post is not among the comments")
+	return 0
+}
+
+// pushedRow claims the push row tick starts for a Vraag pushed by hand: trigger answer, key
+// pushed:<id>, and no permit.
+func (r *runFix) pushedRow(id int64) {
+	r.t.Helper()
+	r.claim("answer", "pushed:"+strconv.FormatInt(id, 10), time.Now().Add(2*time.Second))
+	r.req.Permit = ""
+}
+
+// Someone pushed the SHA of the Vraag by hand: the pushed row reads the Vraag, the floor is green
+// with AlreadyPushed and the chain goes on to after, with no review and no push of its own.
+// Fails when targetOf does not know pushed (the row then asks at the trigger step).
+func TestRunPushedAlreadyOnOriginHandsOn(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	id := r.lastQuestion(head)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	tgit(t, r.wt, "push", "-q", "origin", branch)
+	base := tgit(t, r.main, "rev-parse", "main")
+	r.pushedRow(id)
+	r.run()
+	if r.reviewerRan() {
+		t.Error("a reviewer ran for a SHA origin already has")
+	}
+	if got := r.remoteHead(); got != head {
+		t.Fatalf("origin/%s = %q, want the hand-pushed %s", branch, got, head)
+	}
+	h, _ := protocol.ParseHeader(r.forge.last(t))
+	ho, err := protocol.ParseHandoff(h)
+	if err != nil {
+		t.Fatalf("ParseHandoff: %v\n%s", err, r.forge.last(t))
+	}
+	if ho.Next != after || ho.Branch != branch || h.Fields["range"] != base+".."+head {
+		t.Errorf("handoff %+v range %q, want next %q on %s, range %s..%s", ho, h.Fields["range"], after, branch, base, head)
+	}
+	wantClosed(t, r.row(), runs.Handoff)
+	if got := r.row().PushedSHA; got != head {
+		t.Errorf("row pushed %q, want %s", got, head)
+	}
+}
+
+// The forge said origin had the SHA, but it has not (a race, or the forge lied): the pushed row
+// runs the whole road, review included, and ends in a new Vraag with a new id, never in a push.
+// Fails when a pushed start counts as a permit.
+func TestRunPushedNotOnOriginRunsFullRoad(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	id := r.lastQuestion(head)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	r.pushedRow(id)
+	r.run()
+	if !r.reviewerRan() {
+		t.Error("no reviewer ran: the pushed start skipped the review")
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Fatalf("pushed %s without an answer", got)
+	}
+	if again := r.lastQuestion(head); again == id {
+		t.Errorf("the new Vraag has the id %d of the old one", again)
+	}
+	wantClosed(t, r.row(), runs.Question)
 }

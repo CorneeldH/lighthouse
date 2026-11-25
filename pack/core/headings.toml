@@ -259,6 +259,10 @@ en = "workflow pusher stayed red after two repair rounds"
 nl = "De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`."
 en = "The workflow pusher found this step red. Repair it in the worktree, commit, and write a new handoff with `next: push-workflows`."
 
+[prompt_pusher_repair_roborev]
+nl = "Geen roborev-review dekt deze SHA (een skip, of geen record). Draai V2b van `/lighthouse-write-pr` op de workflow-route (`lighthouse roborev-gate gate --push`) tot het push-record `done` is; schrijf pas daarna de nieuwe handoff."
+en = "No roborev review covers this SHA (a skip, or no record). Run V2b of `/lighthouse-write-pr` on the workflow route (`lighthouse roborev-gate gate --push`) until the push record is `done`; only then write the new handoff."
+
 [question_push_step]
 nl = "Rode stap"
 en = "Red step"
@@ -278,6 +282,14 @@ en = "Push it yourself"
 [question_push_shadow]
 nl = "shadow mode: de review beslist niet, jij wel"
 en = "shadow mode: the review does not decide, you do"
+
+[question_push_no_reviewers]
+nl = "Er zijn geen reviewers ingesteld, dus buiten de intent-toets pusht de pusher een pre-merge wijziging nooit zelf. Zet ze in `host.toml` met `[[dispatch.workflow_push.reviewers]]` en `review = \"enforce\"`; zie `docs/tick.md`, *De review*."
+en = "No reviewers are configured, so outside the intent check the pusher never pushes a pre-merge change itself. Set them in `host.toml` with `[[dispatch.workflow_push.reviewers]]` and `review = \"enforce\"`; see `docs/tick.md`, *De review*."
+
+[question_push_no_intent]
+nl = "Er is geen intent-toets ingesteld. Met `[dispatch.workflow_push.intent]` in `host.toml` pusht de pusher een wijziging zonder nieuwe rechten die past bij issue, spec en plan zelf; zie `docs/tick.md`, *De review*."
+en = "No intent check is configured. With `[dispatch.workflow_push.intent]` in `host.toml` the pusher itself pushes a change without new rights that fits the issue, spec and plan; see `docs/tick.md`, *De review*."
 
 [question_push_permit]
 nl = "Antwoord `push` of geef een andere duidelijke toestemming om precies deze SHA te laten pushen: de vloer draait dan opnieuw, de review niet. Heb je zelf gepusht, antwoord dan `gepusht`."

@@ -46,6 +46,10 @@ type Repo struct {
 	Schedules []Schedule
 	// Paths is [paths]: repo-relative paths, "" when a key is not set.
 	Paths Paths
+	// SpecsDir and PlansDir are paths.specs and paths.plans, relative to the repo, with the
+	// defaults of internal/config: the workflow pusher gives the files under them to its intent
+	// reviewer.
+	SpecsDir, PlansDir string
 }
 
 // Paths is the part of [paths] that lighthouse reads here: the labels document, the tenets
@@ -167,6 +171,8 @@ type rawFile struct {
 		Tenets   string `toml:"tenets"`
 		Areas    string `toml:"areas"`
 		Strategy string `toml:"strategy"`
+		Specs    string `toml:"specs"`
+		Plans    string `toml:"plans"`
 	} `toml:"paths"`
 	Report   toml.Primitive `toml:"report"`
 	Schedule []rawSchedule  `toml:"schedule"`
@@ -242,7 +248,9 @@ func LoadFile(path string) (Repo, error) {
 		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
-		Paths:                Paths(raw.Paths),
+		Paths:                Paths{Labels: raw.Paths.Labels, Tenets: raw.Paths.Tenets, Areas: raw.Paths.Areas, Strategy: raw.Paths.Strategy},
+		SpecsDir:             cmp.Or(raw.Paths.Specs, defaultString("paths.specs")),
+		PlansDir:             cmp.Or(raw.Paths.Plans, defaultString("paths.plans")),
 		Labels: Labels{
 			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, defaultString("labels.blocked_issue")),
 			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, defaultString("labels.blocked_external")),

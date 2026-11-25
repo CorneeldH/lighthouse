@@ -93,6 +93,10 @@ func (g *githubFixture) FailCommit(_ *testing.T, sha string) {
 	g.srv.Fail["GET /repos/o/r/commits/"+sha] = http.StatusInternalServerError
 }
 
+func (g *githubFixture) SetBranchRelation(_ *testing.T, branch, sha, relation string) {
+	g.srv.SetCompare(sha, branch, relation)
+}
+
 func (g *githubFixture) LabelColor(_ *testing.T, name string) string { return g.srv.LabelColors[name] }
 
 func (g *githubFixture) SetLabels(_ *testing.T, names ...string) { g.srv.Labels = names }

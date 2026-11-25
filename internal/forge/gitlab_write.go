@@ -455,6 +455,27 @@ func (g *GitLab) CommitKnown(ctx context.Context, sha string) (bool, error) {
 	return commitKnown(err)
 }
 
+// BranchContains reports whether branch holds sha: the merge base of the two is sha itself.
+// A branch or sha GitLab does not know (404, or a 400 for a ref it cannot resolve) is false, nil.
+func (g *GitLab) BranchContains(ctx context.Context, branch, sha string) (bool, error) {
+	if err := g.configured(); err != nil {
+		return false, err
+	}
+	q := neturl.Values{"refs[]": {sha, branch}}
+	var base struct {
+		ID string `json:"id"`
+	}
+	_, err := g.do(ctx, http.MethodGet, g.projectPath("/repository/merge_base"), q, nil, &base)
+	var se *httpStatusError
+	if errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusBadRequest) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return base.ID != "" && (base.ID == sha || (len(sha) >= 7 && strings.HasPrefix(base.ID, sha))), nil
+}
+
 // AddBlocker makes issue blocker block issue number: a link on number of type is_blocked_by.
 // A plan without blocking links answers 403, which comes back with GitLab's message.
 func (g *GitLab) AddBlocker(ctx context.Context, number, blocker int) error {
