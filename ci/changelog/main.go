@@ -13,6 +13,8 @@
 //   - `released` prints the fragment names an earlier `chore(release): vX.Y.Z` commit removed.
 //   - `next --kind K [--branch B]` prints the next dev, rc, test, minor, major or patch tag.
 //   - `sync --tag T --source DIR` copies the section of T into --root and removes its fragments.
+//   - `reconcile --branch B --now T --pr-open BOOL --pr-closed-by-hand BOOL` prints the action for a
+//     release branch: none, tag-rc, open-release-pr, close-release-pr, open-patch-pr, release-tip or recover.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -38,6 +40,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -51,7 +54,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usageText = "usage: changelog <check|release|released|next|sync|notes> [flags]"
+const usageText = "usage: changelog <check|release|released|next|sync|reconcile|notes> [flags]"
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -176,6 +179,41 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		sayf(stderr, "COULD NOT CHECK: %v\n", err)
 		return 2
+	case "reconcile":
+		branch := fs.String("branch", "", "release branch, release/vX.Y")
+		nowFlag := fs.String("now", "", "the time to judge by, RFC 3339 (default: now)")
+		prOpen := fs.String("pr-open", "false", "true when a release PR is open")
+		closedByHand := fs.String("pr-closed-by-hand", "false", "true when the last release PR was closed by hand")
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		if branchRe.FindString(*branch) == "" {
+			return usageError("--branch release/vX.Y is required")
+		}
+		now := time.Now()
+		if *nowFlag != "" {
+			var err error
+			if now, err = time.Parse(time.RFC3339, *nowFlag); err != nil {
+				return usageError("invalid --now '" + *nowFlag + "' (want RFC 3339)")
+			}
+		}
+		open, errOpen := strconv.ParseBool(*prOpen)
+		hand, errHand := strconv.ParseBool(*closedByHand)
+		if errOpen != nil || errHand != nil {
+			return usageError("--pr-open and --pr-closed-by-hand take true or false")
+		}
+		state, err := loadState(*root, *branch)
+		if err != nil {
+			sayf(stderr, "COULD NOT CHECK: %v\n", err)
+			return 2
+		}
+		state.ReleasePROpen, state.ReleasePRClosedByHand = open, hand
+		say(stdout, decide(state, now))
+		return 0
 	case "released":
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
