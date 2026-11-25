@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -59,7 +60,7 @@ func newRound(t *testing.T) *round {
 
 	r := &round{capture: filepath.Join(tmp, "capture.txt")}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)

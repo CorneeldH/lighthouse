@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // reportZone is the local time of the clock; no machine runs in it, so a bound built in
@@ -126,7 +127,7 @@ func TestReportErrKinds(t *testing.T) {
 		"unknown sink":       {"enabled = true\nsink = \"wiki\"\n", "report.sink"},
 		"file without dir":   {"enabled = true\nsink = \"file\"\n", "report.dir"},
 		"dir outside repo":   {"enabled = true\nsink = \"file\"\ndir = \"../elders\"\n", "report.dir"},
-		"absolute dir":       {"enabled = true\nsink = \"file\"\ndir = \"/tmp/verslagen\"\n", "report.dir"},
+		"absolute dir":       {"enabled = true\nsink = \"file\"\ndir = '" + testpath.Abs("tmp", "verslagen") + "'\n", "report.dir"},
 		"enabled not a bool": {"enabled = \"true\"\n", "report.enabled"},
 	} {
 		t.Run(name, func(t *testing.T) {

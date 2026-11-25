@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const fakeAppServerEnv = "LIGHTHOUSE_FAKE_APP_SERVER"
@@ -322,7 +324,7 @@ func TestCodexReaderAllHomesFail(t *testing.T) {
 }
 
 func TestNewCodexReaderNoHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	t.Setenv("CODEX_HOME", "")
 	if _, err := NewCodexReader(); err == nil {
 		t.Error("want an error without HOME")
@@ -330,13 +332,14 @@ func TestNewCodexReaderNoHome(t *testing.T) {
 }
 
 func TestNewCodexReaderHomes(t *testing.T) {
-	t.Setenv("HOME", "/h")
+	h := testpath.Abs("h")
+	testpath.SetHome(t, h)
 	t.Setenv("CODEX_HOME", "")
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Homes) != 2 || r.Homes[0] != "/h/.codex" || r.Homes[1] != "/h/.codex-specreview" {
+	if len(r.Homes) != 2 || r.Homes[0] != filepath.Join(h, ".codex") || r.Homes[1] != filepath.Join(h, ".codex-specreview") {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 	if r.Timeout != 20*time.Second {
@@ -345,13 +348,14 @@ func TestNewCodexReaderHomes(t *testing.T) {
 }
 
 func TestNewCodexReaderCodexHome(t *testing.T) {
-	t.Setenv("HOME", "/h")
-	t.Setenv("CODEX_HOME", "/run/codex")
+	codex := testpath.Abs("run", "codex")
+	testpath.SetHome(t, testpath.Abs("h"))
+	t.Setenv("CODEX_HOME", codex)
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+	if !reflect.DeepEqual(r.Homes, []string{codex}) {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 	if r.Timeout != 20*time.Second {
@@ -360,30 +364,32 @@ func TestNewCodexReaderCodexHome(t *testing.T) {
 }
 
 func TestNewCodexReaderCodexHomeWithoutHome(t *testing.T) {
-	t.Setenv("HOME", "")
-	t.Setenv("CODEX_HOME", "/run/codex")
+	codex := testpath.Abs("run", "codex")
+	testpath.SetHome(t, "")
+	t.Setenv("CODEX_HOME", codex)
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+	if !reflect.DeepEqual(r.Homes, []string{codex}) {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 }
 
 func TestCodexHome(t *testing.T) {
+	h, codex := testpath.Abs("h"), testpath.Abs("run", "codex")
 	cases := []struct {
 		home, codexHome, want string
 		wantErr               bool
 	}{
-		{"/h", "", "/h/.codex", false},
-		{"/h", "/run/codex", "/run/codex", false},
-		{"", "/run/codex", "/run/codex", false},
+		{h, "", filepath.Join(h, ".codex"), false},
+		{h, codex, codex, false},
+		{"", codex, codex, false},
 		{"", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.home+"|"+c.codexHome, func(t *testing.T) {
-			t.Setenv("HOME", c.home)
+			testpath.SetHome(t, c.home)
 			t.Setenv("CODEX_HOME", c.codexHome)
 			got, err := CodexHome()
 			if (err != nil) != c.wantErr {
