@@ -25,6 +25,7 @@ function Row({ row, colors }: { row: UnassignedRow; colors: ViewProps['colors'] 
         testId="backlog-status"
         className="size-3.5 flex-none"
         state={node.state}
+        blocked={node.blocked}
         color={color}
         title={node.title}
       />
