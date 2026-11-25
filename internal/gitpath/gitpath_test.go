@@ -2,7 +2,6 @@ package gitpath
 
 import (
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"testing"
 )
@@ -36,13 +35,5 @@ func TestNativeWindowsForm(t *testing.T) {
 	}
 	if got, want := Native("C:/Users/x\n"), `C:\Users\x`; got != want {
 		t.Errorf("Native(%q) = %q, want %q", "C:/Users/x\n", got, want)
-	}
-}
-
-func TestNativeLines(t *testing.T) {
-	got := NativeLines("/a\n\n/b\r\n")
-	want := []string{"/a", "/b"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("NativeLines = %q, want %q", got, want)
 	}
 }

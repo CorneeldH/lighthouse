@@ -18,15 +18,3 @@ func Native(out string) string {
 	}
 	return filepath.Clean(filepath.FromSlash(s))
 }
-
-// NativeLines splits git output into lines and applies Native to each one.
-// Empty lines are skipped.
-func NativeLines(out string) []string {
-	var paths []string
-	for _, line := range strings.Split(out, "\n") {
-		if p := Native(line); p != "" {
-			paths = append(paths, p)
-		}
-	}
-	return paths
-}
