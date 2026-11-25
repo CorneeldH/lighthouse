@@ -125,6 +125,18 @@ func TestParseResultClaimTwoMarks(t *testing.T) {
 	}
 }
 
+func TestParseResultCheckboxCount(t *testing.T) {
+	// Fails if a candidate with no checkbox line, or with two, still parses.
+	for name, in := range map[string]string{
+		"none": strings.Replace(resultWith("- Iets [niet nagemeten]"), "- [ ] Afgewezen\n", "", 1),                                   // lighthouse: allow-language
+		"two":  strings.Replace(resultWith("- Iets [niet nagemeten]"), "- [ ] Afgewezen\n", "- [ ] Afgewezen\n- [x] Afgewezen\n", 1), // lighthouse: allow-language
+	} {
+		if _, err := parseResult([]byte(in), testHeadings(t)); err == nil || !strings.Contains(err.Error(), "checkbox") {
+			t.Errorf("%s: err = %v, want a checkbox error", name, err)
+		}
+	}
+}
+
 func TestParseResultClaimNoMark(t *testing.T) {
 	for _, c := range []string{"- Iets zonder markering", "- Iets [onbekend]"} { // lighthouse: allow-language
 		if _, err := parseResult([]byte(resultWith(c)), testHeadings(t)); err == nil {
