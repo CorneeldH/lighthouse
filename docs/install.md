@@ -92,6 +92,10 @@ lighthouse init --upgrade --level standard
 behaves as `strict`. See [Setup levels](levels.md#what-each-level-skips-and-why) for what each
 level skips and why.
 
+Existing auto-memory? After `init`, run `/lighthouse-migrate-memory`: it sorts the Claude Code
+memory files of this repo into instructions, issues, docs and `host.toml`, one group at a time,
+and leaves the deleting to you.
+
 - **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
   reviews, or once you want `commit-test-gate` to run after each commit; first check that
   `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which

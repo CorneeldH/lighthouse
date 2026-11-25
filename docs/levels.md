@@ -30,7 +30,7 @@ The stands come from the `levels.toml` file of each package under `pack/`.
 | Lint and format hooks of the language packs (`gofmt-check`, `go-lint-gate`, `ruff-format-check`, `ty-gate`, `shell-lint-check`) | off | on | on | Lint and format come after the way of working. |
 | Imports gates of the language packs (`go-imports-gate`, `python-imports-gate`, `node-imports-gate`) | on | on | on | They guard the declared imports at every level. |
 | Standard skills of the language packs (`go-standard`, `python-standard`, `shell-standard`) | off | on | on | They follow their hooks: their text describes lint and format hooks that are off on `light`. |
-| Skills `start-issue`, `route-issue`, `forge`, `write-pr`, `close-issue`, `write-handoff`, `place-instruction`, `upgrade` | on | on | on | The chain from issue to PR to a closed issue, plus the way up. |
+| Skills `start-issue`, `route-issue`, `forge`, `write-pr`, `close-issue`, `write-handoff`, `place-instruction`, `upgrade`, `migrate-memory` | on | on | on | The chain from issue to PR to a closed issue, plus the way up. |
 | Skills `write-issue`, `fix-pr`, `audit-worktrees`, `audit-agent-config`, `test-standard` | off | on | on | Maintenance of the chain. |
 | Skill `map-planned` | off | on | on | Places planned issues on their map; part of issue management. |
 | Skills `review-spec`, `review-plan` | off | off | on | They ask Codex for a review by a second model family. |

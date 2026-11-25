@@ -1,7 +1,7 @@
 # Tool -> the units in this package that need it. `lighthouse init` reports a
 # missing tool with these names; it does not stop on it.
 codex = ["review-spec", "review-plan"]
-git = ["run.sh", "main-commit-gate", "commit-test-gate", "worktree-check", "md-link-check", "pr-create-gate", "bash-write-check", "close-issue", "fix-pr", "write-handoff", "place-instruction", "review-plan", "review-spec", "start-issue", "write-pr", "audit-worktrees", "write-issue", "code-language-check", "upgrade"]
+git = ["run.sh", "main-commit-gate", "commit-test-gate", "worktree-check", "md-link-check", "pr-create-gate", "bash-write-check", "close-issue", "fix-pr", "write-handoff", "place-instruction", "review-plan", "review-spec", "start-issue", "write-pr", "audit-worktrees", "write-issue", "code-language-check", "upgrade", "migrate-memory"]
 jq = ["close-issue", "fix-pr", "forge", "write-handoff", "review-plan", "route-issue", "review-spec", "write-pr", "write-issue", "upgrade"]
 superpowers = ["fix-pr", "write-handoff", "place-instruction", "review-plan", "route-issue", "review-spec", "start-issue", "test-standard", "audit-worktrees", "write-pr"]
 
