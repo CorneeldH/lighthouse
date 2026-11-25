@@ -87,6 +87,10 @@ func runHistory(ctx context.Context, env historyEnv, sources bool, since, projec
 	}
 	top, err := exec.CommandContext(ctx, "git", "-C", cwd, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) {
+			return fmt.Errorf("history: git is not runnable: %w", err)
+		}
 		return usageErr(fmt.Errorf("lighthouse history: %s is not a git repository", cwd))
 	}
 	root := filepath.Clean(strings.TrimSpace(string(top)))

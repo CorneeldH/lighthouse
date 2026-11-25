@@ -208,3 +208,16 @@ func TestHistory_SessionOnWSLPathAndSlug(t *testing.T) {
 		t.Errorf("sessions = %v, want 1", got)
 	}
 }
+
+func TestDefaultProjectsDir(t *testing.T) {
+	get := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	if got, err := defaultProjectsDir(get(map[string]string{"CLAUDE_CONFIG_DIR": "/cfg", "HOME": "/h"})); err != nil || got != "/cfg/projects" {
+		t.Errorf("config dir: %q %v", got, err)
+	}
+	if got, err := defaultProjectsDir(get(map[string]string{"HOME": "/h"})); err != nil || got != "/h/.claude/projects" {
+		t.Errorf("home: %q %v", got, err)
+	}
+	if _, err := defaultProjectsDir(get(map[string]string{"HOME": "rel"})); err == nil {
+		t.Error("relative HOME: want error")
+	}
+}
