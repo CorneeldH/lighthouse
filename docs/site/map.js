@@ -751,10 +751,26 @@ export function renderStory(root, data) {
   root.replaceChildren(story, ...sections);
 }
 
-/** `how` as a list of steps; a single string stays one paragraph. */
+const NOT_DESCRIBED = "not described yet";
+
+/** The parts of a chip's drawer that may be missing on a planned item, as plain data: the rows
+    of "When, who and why" that can be empty, and the `how` steps. A missing field reads as
+    "not described yet". */
+export function chipDetail(chip) {
+  const how = Array.isArray(chip.how) ? chip.how : chip.how ? [chip.how] : [];
+  return {
+    rows: [["What you miss without", chip.without || NOT_DESCRIBED]],
+    how: how.length ? how : [NOT_DESCRIBED],
+  };
+}
+
+/** `how` as a list of steps; a single string stays one paragraph, a missing one says so. */
 function steps(how) {
+  if (!how || (Array.isArray(how) && how.length === 0)) {
+    return el("p", "", NOT_DESCRIBED);
+  }
   if (!Array.isArray(how)) {
-    return el("p", "", how || "");
+    return el("p", "", how);
   }
   const list = el("ul", "steps");
   for (const step of how) {
@@ -1041,11 +1057,11 @@ export function renderFlowMap(root, data, detail) {
                   ["What it does", chip.effects.map((e) => EFFECTS[e]).join("; ")],
                 ]
               : []),
-            ["What you miss without", chip.without],
+            ...chipDetail(chip).rows,
             ["Status", statusText(chip)],
           ]),
         ),
-        box("How it works", "", steps(chip.how)),
+        box("How it works", "", steps(chipDetail(chip).how)),
         box("In the chain", "", facts(routeFacts(chip))),
         ...definition(chip.source),
       ],

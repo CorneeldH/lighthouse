@@ -677,6 +677,14 @@ Hij heeft geen `params`: een sleutel in `[schedule.params]` is een configfout. E
 oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml` met `job = "map-planned"`
 (de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de schedule meedraait.
 
+**De veldentabel.** Welke velden de plek op de kaart draagt, staat per soort item in een tweede tabel in
+het labelsdocument, met de koppen `Label`, `Item`, `Place` en `From issue` (zie
+[labels.md](developer/labels.md)). `Label` is het label van de rij; `Item` de soort item, met
+tussen haakjes de plek in het document waar zo'n item staat; `Place` de velden die de plek onder
+`### Op de kaart` noemt; `From issue` de velden die `map-planned` uit titel en body van het issue
+overneemt, zonder iets te verzinnen. `write-issue` baseert stap 3f op die tabel en vraagt de velden
+van `Place`. Zonder tabel, of zonder rij voor het label, blijft stap 3f zoals hij was, en zet `map-planned` het item zoals de uitleg het geeft, zonder andere velden.
+
 **De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
 Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
 (`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
