@@ -210,7 +210,8 @@ func TestComponentsPerMeasureN(t *testing.T) {
 	g := groupOf(t, blockOf(t, Components(load(t, db), Filter{}), "plan_review"), "with")
 	wantValue(t, "Recovered", g.Recovered, 0.5, 2)
 	wantValue(t, "RecoveryItems", g.RecoveryItems, 1, 2)
-	wantValue(t, "Questions", g.Questions, 0.5, 2)
+	// The trajectory without a run or session has no source for questions: it is absent, not 0.
+	wantValue(t, "Questions", g.Questions, 1, 1)
 	if g.Active.N != 1 || g.Active.Value == nil || g.HumanWait.N != 1 {
 		t.Errorf("Active %s, HumanWait %s; want n=1 each", fmtMeasure(g.Active), fmtMeasure(g.HumanWait))
 	}
@@ -416,6 +417,17 @@ func TestComponentsCostKindMixedAcrossTrajectories(t *testing.T) {
 	if g.CostKind != "mixed" {
 		t.Errorf("CostKind = %q; want mixed", g.CostKind)
 	}
+}
+
+func TestComponentsQuestionsSkipTrajectoriesWithoutRunOrSession(t *testing.T) {
+	db, f := newFixture(t)
+	tid := f.addTrajectory("o/r", 1, withPlan(2))
+	f.addReview(tid, "plan_review", at(0), 0)
+	f.addRecovery(tid, 10, "none", at(60), nil)
+
+	g := groupOf(t, blockOf(t, Components(load(t, db), Filter{}), "plan_review"), "with")
+	wantNull(t, "Questions", g.Questions, 0)
+	wantValue(t, "Recovered", g.Recovered, 0, 1)
 }
 
 func TestComponentsCostOnlyOverClosedTrajectories(t *testing.T) {

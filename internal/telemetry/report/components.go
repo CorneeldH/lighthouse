@@ -293,7 +293,11 @@ func group(name string, ts []*Trajectory, component string) Group {
 		}
 		recovered = append(recovered, rec)
 		items = append(items, float64(n))
-		questions = append(questions, float64(t.Questions.Dispatcher+t.Questions.Transcript))
+		// Questions come from runs and sessions: without either there is no source, so the
+		// trajectory is absent rather than 0.
+		if t.Runs+t.Sessions > 0 {
+			questions = append(questions, float64(t.Questions.Dispatcher+t.Questions.Transcript))
+		}
 		if t.Active != nil && t.HumanWait != nil {
 			active = append(active, t.Active.Seconds())
 			human = append(human, t.HumanWait.Seconds())
@@ -311,7 +315,7 @@ func group(name string, ts []*Trajectory, component string) Group {
 	}
 	g.Recovered = meanMeasure(recovered, ReasonNoClosed)
 	g.RecoveryItems = meanMeasure(items, ReasonNoClosed)
-	g.Questions = medianMeasure(questions, ReasonNoClosed)
+	g.Questions = medianMeasure(questions, ReasonNoTimeline)
 	g.Active = medianMeasure(active, ReasonNoTimeline)
 	g.HumanWait = medianMeasure(human, ReasonNoTimeline)
 	return g
