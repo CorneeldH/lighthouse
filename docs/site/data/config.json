@@ -567,8 +567,9 @@
               "default": [
                 "."
               ],
-              "about": "The directories searched when starting an issue.",
+              "about": "The directories searched when starting an issue, and where the architecture scan counts its hotspots.",
               "readers": [
+                "internal/scheduled/archscan/corpus.go",
                 "pack/core/skills/start-issue"
               ]
             },
@@ -682,6 +683,7 @@
               "about": "The label for an issue that waits for a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/archscan/archscan.go",
                 "internal/scheduled/mapplanned/corpus.go",
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",
