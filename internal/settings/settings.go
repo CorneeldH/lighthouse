@@ -330,3 +330,26 @@ func ApplyLanguage(doc *orderedjson.Object, want string) (kept string) {
 	}
 	return fmt.Sprint(v)
 }
+
+// ApplyAutoMemory makes "autoMemoryEnabled" false in doc, last in doc when the key is
+// absent. A value that is not false is the project's own choice, and the stand of
+// memory-gate decides: on sets it to false (changed, kept is the old value); log leaves
+// it (kept is the value, so the caller can warn); off leaves it silently (kept is nil).
+func ApplyAutoMemory(doc *orderedjson.Object, stand string) (changed bool, kept any) {
+	v, ok := doc.Get("autoMemoryEnabled")
+	if !ok {
+		doc.Set("autoMemoryEnabled", false)
+		return true, nil
+	}
+	if b, isBool := v.(bool); isBool && !b {
+		return false, nil
+	}
+	switch stand {
+	case "on":
+		doc.Set("autoMemoryEnabled", false)
+		return true, v
+	case "log":
+		return false, v
+	}
+	return false, nil
+}

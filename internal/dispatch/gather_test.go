@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -75,7 +76,7 @@ func TestPrepareBlockerStatus(t *testing.T) {
 		})),
 		node("I5", map[string]string{"F_status": "opt-prog"}, issue("o/r", 5, nil)),
 	}
-	pre, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +106,7 @@ func TestPrepareUnmappedStatusIsEmpty(t *testing.T) {
 		node("I9", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 9, blocker8)),
 	}
 	open := []runs.OpenRun{{ID: 15, Issue: 7}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +134,7 @@ func TestPrepareCarriesLabels(t *testing.T) {
 			"labels": map[string]any{"nodes": []any{map[string]any{"name": "1-loc:mac"}}},
 		})),
 	}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +164,7 @@ func TestPrepareFiltersBoard(t *testing.T) {
 		node("I8", map[string]string{"F_status": "opt-unknown"}, issue("o/r", 8, nil)),
 		node("I9", nil, issue("o/r", 9, nil)), // no Status at all
 	}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +201,7 @@ func TestPrepareStatuses(t *testing.T) {
 		node("I12", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 12, nil)),
 		node("I13", map[string]string{"F_status": "opt-prog"}, issue("o/x", 13, nil)),
 	}
-	pre, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,7 +223,7 @@ func TestPrepareKeepsItemWithOpenRun(t *testing.T) {
 		node("I5", map[string]string{"F_status": "opt-done"}, issue("o/x", 5, nil)), // open run, other repo
 	}
 	open := []runs.OpenRun{{ID: 15, Issue: 9}, {ID: 16, Issue: 5}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -294,7 +295,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	}}
 	open := []runs.OpenRun{{ID: 1, Issue: 1, Branch: "issue-1-x"}, {ID: 2, Issue: 6, Branch: ""}}
 	branches := map[int]string{1: "issue-1-x", 6: ""}
-	pre, err := Prepare(context.Background(), c, testRepo, open, branches, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, open, branches, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +337,7 @@ func TestPrepareBranchOfClosedRun(t *testing.T) {
 		node("I1", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 1, nil)),
 	}
 	srv.Branches = map[string][]map[string]any{"issue-1-x": {prNode(11, "issue-1-x", nil)}}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, map[int]string{1: "issue-1-x"}, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, nil, map[int]string{1: "issue-1-x"}, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +352,7 @@ func TestPrepareBranchOfClosedRun(t *testing.T) {
 
 func TestPrepareWithoutBoardFails(t *testing.T) {
 	_, c := client(t)
-	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil, nil, ToDoProbe{}); err == nil {
+	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil, nil, nil, ToDoProbe{}); err == nil {
 		t.Fatal("Prepare without [forge.board] gave no error")
 	}
 }
@@ -584,7 +585,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	branch := "scheduled/codebase-map-20261031T0400-1"
 	srv.Branches = map[string][]map[string]any{branch: {prNode(31, branch, nil)}}
 	open := []runs.OpenRun{{ID: 1, Schedule: "codebase-map", Branch: branch}, {ID: 2, Schedule: "reflect"}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -686,7 +687,7 @@ func TestPrepareClosesRunOutsideBoardWindow(t *testing.T) {
 	srv.AddIssue(gitlabIssue(4, "closed", time.Now().Add(-60*24*time.Hour)))
 	srv.AddIssue(gitlabIssue(5, "closed", time.Now().Add(-60*24*time.Hour))) // no open run: stays out
 	open := []runs.OpenRun{{ID: 15, Issue: 4}}
-	pre, err := Prepare(context.Background(), f, repo, open, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), f, repo, open, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
@@ -717,13 +718,13 @@ func (f *issueItemFake) IssueItem(context.Context, int) (forge.BoardItem, bool, 
 func TestPrepareIssueItemErrors(t *testing.T) {
 	open := []runs.OpenRun{{ID: 15, Issue: 99}}
 	f := &issueItemFake{err: fmt.Errorf("forge: issue o/r#99: %w", forge.ErrIssueNotFound)}
-	pre, err := Prepare(context.Background(), f, testRepo, open, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), f, testRepo, open, nil, nil, ToDoProbe{})
 	if err != nil || len(pre.Items) != 0 || len(pre.OpenRuns) != 1 || f.calls != 1 {
 		t.Errorf("Prepare with a missing issue = %+v, %v, %d calls; want no error, no item and the run kept", pre, err, f.calls)
 	}
 	boom := errors.New("boom")
 	f = &issueItemFake{err: boom}
-	if _, err := Prepare(context.Background(), f, testRepo, open, nil, ToDoProbe{}); !errors.Is(err, boom) {
+	if _, err := Prepare(context.Background(), f, testRepo, open, nil, nil, ToDoProbe{}); !errors.Is(err, boom) {
 		t.Errorf("Prepare with a failing IssueItem = %v; want the error", err)
 	}
 }
@@ -752,7 +753,7 @@ func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 			srv.BoardNodes = []map[string]any{node("I2", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 2, nil))}
 			tc.setup(srv)
 			open := []runs.OpenRun{{ID: 15, Issue: 7}}
-			pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
+			pre, err := Prepare(context.Background(), c, testRepo, open, nil, nil, ToDoProbe{})
 			if err != nil {
 				t.Fatalf("Prepare: %v; want the tick to go on", err)
 			}
@@ -883,7 +884,7 @@ func TestPrepareReadsToDoWithOwnParked(t *testing.T) {
 	srv, c := client(t)
 	repo := toDoRepo(c)
 	toDoBoard(srv)
-	pre, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, nil))
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, nil, probe(c, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -919,14 +920,14 @@ func TestPrepareToDoCommentsNotReadWhenUnchanged(t *testing.T) {
 		}
 		return n
 	}
-	first, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, nil))
+	first, err := Prepare(context.Background(), c, repo, nil, nil, nil, probe(c, nil))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := reads(); got != 5 {
 		t.Fatalf("first tick read %d comment lists, want 5 (#1, #2, #4, #5, #6)", got)
 	}
-	second, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, first.ToDo))
+	second, err := Prepare(context.Background(), c, repo, nil, nil, nil, probe(c, first.ToDo))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -937,7 +938,7 @@ func TestPrepareToDoCommentsNotReadWhenUnchanged(t *testing.T) {
 		t.Errorf("second tick: Items %+v, ToDo %+v; want #1 and #4 kept from the marks", second.Items, second.ToDo)
 	}
 	srv.BoardNodes[5]["content"].(map[string]any)["updatedAt"] = "2026-10-30T12:00:00Z" // #6 got a comment
-	if _, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, second.ToDo)); err != nil {
+	if _, err := Prepare(context.Background(), c, repo, nil, nil, nil, probe(c, second.ToDo)); err != nil {
 		t.Fatal(err)
 	}
 	if got := reads() - 5; got != 1 || srv.Count("/repos/o/r/issues/6/comments") != 2 {
@@ -950,7 +951,169 @@ func TestPrepareToDoWithoutLoginFails(t *testing.T) {
 	srv, c := client(t)
 	repo := toDoRepo(c)
 	toDoBoard(srv)
-	if _, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{}); err == nil {
+	if _, err := Prepare(context.Background(), c, repo, nil, nil, nil, ToDoProbe{}); err == nil {
 		t.Error("Prepare: err = nil, want an error for the missing token login")
+	}
+}
+
+// pushedFake is a forge with one board item per issue in status, the comments per issue and the
+// roles per login; BranchContains answers contains or err, and every call is counted.
+type pushedFake struct {
+	forge.Forge
+	status       map[int]string
+	comments     map[int][]protocol.Comment
+	roles        map[string]string
+	contains     bool
+	commentsErr  error
+	containsErr  error
+	commentReads map[int]int
+	containsArgs [][2]string
+}
+
+func (f *pushedFake) BoardItems(context.Context) ([]forge.BoardItem, error) {
+	var out []forge.BoardItem
+	for n, s := range f.status {
+		out = append(out, forge.BoardItem{Repo: "o/r", Issue: n, Status: s, IssueState: "OPEN"})
+	}
+	return out, nil
+}
+
+func (f *pushedFake) Comments(_ context.Context, n int) ([]protocol.Comment, error) {
+	if f.commentReads == nil {
+		f.commentReads = map[int]int{}
+	}
+	f.commentReads[n]++
+	return f.comments[n], f.commentsErr
+}
+
+func (f *pushedFake) Role(_ context.Context, login string) (string, error) {
+	return f.roles[login], nil
+}
+
+func (f *pushedFake) BranchContains(_ context.Context, branch, sha string) (bool, error) {
+	f.containsArgs = append(f.containsArgs, [2]string{branch, sha})
+	return f.contains, f.containsErr
+}
+
+const pushedSHA = "3f2a1bcd4e5f60718293a4b5c6d7e8f901234567"
+
+// pushedQuestionComment is the pusher's Vraag 70 on sha and branch, by the token login.
+func pushedQuestionComment(sha, branch string) protocol.Comment {
+	return protocol.Comment{ID: 70, Author: "lh-bot", CreatedAt: "2026-10-31T11:10:00Z",
+		Body: "🤖 Vraag\nsha: " + sha + "\nworktree: /w/issue-7\nbranch: " + branch + "\n\nRode stap: zizmor"}
+}
+
+// newPushedFake is issue 7 in Controller whose last turn is the pusher's Vraag 70, and origin
+// holding its sha.
+func newPushedFake() *pushedFake {
+	return &pushedFake{
+		status:   map[int]string{7: "Controller"},
+		comments: map[int][]protocol.Comment{7: {pushedQuestionComment(pushedSHA, "issue-7-x")}},
+		roles:    map[string]string{"lh-bot": "admin", "owner": "admin", "stranger": "read"},
+		contains: true,
+	}
+}
+
+func pushedProbe(f forge.Forge, log io.Writer) ToDoProbe {
+	return ToDoProbe{Trust: NewTrust(f, []string{"admin"}), Log: log}
+}
+
+// Prepare names the open pusher Vraag whose sha origin holds, only for an issue whose last run is
+// a push row closed on a question (pushRows), with the trust filter of Complete and after the
+// checks of pushTargetOf on sha and branch.
+func TestPrepareReadsPushedQuestion(t *testing.T) {
+	tests := []struct {
+		name         string
+		mutate       func(*pushedFake)
+		pushRows     map[int]bool
+		want         int64
+		wantContains int
+		wantReads    int
+	}{
+		{"open Vraag, origin has the sha", func(*pushedFake) {}, map[int]bool{7: true}, 70, 1, 1},
+		{"origin lacks the sha", func(f *pushedFake) { f.contains = false }, map[int]bool{7: true}, 0, 1, 1},
+		{"answer of a trusted human", func(f *pushedFake) {
+			f.comments[7] = append(f.comments[7], protocol.Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:30:00Z", Body: "wacht"})
+		}, map[int]bool{7: true}, 0, 0, 1},
+		{"answer of an untrusted author does not count", func(f *pushedFake) {
+			f.comments[7] = append(f.comments[7], protocol.Comment{ID: 71, Author: "stranger", CreatedAt: "2026-10-31T11:30:00Z", Body: "wacht"})
+		}, map[int]bool{7: true}, 70, 1, 1},
+		{"Vraag of an untrusted author does not count", func(f *pushedFake) {
+			f.comments[7][0].Author = "stranger"
+		}, map[int]bool{7: true}, 0, 0, 1},
+		{"invalid sha", func(f *pushedFake) { f.comments[7][0] = pushedQuestionComment("not-a-sha", "issue-7-x") },
+			map[int]bool{7: true}, 0, 0, 1},
+		{"invalid branch", func(f *pushedFake) { f.comments[7][0] = pushedQuestionComment(pushedSHA, "-x..y") },
+			map[int]bool{7: true}, 0, 0, 1},
+		{"no push row", func(*pushedFake) {}, nil, 0, 0, 0},
+		{"not in Controller", func(f *pushedFake) { f.status[7] = "On hold" }, map[int]bool{7: true}, 0, 0, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newPushedFake()
+			tt.mutate(f)
+			var log bytes.Buffer
+			pre, err := Prepare(context.Background(), f, testRepo, nil, nil, tt.pushRows, pushedProbe(f, &log))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(pre.Items) != 1 || pre.Items[0].PushedQuestion != tt.want {
+				t.Errorf("items = %+v, want PushedQuestion %d", pre.Items, tt.want)
+			}
+			if len(f.containsArgs) != tt.wantContains || f.commentReads[7] != tt.wantReads {
+				t.Errorf("BranchContains %v, Comments %d; want %d and %d calls", f.containsArgs, f.commentReads[7],
+					tt.wantContains, tt.wantReads)
+			}
+			if len(f.containsArgs) == 1 && tt.wantContains == 1 && f.containsArgs[0] != [2]string{"issue-7-x", pushedSHA} {
+				t.Errorf("BranchContains%v, want the Vraag's branch and sha", f.containsArgs[0])
+			}
+			if pre.PushedIncomplete || log.Len() != 0 {
+				t.Errorf("PushedIncomplete %v, log %q; want neither", pre.PushedIncomplete, log.String())
+			}
+		})
+	}
+}
+
+// A forge error while reading the push rows starts nothing and does not fail Prepare: the tick
+// would skip the whole repo (gatherRepo). The error goes to the log and PushedIncomplete keeps the
+// fingerprint from being saved, so the next tick asks again.
+func TestPrepareBranchContainsErrorFails(t *testing.T) {
+	boom := errors.New("boom")
+	for name, mutate := range map[string]func(*pushedFake){
+		"Comments":       func(f *pushedFake) { f.commentsErr = boom },
+		"BranchContains": func(f *pushedFake) { f.containsErr = boom },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newPushedFake()
+			mutate(f)
+			var log bytes.Buffer
+			pre, err := Prepare(context.Background(), f, testRepo, nil, nil, map[int]bool{7: true}, pushedProbe(f, &log))
+			if err != nil {
+				t.Fatalf("Prepare: %v, want no error", err)
+			}
+			if len(pre.Items) != 1 || pre.Items[0].PushedQuestion != 0 || !pre.PushedIncomplete {
+				t.Errorf("items %+v, PushedIncomplete %v; want PushedQuestion 0 and incomplete", pre.Items, pre.PushedIncomplete)
+			}
+			if !strings.Contains(log.String(), "o/r#7") || !strings.Contains(log.String(), "boom") {
+				t.Errorf("log = %q, want a line on o/r#7 with the error", log.String())
+			}
+		})
+	}
+}
+
+// PushQuestionRows names the issues whose last run is a push row closed on a question; a later
+// row of the issue, or a push row that closed otherwise, names nothing.
+func TestPushQuestionRows(t *testing.T) {
+	push := func(issue int, o runs.Outcome) runs.Row {
+		return runs.Row{Issue: issue, Command: cmdPush, Outcome: o}
+	}
+	history := []runs.Row{
+		push(1, runs.Question),
+		push(2, runs.Question), {Issue: 2, Command: "/lighthouse-start-issue 2", Outcome: runs.Handoff},
+		push(3, runs.Handoff),
+		{Issue: 4, Command: "/lighthouse-start-issue 4", Outcome: runs.Question},
+	}
+	if got, want := PushQuestionRows(history), map[int]bool{1: true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("PushQuestionRows = %v, want %v", got, want)
 	}
 }

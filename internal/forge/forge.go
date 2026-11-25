@@ -127,6 +127,9 @@ type Forge interface {
 	// CommitKnown reports whether the forge knows the commit sha; a 404 or 422 is false, nil,
 	// any other failure is returned.
 	CommitKnown(ctx context.Context, sha string) (bool, error)
+	// BranchContains reports whether branch on the forge holds sha in its history. A branch that
+	// does not exist is false, nil.
+	BranchContains(ctx context.Context, branch, sha string) (bool, error)
 	// AddBlocker makes issue blocker block issue number.
 	AddBlocker(ctx context.Context, number, blocker int) error
 	// API sends r to the forge's REST API and returns the raw response body.

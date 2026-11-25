@@ -3514,3 +3514,23 @@ func TestApplyPushRecoverPostFails(t *testing.T) {
 		t.Errorf("specs = %v, want no pusher", *specs)
 	}
 }
+
+// A pushed:<id> start claims its row with trigger answer (runs knows no trigger pushed; the key
+// tells it), puts the 🚀 on the Vraag and starts the pusher without a permit.
+func TestApplyPushedClaimsAnswerRowAndRockets(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := pushAction()
+	a.Trigger, a.TriggerKey, a.CommentID = triggerPushed, "pushed:70", 70
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if r := h.history(t)[0]; r.Trigger != "answer" || r.TriggerKey != "pushed:70" || r.Command != cmdPush {
+		t.Errorf("row = %+v, want a push row with trigger answer and key pushed:70", r)
+	}
+	if got := h.poster(applyRepo).rockets; !reflect.DeepEqual(got, []int64{70}) {
+		t.Errorf("rockets = %v, want the Vraag", got)
+	}
+	if len(*specs) != 1 || (*specs)[0].Permit != "" || (*specs)[0].Worktree != a.Worktree {
+		t.Errorf("specs = %+v, want one start on the worktree without a permit", *specs)
+	}
+}

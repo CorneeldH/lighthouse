@@ -29,6 +29,7 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
+	"github.com/CorneeldH/lighthouse/internal/automemory"
 	"github.com/CorneeldH/lighthouse/internal/created"
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -284,7 +285,7 @@ func execute(o Options) error {
 		}
 	}
 
-	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel}
+	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel, memoryStand: resolved.Stand("memory-gate")}
 	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, seeds)
 	if err != nil {
 		return err
@@ -318,6 +319,7 @@ func execute(o Options) error {
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
 	reportPins(o, root)
+	noteFoundMemory(o.Err, root)
 	if o.CheckHooks != nil {
 		o.CheckHooks(root, o.Err)
 	}
@@ -344,6 +346,25 @@ func execute(o Options) error {
 		}
 	}
 	return offerHost(o, in)
+}
+
+// noteFoundMemory tells on w how many auto-memory files Claude Code keeps for this repository,
+// found through the main checkout so a worktree counts too. It is a hint, not a check: a failure
+// is silent.
+func noteFoundMemory(w io.Writer, root string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = ""
+	}
+	main, err := automemory.MainCheckout(root)
+	if err != nil {
+		return
+	}
+	res, err := automemory.Scan(automemory.ConfigDir(os.Getenv, home), main)
+	if err != nil || len(res.Files) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "note: %d auto-memory files found for this repo; move them with /lighthouse-migrate-memory\n", len(res.Files))
 }
 
 // reportPins measures the plugin and tool pins of lighthouse.toml against what is installed here
@@ -460,7 +481,8 @@ type seeding struct {
 	labelsTemplate     []byte
 	direction          bool // wantsDirection
 	directionTemplates map[string][]byte
-	writeLevel         string // the level to write into lighthouse.toml, "" when it stays
+	writeLevel         string       // the level to write into lighthouse.toml, "" when it stays
+	memoryStand        levels.Stand // the stand of memory-gate; on when no level names it
 }
 
 func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, seeds seeding) (map[string]*planned, error) {
@@ -530,52 +552,57 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 
 	var add created.Created
 	replyLanguage := settings.ResponseLanguage(projectLanguage(root))
-	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 || replyLanguage != "" {
-		p, err := load(settingsPath)
-		if err != nil {
-			return nil, err
-		}
-		doc, _, err := readSettings(root)
-		if err != nil {
-			return nil, err
-		}
-		if doc == nil {
-			doc = orderedjson.NewObject()
-		}
-		before := settingsKeysPresent(doc)
-		if hooksTouched {
-			var want []packs.Registration
-			for _, u := range desired {
-				if u.Kind == packs.KindHook {
-					want = append(want, *u.Hook)
-				}
-			}
-			if err := settings.Apply(doc, want); err != nil {
-				return nil, err
+	p, err := load(settingsPath)
+	if err != nil {
+		return nil, err
+	}
+	doc, _, err := readSettings(root)
+	if err != nil {
+		return nil, err
+	}
+	if doc == nil {
+		doc = orderedjson.NewObject()
+	}
+	before := settingsKeysPresent(doc)
+	if hooksTouched {
+		var want []packs.Registration
+		for _, u := range desired {
+			if u.Kind == packs.KindHook {
+				want = append(want, *u.Hook)
 			}
 		}
-		if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
+		if err := settings.Apply(doc, want); err != nil {
 			return nil, err
 		}
-		if kept := settings.ApplyLanguage(doc, replyLanguage); kept != "" {
-			_, _ = fmt.Fprintf(o.Err, "warning: %s has language %q; [project] language asks for %q, so it stays as it is\n", settingsPath, kept, replyLanguage)
+	}
+	if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
+		return nil, err
+	}
+	if kept := settings.ApplyLanguage(doc, replyLanguage); kept != "" {
+		_, _ = fmt.Fprintf(o.Err, "warning: %s has language %q; [project] language asks for %q, so it stays as it is\n", settingsPath, kept, replyLanguage)
+	}
+	changed, kept := settings.ApplyAutoMemory(doc, string(seeds.memoryStand))
+	switch {
+	case changed && kept != nil:
+		_, _ = fmt.Fprintf(o.Err, "note: %s had autoMemoryEnabled %v; memory-gate is on, so it is now false\n", settingsPath, kept)
+	case kept != nil:
+		_, _ = fmt.Fprintf(o.Err, "warning: %s has autoMemoryEnabled %v; memory-gate is at log, so it stays and auto-memory stays on\n", settingsPath, kept)
+	}
+	after := settingsKeysPresent(doc)
+	for _, k := range createdSettingsKeys {
+		if after[k] && !before[k] {
+			add.SettingsKeys = append(add.SettingsKeys, k)
 		}
-		after := settingsKeysPresent(doc)
-		for _, k := range createdSettingsKeys {
-			if after[k] && !before[k] {
-				add.SettingsKeys = append(add.SettingsKeys, k)
-			}
-		}
-		if after["language"] && !before["language"] {
-			add.SettingsLanguage = replyLanguage
-		}
-		out, err := orderedjson.Marshal(doc)
-		if err != nil {
-			return nil, err
-		}
-		if !p.existed || !jsonEqual(p.old, out) {
-			p.new = out
-		}
+	}
+	if after["language"] && !before["language"] {
+		add.SettingsLanguage = replyLanguage
+	}
+	out, err := orderedjson.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	if !p.existed || !jsonEqual(p.old, out) {
+		p.new = out
 	}
 
 	// CLAUDE.md only when init creates AGENTS.md as well.
@@ -652,12 +679,12 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 }
 
 // createdSettingsKeys are the settings.json keys init can add, in the order they are recorded.
-var createdSettingsKeys = []string{"language", "hooks", "permissions", "permissions.allow"}
+var createdSettingsKeys = []string{"language", "hooks", "permissions", "permissions.allow", "autoMemoryEnabled"}
 
 // settingsKeysPresent reports which of createdSettingsKeys doc has.
 func settingsKeysPresent(doc *orderedjson.Object) map[string]bool {
 	has := map[string]bool{}
-	for _, k := range []string{"language", "hooks", "permissions"} {
+	for _, k := range []string{"language", "hooks", "permissions", "autoMemoryEnabled"} {
 		_, has[k] = doc.Get(k)
 	}
 	if v, ok := doc.Get("permissions"); ok {

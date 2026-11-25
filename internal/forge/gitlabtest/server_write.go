@@ -86,6 +86,7 @@ func (s *Server) writeRoutes(mux *http.ServeMux, p string) {
 	s.route(mux, "POST "+p+"/labels", s.project(s.createLabel))
 	s.route(mux, "DELETE "+p+"/labels/{name}", s.project(s.deleteLabel))
 	s.route(mux, "GET "+p+"/repository/commits/{sha}", s.project(s.commit))
+	s.route(mux, "GET "+p+"/repository/merge_base", s.project(s.mergeBaseOf))
 	s.route(mux, "POST "+p+"/merge_requests", s.project(s.createMR))
 	s.route(mux, "POST "+p+"/merge_requests/{iid}/notes", s.project(s.createMRNote))
 }
@@ -437,5 +438,40 @@ func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{"id": sha})
 	default:
 		notFound(w)
+	}
+}
+
+// SetMergeBase makes GET .../repository/merge_base?refs[]=sha&refs[]=branch answer for the
+// relation of branch to sha: "identical" and "ahead" have sha as merge base, "behind" the tip
+// of the branch, "diverged" an older common commit, "invalid" a 400. An unset pair answers 404.
+func (s *Server) SetMergeBase(sha, branch, relation string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mergeBase == nil {
+		s.mergeBase = map[string]string{}
+	}
+	s.mergeBase[sha+"|"+branch] = relation
+}
+
+func (s *Server) mergeBaseOf(w http.ResponseWriter, r *http.Request) {
+	refs := r.URL.Query()["refs[]"]
+	if len(refs) != 2 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "400 Bad request"})
+		return
+	}
+	s.mu.Lock()
+	relation, ok := s.mergeBase[refs[0]+"|"+refs[1]]
+	s.mu.Unlock()
+	switch {
+	case !ok:
+		notFound(w)
+	case relation == "invalid":
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "400 Bad request"})
+	case relation == "identical" || relation == "ahead":
+		writeJSON(w, http.StatusOK, map[string]any{"id": refs[0]})
+	case relation == "behind":
+		writeJSON(w, http.StatusOK, map[string]any{"id": "tip-of-" + refs[1]})
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"id": "common-ancestor"})
 	}
 }

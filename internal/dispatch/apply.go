@@ -581,10 +581,12 @@ func (ap applier) scrubbedEnv(repo string, token bool) []string {
 // fails closes the row start_failed; a trigger key another run spent starts nothing. The merge
 // pusher (trigger merge) is started the same way, with the PR and head instead of a worktree;
 // runs knows no trigger merge, so its row takes handoff, and its key merge:<pr>:<head> tells it.
+// A push by hand (trigger pushed) claims its row as answer, with the 🚀 on the Vraag.
 func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
 	trigger := "handoff"
-	if a.Trigger == triggerPushAnswer {
+	if a.Trigger == triggerPushAnswer || a.Trigger == triggerPushed {
+		// runs knows no trigger pushed: the key pushed:<id> tells it from an answer.
 		trigger = "answer"
 	}
 	run, err := runs.Take(ctx, env.DB, runs.Claim{

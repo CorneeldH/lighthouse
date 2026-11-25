@@ -479,3 +479,27 @@ func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"sha": r.PathValue("sha")})
 }
+
+// SetCompare makes GET .../compare/{sha}...{branch} answer status; "invalid" answers 404, as
+// GitHub does for a pair it cannot compare.
+func (s *Server) SetCompare(sha, branch, status string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Compares == nil {
+		s.Compares = map[string]string{}
+	}
+	if status != "invalid" {
+		s.Compares[sha+"..."+branch] = status
+	}
+}
+
+func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	status, ok := s.Compares[r.PathValue("spec")]
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": status})
+}

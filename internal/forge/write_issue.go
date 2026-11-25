@@ -628,6 +628,23 @@ func (c *GitHub) CommitKnown(ctx context.Context, sha string) (bool, error) {
 	return commitKnown(err)
 }
 
+// BranchContains reports whether branch holds sha, by comparing sha...branch: status identical
+// or ahead means the branch has the commit. A branch or sha GitHub does not know (404, or 422 for
+// a malformed sha) is false, nil.
+func (c *GitHub) BranchContains(ctx context.Context, branch, sha string) (bool, error) {
+	if err := c.configured(); err != nil {
+		return false, err
+	}
+	var cmp struct {
+		Status string `json:"status"`
+	}
+	_, err := c.do(ctx, http.MethodGet, c.repoURL("/compare/"+neturl.PathEscape(sha)+"..."+neturl.PathEscape(branch)), nil, &cmp)
+	if known, err := commitKnown(err); err != nil || !known {
+		return false, err
+	}
+	return cmp.Status == "identical" || cmp.Status == "ahead", nil
+}
+
 // commitKnown maps the error of a commit lookup: none is true, a 404 or 422 is false, nil.
 func commitKnown(err error) (bool, error) {
 	if err == nil {

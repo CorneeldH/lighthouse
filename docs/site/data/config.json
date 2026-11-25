@@ -158,6 +158,7 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/forge_label.go",
+                "internal/cli/level.go",
                 "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
                 "internal/cli/reviewindex.go",
@@ -556,10 +557,13 @@
               "default": "docs/developer/planning/plans",
               "about": "Where plans are written.",
               "readers": [
+                "internal/cli/pushworkflows.go",
                 "internal/cli/telemetry_collect.go",
                 "internal/cli/tick_collect.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
+                "internal/pusher/floor.go",
+                "internal/repoconfig/repoconfig.go",
                 "internal/review/openpoints.go",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/start-issue",
@@ -588,8 +592,11 @@
               "default": "docs/developer/planning/specs",
               "about": "Where specs are written.",
               "readers": [
+                "internal/cli/pushworkflows.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
+                "internal/pusher/floor.go",
+                "internal/repoconfig/repoconfig.go",
                 "internal/review/openpoints.go",
                 "pack/core/skills/review-spec",
                 "pack/core/skills/start-issue",

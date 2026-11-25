@@ -315,3 +315,15 @@ func TestFingerprintIncludesParkedToDoBlockers(t *testing.T) {
 		t.Error("fingerprint unchanged after the blocker of a parked To do item got a merged PR")
 	}
 }
+
+// A manual push changes no board field: without PushedQuestion in the fingerprint the tick would
+// skip the repo and never see it. Zero hashes as before the field existed.
+func TestFingerprintChangesWithPushedQuestion(t *testing.T) {
+	mk := func(id int64) Pre { return Pre{Items: []Item{{Issue: 1, Status: "Controller", PushedQuestion: id}}} }
+	if Fingerprint(mk(0)) == Fingerprint(mk(70)) {
+		t.Error("PushedQuestion 70 did not change the fingerprint")
+	}
+	if Fingerprint(mk(70)) == Fingerprint(mk(71)) {
+		t.Error("another PushedQuestion hashed the same")
+	}
+}

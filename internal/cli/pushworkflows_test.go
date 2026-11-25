@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -367,5 +368,25 @@ func TestMergeClientUsesOnlyTheWorkflowToken(t *testing.T) {
 	}
 	if !reflect.DeepEqual(auth, []string{"Bearer workflow-tok"}) {
 		t.Errorf("Authorization = %q, want only the workflow token", auth)
+	}
+}
+
+// The Request carries what the repo config says: the language of the comments and the spec and
+// plan dirs of the intent reviewer. Fails when pushRequest leaves one of them out.
+func TestPushRequestCarriesRepoConfig(t *testing.T) {
+	dir := repoDir(t, "[forge]\nrepo = \"o/r\"\n\n[project]\nlanguage = \"nl\"\n\n[paths]\nspecs = \"d/specs\"\nplans = \"d/plans\"\n")
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wp := &hostconfig.WorkflowPush{TokenFile: "/t"}
+	cfg := hostconfig.Dispatch{WorkflowPush: wp}
+	o := pushOptions{repo: "o/r", issue: 4, worktree: "/w", runID: 9, stateDir: "/s", cloneDir: "/c", pauseFile: "/p", permit: "x"}
+	req := pushRequest(cfg, repo, o, "tok")
+	if req.Language != "nl" || req.SpecsDir != "d/specs" || req.PlansDir != "d/plans" {
+		t.Errorf("Language %q, SpecsDir %q, PlansDir %q, want nl, d/specs, d/plans", req.Language, req.SpecsDir, req.PlansDir)
+	}
+	if req.Config != wp || req.Issue != 4 || req.RunID != 9 || req.Worktree != "/w" || req.ForgeToken != "tok" || req.Permit != "x" {
+		t.Errorf("request %+v does not carry the options", req)
 	}
 }

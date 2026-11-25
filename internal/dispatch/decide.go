@@ -1326,8 +1326,8 @@ func greenPR(prs []forge.PR) (forge.PR, bool) {
 	return forge.PR{}, false
 }
 
-// repair puts back the 🚀 on the comment of a spent handoff, answer, push, pushanswer or repair
-// trigger: one rocket
+// repair puts back the 🚀 on the comment of a spent handoff, answer, push, pushanswer, pushed or
+// repair trigger: one rocket
 // per comment that is in the snapshot without one.
 func repair(history []runs.Row, it Item, base Action) []Action {
 	rocket := make(map[int64]bool, len(it.Comments))
@@ -1352,10 +1352,11 @@ func repair(history []runs.Row, it Item, base Action) []Action {
 	return out
 }
 
-// triggerComment returns the comment id of a handoff:<id>, answer:<id>, repair:<id>, push:<id> or
-// pushanswer:<id> trigger key.
+// triggerComment returns the comment id of a handoff:<id>, answer:<id>, repair:<id>, push:<id>,
+// pushanswer:<id> or pushed:<id> trigger key.
 func triggerComment(key string) (int64, bool) {
-	for _, prefix := range []string{"handoff:", "answer:", triggerRepair + ":", triggerPush + ":", triggerPushAnswer + ":"} {
+	for _, prefix := range []string{"handoff:", "answer:", triggerRepair + ":", triggerPush + ":", triggerPushAnswer + ":",
+		triggerPushed + ":"} {
 		if rest, ok := strings.CutPrefix(key, prefix); ok {
 			id, err := strconv.ParseInt(rest, 10, 64)
 			return id, err == nil
@@ -1377,6 +1378,9 @@ const (
 	triggerRepair     = "repair"
 	triggerPush       = "push"
 	triggerPushAnswer = "pushanswer"
+	// triggerPushed starts the pusher on an open pusher Vraag whose SHA origin already holds (a
+	// push by hand, Item.PushedQuestion); its key is pushed:<vraag-id> and it never permits.
+	triggerPushed = "pushed"
 	// triggerMerge is the merge pusher of a PR with a pushed SHA; its row's key is merge:<pr>:<head>.
 	triggerMerge = "merge"
 	triggerClose = "closecheck"
@@ -1401,11 +1405,13 @@ type issueCtx struct {
 
 // next returns the one start, resume, return, finish, defer, park or hold the item gets in this
 // tick: the first rule that gives an action wins. finishReturn comes right after retry: the
-// first refused launch of a trigger posts a Returned but waits for its second attempt. repair
+// first refused launch of a trigger posts a Returned but waits for its second attempt.
+// pushedByHand comes right before answer and leaves an answered Vraag to it. repair
 // comes right after answer: a pusher's Herstel is a turn, like a Question. idle comes last: it
 // marks or gives back an issue no other rule moves.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff, c.idle} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.pushedByHand,
+		c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff, c.idle} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1559,8 +1565,8 @@ type pushTarget struct {
 
 // pushTargetOf reads the target of a push trigger key from its comment: for push:<id> the
 // handoff, for pushanswer:<id> the last pusher Vraag before the answer, as the answer itself
-// carries none of it. false when the comment is gone or does not read, and for a pushanswer
-// key whose answer is not `push`.
+// carries none of it, for pushed:<id> the pusher Vraag itself, without a permit. false when the
+// comment is gone or does not read, and for a pushanswer key whose answer is not `push`.
 func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 	id, ok := triggerComment(key)
 	if !ok {
@@ -1578,6 +1584,15 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 			return pushTarget{}, false
 		}
 		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
+		return t, true
+	}
+	if strings.HasPrefix(key, triggerPushed+":") {
+		// A push by hand: nobody answered, so nothing permits the Vraag's SHA.
+		h, ok := protocol.ParseHeader(com.Body)
+		if !ok || !pusherQuestion(h) || !validQuestionTarget(h) {
+			return pushTarget{}, false
+		}
+		t.trigger, t.worktree, t.branch = triggerPushed, h.Fields["worktree"], h.Fields["branch"]
 		return t, true
 	}
 	// Only the answer `push`, or a row of this key the classifier noted as a permit, permits a
@@ -1598,7 +1613,7 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 			q = &h
 		}
 	}
-	if q == nil || !shaField.MatchString(q.Fields["sha"]) || q.Fields["worktree"] == "" || !validBranch(q.Fields["branch"]) {
+	if q == nil || !validQuestionTarget(*q) {
 		return pushTarget{}, false
 	}
 	t.trigger, t.worktree, t.branch, t.permit = triggerPushAnswer, q.Fields["worktree"], q.Fields["branch"], q.Fields["sha"]
@@ -1727,6 +1742,35 @@ func (c issueCtx) parkMarkerGone() (planned, bool) {
 	return c.returned("reason_park_marker_gone", last.SessionID), true
 }
 
+// pushedByHand starts the pusher once on the last turn when that is a pusher Vraag whose SHA
+// origin already holds (Item.PushedQuestion, read by Prepare): someone pushed by hand. It holds
+// only without an answer to the Vraag (that is answer's), without an open run, with the pusher
+// configured and while pushed:<vraag-id> is unspent: one start per Vraag, so no loop. The action
+// has no PermitSHA: a tick without an answer never gives the permission of the answer `push`.
+func (c issueCtx) pushedByHand() (planned, bool) {
+	q := lastTurn(c.hs)
+	if q == nil || !pusherQuestion(q.Header) || c.it.PushedQuestion == 0 || c.it.PushedQuestion != q.Comment.ID {
+		return planned{}, false
+	}
+	key := triggerPushed + ":" + strconv.FormatInt(q.Comment.ID, 10)
+	if c.spent(key) || hasOpenRun(c.repo.History, c.it.Issue) || !c.repo.WorkflowPush || !validQuestionTarget(q.Header) {
+		return planned{}, false
+	}
+	if _, answered := c.answerTo(q.Comment.ID); answered {
+		return planned{}, false
+	}
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushed, key, 1
+	a.Command, a.Worktree, a.Branch, a.CommentID = cmdPush, q.Header.Fields["worktree"], q.Header.Fields["branch"], q.Comment.ID
+	return c.ordered(a, q.Time), true
+}
+
+// validQuestionTarget reports whether the pusher Vraag h names a target git may see: a SHA, a
+// worktree and a safe branch.
+func validQuestionTarget(h protocol.Header) bool {
+	return shaField.MatchString(h.Fields["sha"]) && h.Fields["worktree"] != "" && validBranch(h.Fields["branch"])
+}
+
 // answer resumes the session of the last turn when that is a Question with a session and an
 // answer follows it. A session no run of this issue has resumes nothing: a Question carrying
 // another issue's session never resumes that run, and neither does a Question without a session
@@ -1830,8 +1874,12 @@ func (c issueCtx) repairResume() (planned, bool) {
 // repairPrompt is the order of a repair resume: the prompt_pusher_repair heading, the red step,
 // the fenced reason of the Herstel and its URL. The diff stays in the comment and the worktree.
 func repairPrompt(h *parsed, language string) string {
-	parts := []string{protocol.Heading("prompt_pusher_repair", language),
-		"**" + protocol.Heading("question_push_step", language) + ":** " + h.Header.Fields["step"]}
+	parts := []string{protocol.Heading("prompt_pusher_repair", language)}
+	// A red roborev step is mended by a review, not by a commit (pusher.StepRoborev).
+	if h.Header.Fields["step"] == "roborev" {
+		parts = append(parts, protocol.Heading("prompt_pusher_repair_roborev", language))
+	}
+	parts = append(parts, "**"+protocol.Heading("question_push_step", language)+":** "+h.Header.Fields["step"])
 	if why := fencedReason(h.Comment.Body); why != "" {
 		parts = append(parts, why)
 	}
@@ -1858,7 +1906,7 @@ func fencedReason(body string) string {
 }
 
 // repairRounds counts the Herstel rounds of the issue without green in between: the push rows
-// (key push:<id>, no merge pusher) from new to old, skipping a failed start and the open row,
+// (key push:<id> or pushed:<id>, no merge pusher) from new to old, skipping a failed start and the open row,
 // counting each that closed as handoff without a pushed SHA (it ended in a Herstel). It stops at
 // the first row that ended otherwise (pushed, question, returned), and at a row that started
 // before the last Returned of the token login: after a hand-back the count starts again.
@@ -1872,7 +1920,7 @@ func (c issueCtx) repairRounds() int {
 	n := 0
 	for i := len(c.repo.History) - 1; i >= 0; i-- {
 		row := c.repo.History[i]
-		if row.Issue != c.it.Issue || !isPush(row) || !strings.HasPrefix(row.TriggerKey, triggerPush+":") ||
+		if row.Issue != c.it.Issue || !isPush(row) || !pushTriggered(row.TriggerKey) ||
 			row.Open || row.Outcome == runs.StartFailed {
 			continue
 		}
@@ -1885,7 +1933,8 @@ func (c issueCtx) repairRounds() int {
 }
 
 // handoffRunBefore returns the run that wrote the push handoff a Herstel at t answers: the last
-// push row of the issue that started before t names its Handoff comment (push:<id>), and the run
+// push row of the issue that started before t names its Handoff comment (push:<id>), or the
+// pusher Vraag after it (pushed:<id>), and the run
 // is the last of this issue on this host (Node "") that closed as handoff, is no push row and
 // started before that comment, the rule by which the pusher finds the worktree
 // (runs.LastHandoffWorkspace). A Handoff carries no session footer, so the history is the only
@@ -1895,7 +1944,7 @@ func (c issueCtx) handoffRunBefore(t time.Time) (runs.Row, bool) {
 	found := false
 	for i := len(c.repo.History) - 1; i >= 0 && !found; i-- {
 		row := c.repo.History[i]
-		if row.Issue != c.it.Issue || !isPush(row) || !strings.HasPrefix(row.TriggerKey, triggerPush+":") || !row.StartedAt.Before(t) {
+		if row.Issue != c.it.Issue || !isPush(row) || !pushTriggered(row.TriggerKey) || !row.StartedAt.Before(t) {
 			continue
 		}
 		id, ok := triggerComment(row.TriggerKey)
@@ -1917,6 +1966,12 @@ func (c issueCtx) handoffRunBefore(t time.Time) (runs.Row, bool) {
 		}
 	}
 	return runs.Row{}, false
+}
+
+// pushTriggered reports whether key is the key of a push row of a handoff (push:<id>) or of a push
+// by hand (pushed:<id>): the rows a Herstel can follow.
+func pushTriggered(key string) bool {
+	return strings.HasPrefix(key, triggerPush+":") || strings.HasPrefix(key, triggerPushed+":")
 }
 
 // lastRunOf returns the last row of the history on issue with session.

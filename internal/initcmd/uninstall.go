@@ -400,9 +400,9 @@ func revertSettings(c created.Created, inFiles bool, load func(string) (*planned
 		containers[k] = true
 	}
 	if inFiles {
-		containers["hooks"], containers["permissions"], containers["permissions.allow"] = true, true, true
+		containers["hooks"], containers["permissions"], containers["permissions.allow"], containers["autoMemoryEnabled"] = true, true, true, true
 	}
-	if c.SettingsLanguage == "" && !containers["hooks"] && !containers["permissions"] && !containers["permissions.allow"] {
+	if c.SettingsLanguage == "" && !containers["hooks"] && !containers["permissions"] && !containers["permissions.allow"] && !containers["autoMemoryEnabled"] {
 		return nil, nil
 	}
 	p, err := load(settingsPath)
@@ -422,6 +422,11 @@ func revertSettings(c created.Created, inFiles bool, load func(string) (*planned
 				got, _ := orderedjson.Canonical(v)
 				notes = append(notes, fmt.Sprintf("kept: %s \"language\" is %s; init set %q", settingsPath, got, c.SettingsLanguage))
 			}
+		}
+	}
+	if v, ok := doc.Get("autoMemoryEnabled"); ok && containers["autoMemoryEnabled"] {
+		if b, isBool := v.(bool); isBool && !b {
+			doc.Delete("autoMemoryEnabled")
 		}
 	}
 	if pv, ok := doc.Get("permissions"); ok {

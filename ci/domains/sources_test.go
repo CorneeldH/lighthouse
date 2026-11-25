@@ -66,6 +66,9 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/pins/lane/body.go", rel == "internal/pins/lane/body_test.go":
 		// docs/pins.md is text in an issue or PR body; Go reads no file there.
 		return strings.ReplaceAll(text, "docs/pins.md", "")
+	case rel == "internal/history/worktracking.go", rel == "internal/history/worktracking_test.go":
+		// docs/tasks/*.md is a pattern matched against paths in transcript commands; Go reads no file there.
+		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/direction/direction_test.go":
 		// docs/... are the configured paths of a fixture repo in t.TempDir(), never this repo's docs;
 		// the real documents are classified as go by goDocs and goDocPrefixes.
@@ -77,6 +80,10 @@ func withoutExemptions(rel, text string) string {
 		// They read docs/ and ci/literal-* files that classify keeps in go (goDocs, and the literal
 		// lists left out of notGo), as internal/config/config_test.go does.
 		return strings.ReplaceAll(strings.ReplaceAll(text, "docs/", ""), "ci/literal-", "")
+	case rel == "internal/cli/level.go", rel == "internal/pusher/pusher_test.go":
+		// docs/tick.md is text that points a user at the review setup: a line of lighthouse level,
+		// and the heading of the pusher's Vraag the test checks. Go reads no file there.
+		return strings.ReplaceAll(text, "docs/tick.md", "")
 	case rel == "internal/dispatch/apply_scheduled.go":
 		// A doc comment points at docs/workplace.md; Go reads no file there.
 		return strings.ReplaceAll(text, "docs/workplace.md", "")

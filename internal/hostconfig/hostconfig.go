@@ -75,6 +75,7 @@ type WorkflowPush struct {
 	Review    string // ReviewShadow or ReviewEnforce
 	Timeout   time.Duration
 	Reviewers []Reviewer
+	Intent    *Reviewer // [dispatch.workflow_push.intent]: the intent check; Topic empty, nil without the table
 }
 
 // Reviewer is one [[dispatch.workflow_push.reviewers]] entry. Command holds the placeholder
@@ -215,6 +216,11 @@ func LoadDispatch(path string) (Dispatch, error) {
 					Binds   []string `toml:"binds"`
 					Env     []string `toml:"env"`
 				} `toml:"reviewers"`
+				Intent *struct {
+					Command []string `toml:"command"`
+					Binds   []string `toml:"binds"`
+					Env     []string `toml:"env"`
+				} `toml:"intent"`
 			} `toml:"workflow_push"`
 		} `toml:"dispatch"`
 	}
@@ -343,10 +349,14 @@ func LoadDispatch(path string) (Dispatch, error) {
 		}
 	}
 	if r.WorkflowPush != nil {
+		var intent *Reviewer
+		if in := r.WorkflowPush.Intent; in != nil {
+			intent = &Reviewer{Command: in.Command, Binds: in.Binds, Env: in.Env}
+		}
 		wp, err := buildWorkflowPush(r.WorkflowPush.TokenFile, r.WorkflowPush.Review, r.WorkflowPush.Timeout, len(r.WorkflowPush.Reviewers), func(i int) Reviewer {
 			rv := r.WorkflowPush.Reviewers[i]
 			return Reviewer{Topic: rv.Topic, Command: rv.Command, Binds: rv.Binds, Env: rv.Env}
-		})
+		}, intent)
 		if err != nil {
 			return DefaultDispatch(), err
 		}
@@ -356,7 +366,7 @@ func LoadDispatch(path string) (Dispatch, error) {
 }
 
 // buildWorkflowPush validates the raw [dispatch.workflow_push] values and expands the paths.
-func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(int) Reviewer) (*WorkflowPush, error) {
+func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(int) Reviewer, intent *Reviewer) (*WorkflowPush, error) {
 	const key = "dispatch.workflow_push"
 	wp := &WorkflowPush{Review: ReviewShadow, Timeout: DefaultPushTimeout}
 	if tokenFile == nil || *tokenFile == "" {
@@ -391,26 +401,9 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 		default:
 			return nil, fmt.Errorf("%s.topic: %q is not supply-chain, secrets or injection", rkey, rv.Topic)
 		}
-		if len(rv.Command) == 0 || rv.Command[0] == "" {
-			return nil, fmt.Errorf("%s.command: missing", rkey)
-		}
-		for _, name := range rv.Env {
-			switch name {
-			case "GH_TOKEN", "GITHUB_TOKEN":
-				return nil, fmt.Errorf("%s.env: %s is a token and never reaches a reviewer", rkey, name)
-			}
-		}
-		binds := make([]string, 0, len(rv.Binds))
-		for _, b := range rv.Binds {
-			b = expandHome(b, home)
-			if cb := filepath.Clean(b); cb == protected || strings.HasPrefix(cb, protected+string(filepath.Separator)) {
-				return nil, fmt.Errorf("%s.binds: %q is under %s", rkey, b, protected)
-			}
-			binds = append(binds, b)
-		}
-		rv.Binds = nil
-		if len(binds) > 0 {
-			rv.Binds = binds
+		rv, err := checkReviewer(rkey, rv, home, protected)
+		if err != nil {
+			return nil, err
 		}
 		for _, prev := range wp.Reviewers {
 			if prev.Topic == rv.Topic {
@@ -419,12 +412,46 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 		}
 		wp.Reviewers = append(wp.Reviewers, rv)
 	}
+	if intent != nil {
+		iv, err := checkReviewer(key+".intent", *intent, home, protected)
+		if err != nil {
+			return nil, err
+		}
+		wp.Intent = &iv
+	}
 	// Zero reviewers is a pusher without review: a post-merge change pushes, a pre-merge one
 	// always asks. One reviewer alone is never a review (spec §4: two or three).
 	if len(wp.Reviewers) == 1 {
 		return nil, fmt.Errorf("%s.reviewers: one reviewer; the review needs two or three with distinct topics", key)
 	}
 	return wp, nil
+}
+
+// checkReviewer validates the command, env and binds of a reviewer or of the intent check and
+// expands the binds; the topic is the caller's concern.
+func checkReviewer(rkey string, rv Reviewer, home, protected string) (Reviewer, error) {
+	if len(rv.Command) == 0 || rv.Command[0] == "" {
+		return Reviewer{}, fmt.Errorf("%s.command: missing", rkey)
+	}
+	for _, name := range rv.Env {
+		switch name {
+		case "GH_TOKEN", "GITHUB_TOKEN":
+			return Reviewer{}, fmt.Errorf("%s.env: %s is a token and never reaches a reviewer", rkey, name)
+		}
+	}
+	binds := make([]string, 0, len(rv.Binds))
+	for _, b := range rv.Binds {
+		b = expandHome(b, home)
+		if cb := filepath.Clean(b); cb == protected || strings.HasPrefix(cb, protected+string(filepath.Separator)) {
+			return Reviewer{}, fmt.Errorf("%s.binds: %q is under %s", rkey, b, protected)
+		}
+		binds = append(binds, b)
+	}
+	rv.Binds = nil
+	if len(binds) > 0 {
+		rv.Binds = binds
+	}
+	return rv, nil
 }
 
 // expandHome replaces a leading ~ or ~/ in p with home; other paths stay as they are.

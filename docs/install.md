@@ -92,6 +92,17 @@ lighthouse init --upgrade --level standard
 behaves as `strict`. See [Setup levels](levels.md#what-each-level-skips-and-why) for what each
 level skips and why.
 
+- **Which level fits.** `lighthouse history` reads the Claude Code transcripts of the repository
+  on this machine and prints one JSON report with a recommended level and a few proposals: where
+  pushes go, whether work runs through issues and PRs, where worktrees live. It reads only,
+  writes nothing, uses no network and prints no prompt, tool output or file content. Run it in
+  the root of the repository before `init`; `--sources` adds the files and line numbers behind
+  each finding. An agent that installs lighthouse for you does this as the History step of
+  [the agent guide](site/agents/install.md).
+
+Existing auto-memory? After `init`, run `/lighthouse-migrate-memory`: it sorts the Claude Code
+memory files of this repo into instructions, issues, docs and `host.toml`, one group at a time,
+and leaves the deleting to you.
 - **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
   reviews, or once you want `commit-test-gate` to run after each commit; first check that
   `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which
@@ -623,6 +634,21 @@ tools on the tick host. Without `[dispatch.workflow_push]` in `host.toml` the ro
 - **The reviewers.** Optional, two or three, set in `[[dispatch.workflow_push.reviewers]]`; see
   [tick.md](tick.md#dispatchworkflow_push). The review starts in `shadow` mode: it runs, but only you
   decide, by answering `push`.
+- **The intent check.** Optional, one reviewer without a topic, set in
+  `[dispatch.workflow_push.intent]` (`command`, `binds`, `env`, validated like a reviewer). For a
+  pre-merge change that adds no event, action, pin, permission, secret, runner, environment or image
+  to an existing workflow, it weighs the diff against the issue, spec and plan; its `approve` pushes
+  without the security review, in `shadow` and in `enforce`, and its `reject` asks you. A question of the
+  review says whether the reviewers or this table are missing, and `lighthouse level` names it too.
+
+  ```toml
+  [dispatch.workflow_push.intent]
+  command = ["claude", "-p", "--tools", ""]
+  ```
+
+- **A push by hand.** When you push the branch yourself under an open pusher question, the next tick
+  sees that the branch holds its `sha` and starts the pusher once, without a permit: it finds the SHA
+  on origin and carries the chain on, as after its own push.
 - **The merge.** Whether GitHub refuses an API merge of a workflow-touching PR for a token without
   `workflow` scope has not been verified. The merge by the pusher is therefore built, and the tick uses
   it only for a PR whose branch has a pusher comment; any other PR is merged by the tick as before.

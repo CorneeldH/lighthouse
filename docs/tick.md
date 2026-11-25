@@ -191,6 +191,12 @@ slash-commando's.
   De pusher werkt in een eigen bare kloon (`<state>/push/<owner>/<name>.git`) onder een `flock`
   en leest de worktree van de run alleen met `rev-parse` en `status`, met een eigen git-dir. Ontbreekt
   `bwrap`, `actionlint` of `zizmor` op `PATH`, dan is de stap rood met `COULD NOT CHECK`, nooit groen.
+  **Al gepusht.** Bevat `origin/<branch>` de SHA al, ook onder een merge die iemand met de hand
+  pushte, dan is de fast-forward groen en vervalt de roborev-eis: er valt niets te pushen. Na de
+  rem stopt de vloer daar. Policy, lint, review en `git push` vallen weg, en de pusher sluit zoals na
+  een eigen push (de handoff of de push-notitie van *De uitkomst*). De rij noteert de SHA, zodat
+  de merge door de pusher hem kent. Voor elke SHA die de pusher zelf pusht, draaien vloer, policy,
+  `actionlint` en `zizmor` altijd.
 - **De review.** Workflows die alleen `schedule` hebben, of `push` op precies de default branch, zijn
   post-merge en gaan na de vloer zonder review. Al het andere is pre-merge (ook `workflow_dispatch` en
   `workflow_call`) en gaat eerst langs de reviewers van `[dispatch.workflow_push]`. Met `review =
@@ -198,6 +204,46 @@ slash-commando's.
   unaniem `approve` komt de Vraag. Met `"enforce"` pusht de pusher alleen als elke reviewer `approve` geeft;
   een `reject`, ongeldige JSON, een time-out of een exit ≠ 0 telt als `reject`. Minder dan twee
   reviewers met een eigen onderwerp keurt nooit goed.
+- **De intent-toets (#551).** Vóór de security-review kijkt de pusher of een pre-merge wijziging
+  zonder toestemming in de klasse *intent* valt. Dat geldt als elke toegevoegde of gewijzigde
+  workflow (een verwijderde telt niet) aan vijf eisen voldoet, met de geparste workflow op de
+  merge-base en op de SHA, beide in de eigen kloon:
+  1. het bestand bestond al op de merge-base: een nieuwe workflow valt erbuiten;
+  2. geen nieuw event onder `on:` (een filter als `paths`, `branches`, `tags` of `types` mag
+     veranderen), en een workflow die alleen post-merge draaide, wordt niet pre-merge;
+  3. geen nieuwe action: elke `uses:` (stap en job, met ref) stond er al; een andere pin is ook nieuw;
+  4. geen ruimere permission: per scope, top-level en per job, is het effectieve niveau niet hoger
+     (`none` < `read` < `write`; `write-all` is `write`, `read-all` is `read`; een job zonder
+     `permissions` erft de top-level, en een ontbrekende top-level telt als de ruimste);
+  5. geen nieuw secret (`secrets.<naam>`, `secrets: inherit`, `github.token`/`GITHUB_TOKEN`), geen
+     nieuwe `runs-on`, geen nieuwe `environment:` en geen nieuwe of gewijzigde `container:` of
+     service: die tellen als geheel (image, `options`, `volumes`, `ports`, `credentials`). Komt een
+     runner, environment of container uit een expressie, dan telt een wijziging van de matrix of de
+     inputs als een nieuwe waarde.
+
+  Een workflow die niet parset, valt erbuiten. Nieuwe `run:`-stappen, `env:`, `with:` en jobs uit
+  bestaande bouwstenen vallen erbinnen. Daar zijn de intent-reviewer en `zizmor` de wacht.
+
+  Met `[dispatch.workflow_push.intent]` in `host.toml` draait in die klasse één intent-reviewer, in
+  dezelfde `bwrap`, met dezelfde scrub, guard en hetzelfde budget als de andere reviewers. Hij
+  krijgt de workflow-diff, de titel en de body van het issue, en elk bestand onder `paths.specs` en
+  `paths.plans` van `lighthouse.toml` dat de branch toevoegt of wijzigt, gelezen op de SHA. Elk stuk
+  is afgekapt op 30 000 tekens en staat tussen eigen markeringen als onbetrouwbare data. Hij keurt
+  alleen goed als elke regel van de diff aantoonbaar volgt uit issue, spec of plan; bij twijfel
+  wijst hij af. Ongeldige JSON, een time-out of een exit ≠ 0 telt als `reject`. Het besluit:
+
+  | Klasse | Intent | Wat volgt |
+  |---|---|---|
+  | intent | `approve` | geen security-review; de pusher pusht, in `shadow` en in `enforce` |
+  | intent | `reject` | een Vraag met het oordeel van de intent-reviewer (onderwerp `intent`) |
+  | intent | geen `[dispatch.workflow_push.intent]`, of issue, spec- of planmap niet leesbaar | de gewone weg van de security-review, alsof de klasse er niet was |
+  | geen intent | — | de gewone weg; de intent-reviewer draait niet |
+
+  Vloer, policy, `actionlint` en `zizmor` draaien ook in de klasse *intent*; de toets vervangt alleen
+  de security-review. Een wijziging die nieuwe rechten geeft, gaat nooit zonder security-review naar
+  origin. Spec en plan op de branch zijn door dezelfde run geschreven; de issue-body is het enige
+  anker van buiten de run. Dat is hygiëne tegen ongelukken, geen vertrouwensgrens: de grens blijft
+  dat GitHub een push van `.github/workflows/` zonder `workflow`-scope weigert.
 - **De uitkomst.** Op de bouwroute (nog geen PR) post de pusher een 🤖 Handoff zonder sessie met
   `next: <after>`, de `lane` van de push-handoff (als die er een had), `range: <oud>..<nieuw>` en
   `workflows: <bestanden>`, en de rij sluit als `handoff`:
@@ -210,25 +256,36 @@ slash-commando's.
   velden `sha` (de SHA waarvoor een antwoord toestemming geeft), `worktree`, `branch`, `after`, `lane`
   (als de push-handoff er een had) en `step`, en geen sessie-voet. Daaronder eerst de vraag (wat een
   antwoord `push` doet) en de sluitregel, zodat de lijst open vragen van de controller alleen die vraag
-  toont. Na de sluitregel staan de rode stap met zijn reden, het oordeel per reviewer, de workflow-diff
+  toont. Na de sluitregel staan de rode stap met zijn reden, bij een Vraag van de review wat er in
+  `[dispatch.workflow_push]` ontbreekt, het oordeel per reviewer, de workflow-diff
   in een codeblok (een hek langer dan elke reeks backticks in de diff) en onder *Zelf pushen*
   `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens), dan
   staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode `0600`),
   niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te verruimen;
   weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging weigerde.
+  Wat ontbreekt, staat vóór de diff, zodat een afgekapte diff het niet wegneemt. Zonder reviewers
+  zegt een regel (`question_push_no_reviewers`) dat er geen zijn en hoe je ze instelt:
+  `[[dispatch.workflow_push.reviewers]]` en `review = "enforce"` in `host.toml`. Zonder
+  `[dispatch.workflow_push.intent]` noemt een tweede regel (`question_push_no_intent`) die tabel.
+  `lighthouse level` meldt hetzelfde op één regel, als de standaard-`host.toml` de huidige repo in
+  `[dispatch] repos` heeft (vergeleken op `[forge] repo`, dus ook vanuit een worktree) en
+  `[dispatch.workflow_push]` reviewers of intent mist. Dat is een melding, geen fout.
 - **De Teruggegeven.** Een rode stap vóór de vloer een SHA las (trigger, config, route, de vloer, policy,
   lint) is geen vraag: een antwoord `push` kan er niets mee. De pusher post dan een 🤖 Teruggegeven
   zonder sessie, met `reason: workflow-pusher rood: <stap>` en de velden `worktree`, `branch`, `after`,
   `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
   (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
   issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
-- **De Herstel.** Een rode `policy` of `lint` (niet `COULD NOT CHECK:`; een `RuleParse`-overtreding telt mee)
-  is te repareren door de run zelf. De pusher post dan een 🤖 Herstel zonder sessie, met `step` en de
+- **De Herstel.** Een rode `policy`, `lint` of `roborev` (niet `COULD NOT CHECK:`; een
+  `RuleParse`-overtreding telt mee) is te repareren door de run zelf. Bij `roborev` zegt de
+  hervattingsprompt de review V2b opnieuw te draaien met `lighthouse roborev-gate gate --push`: dat
+  herstelt geen commit maar het record. De pusher post dan een 🤖 Herstel zonder sessie, met `step` en de
   velden van de Teruggegeven, en de rij sluit als `handoff`: het werk gaat door, het issue wordt niet
   teruggegeven. Alleen een Herstel van de token-login telt. De regel `repair` in `next` hervat de run
   die de handoff schreef (trigger `repair`, sleutel `repair:<comment-id>`, bij de claim `answer`) met
   een prompt die de stap, de reden en de URL van de Herstel noemt. De volgorde van `next` is
-  `retry, finishReturn, usageResume, answer, repair, closeCheck, newIssue, handoff`. Het plafond is
+  `retry, finishReturn, usageResume, parkMarkerGone, pushedByHand, answer, repair, closeCheck,
+  newIssue, handoff, idle`. Het plafond is
   twee rondes: de derde aaneengesloten Herstel geeft het issue terug met een Teruggegeven
   (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
   Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
@@ -254,6 +311,33 @@ slash-commando's.
   valt de review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is
   hygiëne tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle
   blijft de grens.
+- **De start na een handmatige push (#551).** Pusht iemand de branch met de hand onder een open
+  pusher-Vraag, dan zet tick de keten zelf voort. `Prepare` leest de comments alleen van een item
+  met status Controller waarvan de laatste runs-rij een push-rij is die sloot als `question`. Is de
+  laatste beurt daar een pusher-Vraag zonder antwoord (met de definitie van een antwoord en het
+  vertrouwensfilter van `Complete`), en zijn `sha`, `worktree` en `branch` geldig, dan vraagt hij de
+  forge of `<branch>` de `sha` bevat (`BranchContains`: op GitHub de compare-API, `identical` of
+  `ahead`; op GitLab de merge-base die gelijk is aan `sha`; een branch die niet bestaat is
+  `false`). Het id van die Vraag komt op het item (`PushedQuestion`) en in de vingerafdruk, zodat
+  een tick zonder board-wijziging de push toch ziet. Een fout van de forge geeft een log-regel,
+  geen start en geen bewaarde vingerafdruk: de volgende tick probeert het opnieuw. De regel
+  `pushedByHand` in `next`, direct vóór `answer`, geeft dan een `push`-actie met trigger `pushed`
+  en sleutel `pushed:<vraag-id>`, alleen als de sleutel nog niet gebruikt is, er geen open run is,
+  `[dispatch.workflow_push]` bestaat en de Vraag geen antwoord heeft. Apply claimt de rij met
+  trigger `answer` (de runs-tabel kent geen `pushed`; de sleutel draagt het onderscheid) en zet 🚀
+  op de Vraag. De actie geeft **geen toestemming** (`--permit`): die komt alleen van het antwoord
+  `push` van een mens. De pusher neemt `worktree`, `branch`, `after` en `lane` uit die Vraag, ziet
+  op de vloer dat origin de SHA al heeft (*Al gepusht*) en sluit met de handoff of de push-notitie.
+  Heeft origin de SHA toch niet (een race), dan loopt de hele weg met review en eindigt die in een
+  nieuwe Vraag met een nieuw id; tick start daarvoor pas weer als `BranchContains` waar is. Eén
+  start per Vraag, dus geen lus. Een 🤖 Teruggegeven van de pusher geeft bewust **geen** start: hij
+  draagt geen `sha` (hij komt van een rode stap vóór de vloer een SHA las) en het issue is al terug
+  bij een mens (`needs_hands`). Een rode roborev-stap is sinds #551 een Herstel, geen Teruggegeven.
+- **Geen handoff naar de pusher boven een skip.** Is het push-record na V2b van
+  `/lighthouse-write-pr` geen `done` (`gate --push` gaf `skip`, of `record --skip`), dan post de run
+  geen handoff met `next: push-workflows` maar draait V2b opnieuw. Lukt dat niet (een
+  Codex-alarm, geen `claude` op `PATH`), dan gaat de handoff met de reden naar de mens, nooit naar
+  de pusher. Zo staat het in de skills `write-pr` en `write-handoff`.
 - **Wat de hook niet dekt.** `workflow-push-gate` leest het commando; een alias, `eval git push`,
   `G=git; $G push`, een script dat pusht of een herschreven remote-tracking-ref ontsnapt eraan. Het is
   een vangnet tegen ongelukken, geen grens: de grens blijft dat GitHub een push met `.github/workflows/`
@@ -1120,6 +1204,11 @@ env     = []                        # namen van variabelen die doorgaan, nooit G
 [[dispatch.workflow_push.reviewers]]
 topic   = "injection"
 command = ["claude", "-p", "--tools", ""]
+
+[dispatch.workflow_push.intent]     # optioneel; zonder tabel geen intent-toets
+command = ["claude", "-p", "--tools", ""]
+binds   = []
+env     = []
 ```
 
 - `token_file` krijgt `~` uitgebreid. Het bestand moet een gewoon bestand zijn (geen symlink) met mode
@@ -1127,7 +1216,12 @@ command = ["claude", "-p", "--tools", ""]
   review.
 - `reviewers`: nul, of twee of drie met elk een eigen `topic`. Eén reviewer is een fout bij het laden van
   `host.toml`. Zonder reviewers gaat een post-merge-wijziging door en vraagt een pre-merge-wijziging
-  altijd. De prompts zitten in de lighthouse-binary (`embed`), nooit in de branch.
+  altijd, behalve als de intent-toets haar goedkeurt. De prompts zitten in de lighthouse-binary
+  (`embed`), nooit in de branch.
+- `intent`: één reviewer zonder `topic`, met `command`, `binds` en `env` en dezelfde validatie als
+  een reviewer (hetzelfde `{out}`-commando, dezelfde binds-regels). Hij beslist alleen in de klasse
+  *intent* (zie *De intent-toets* hierboven), in `shadow` en in `enforce`. Zonder de tabel gaat een
+  wijziging in die klasse de gewone weg.
 - `command` krijgt de prompt en de diff op stdin. `{out}` wordt het pad van een uitvoerbestand; staat het er
   niet in, dan is stdout de uitvoer. Het oordeel is één JSON-object `{"verdict":
   "approve"|"reject", "findings": [{"file","line","issue","evidence"}]}` uit dat bestand of dat laatste

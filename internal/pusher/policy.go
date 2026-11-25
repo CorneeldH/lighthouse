@@ -67,11 +67,25 @@ type treeEntry struct {
 // workflowEntries lists the direct children of .github/workflows at rev in the clone, by path.
 // The changed paths are never passed to git: they come from the branch and are untrusted.
 func workflowEntries(ctx context.Context, clone, rev string) (map[string]treeEntry, error) {
+	return treeEntries(ctx, clone, rev, false, []string{workflowDir})
+}
+
+// treeEntries lists the entries under dirs at rev in the clone, by path; recursive lists every
+// file below them, else only the direct children. dirs come from the pusher or the repo config,
+// never from the branch, and git reads them as literal paths.
+func treeEntries(ctx context.Context, clone, rev string, recursive bool, dirs []string) (map[string]treeEntry, error) {
 	if !fullSHA.MatchString(rev) {
 		return nil, fmt.Errorf("revision %q is not a sha", rev)
 	}
-	out, err := runGit(ctx, clone, []string{"GIT_LITERAL_PATHSPECS=1"},
-		"ls-tree", "-l", "-z", "--full-tree", rev, "--", workflowDir+"/")
+	args := []string{"ls-tree", "-l", "-z", "--full-tree"}
+	if recursive {
+		args = append(args, "-r")
+	}
+	args = append(args, rev, "--")
+	for _, d := range dirs {
+		args = append(args, d+"/")
+	}
+	out, err := runGit(ctx, clone, []string{"GIT_LITERAL_PATHSPECS=1"}, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -91,8 +105,8 @@ func workflowEntries(ctx context.Context, clone, rev string) (map[string]treeEnt
 	return entries, nil
 }
 
-// readWorkflow reads the blob of a workflow entry from the clone; a symlink, a submodule or an
-// oversized file is a reason, not content.
+// readWorkflow reads the blob of a tree entry (a workflow, a spec or a plan) from the clone by its
+// object id; a symlink, a submodule or an oversized file is a reason, not content.
 func readWorkflow(ctx context.Context, clone string, e treeEntry) ([]byte, string, error) {
 	if e.typ != "blob" || (e.mode != "100644" && e.mode != "100755") {
 		return nil, fmt.Sprintf("is a %s with mode %s, not a regular file", e.typ, e.mode), nil

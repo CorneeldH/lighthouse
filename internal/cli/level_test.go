@@ -221,13 +221,13 @@ func TestLevelCountsOnlyInstalledPackages(t *testing.T) {
 		{"light", func() *levels.Installed {
 			in := lightInstalled()
 			in.Components = map[string]levels.Stand{"commit-test-gate": levels.StandOff, "md-link-check": levels.StandLog,
-				"code-language-check": levels.StandLog}
+				"code-language-check": levels.StandLog, "memory-gate": levels.StandLog}
 			for _, s := range []string{"write-issue", "fix-pr", "audit-worktrees", "audit-agent-config", "test-standard", "review-spec", "review-plan", "map-planned", "architecture-scan"} {
 				in.Components["skill:"+s] = levels.StandOff
 			}
 			return in
-		}(), "12"},
-		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "24"},
+		}(), "13"},
+		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "26"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := levelRepo(t, tc.in, "")
@@ -240,5 +240,156 @@ func TestLevelCountsOnlyInstalledPackages(t *testing.T) {
 				t.Errorf("stdout lacks %q components on:\n%s", tc.want, out)
 			}
 		})
+	}
+}
+
+// pusherRepo is levelRepo with a [forge] repo, so the repo has a slug, and a host.toml
+// (LIGHTHOUSE_HOST_TOML) with the given body; the repos line is added by the caller.
+func pusherRepo(t *testing.T, hostBody string) (root, host string) {
+	t.Helper()
+	root = levelRepo(t, lightInstalled(), "[forge]\nrepo = \"acme/widgets\"\n")
+	host = filepath.Join(t.TempDir(), "host.toml")
+	if hostBody != "" {
+		if err := os.WriteFile(host, []byte(hostBody), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("LIGHTHOUSE_HOST_TOML", host)
+	return root, host
+}
+
+const pusherBare = "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n"
+
+func hostWith(repo, body string) string {
+	return "[dispatch]\nrepos = [\"" + repo + "\"]\n" + body
+}
+
+// Classification: a cli-output change; the surface is the stdout of `lighthouse level`. It fails
+// when the note is dropped, or does not name both the missing reviewers and the missing intent.
+func TestLevelNotesPusherWithoutReviewers(t *testing.T) {
+	root, host := pusherRepo(t, "")
+	if err := os.WriteFile(host, []byte(hostWith(root, pusherBare)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, code := runLevel(t)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var notes []string
+	for _, l := range strings.Split(stdout, "\n") {
+		if strings.Contains(l, "reviewers") {
+			notes = append(notes, l)
+		}
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "intent") {
+		t.Errorf("want one line naming reviewers and intent, got %q in:\n%s", notes, stdout)
+	}
+}
+
+// Classification: same surface; it fails when the note says the same for every missing part,
+// or claims the pusher never pushes before the merge while the intent check or the security
+// review still can.
+func TestLevelPusherNoteSaysWhatTheMissingPartMeans(t *testing.T) {
+	reviewers := "[[dispatch.workflow_push.reviewers]]\ntopic = \"secrets\"\ncommand = [\"a\"]\n" +
+		"[[dispatch.workflow_push.reviewers]]\ntopic = \"injection\"\ncommand = [\"a\"]\n"
+	intent := "[dispatch.workflow_push.intent]\ncommand = [\"b\"]\n"
+	for name, tc := range map[string]struct{ body, want string }{
+		"neither": {pusherBare, " sets no reviewers ([[dispatch.workflow_push.reviewers]]) and no intent " +
+			"([dispatch.workflow_push.intent]), so the pusher never pushes a pre-merge workflow change itself: " +
+			"each one becomes a question"},
+		"no reviewers": {pusherBare + intent, " sets no reviewers ([[dispatch.workflow_push.reviewers]]), so the " +
+			"pusher pushes a pre-merge workflow change itself only when the intent check approves it"},
+		"no intent": {pusherBare + reviewers, " sets no intent ([dispatch.workflow_push.intent]), so every " +
+			"pre-merge workflow change goes to the security review, which pushes only on an approve with " +
+			"review = \"enforce\""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, host := pusherRepo(t, "")
+			if err := os.WriteFile(host, []byte(hostWith(root, tc.body)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			stdout, _, code := runLevel(t)
+			if code != 0 || !strings.Contains(stdout, "workflow pusher: "+host+tc.want) {
+				t.Errorf("exit %d, want %q in:\n%s", code, tc.want, stdout)
+			}
+			if strings.Contains(stdout, "before the merge") {
+				t.Errorf("note still says the pusher never pushes before the merge:\n%s", stdout)
+			}
+		})
+	}
+}
+
+// Classification: same surface; it fails when the note is also written for a worktree path, the
+// slug being the key: a worktree of a listed repo is that repo.
+func TestLevelNotesPusherFromWorktree(t *testing.T) {
+	root, host := pusherRepo(t, "")
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "lighthouse.toml"), []byte("[forge]\nrepo = \"acme/widgets\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// host.toml lists another checkout of the same slug; the current root is a different path.
+	if err := os.WriteFile(host, []byte(hostWith(other, pusherBare)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = root
+	stdout, _, _ := runLevel(t)
+	if !strings.Contains(stdout, "reviewers") {
+		t.Errorf("no note for a path with the listed slug:\n%s", stdout)
+	}
+}
+
+// Classification: same surface; it fails when the note is written without a host.toml.
+func TestLevelNoNoteWithoutHostToml(t *testing.T) {
+	pusherRepo(t, "")
+	stdout, _, code := runLevel(t)
+	if code != 0 || strings.Contains(stdout, "reviewers") {
+		t.Errorf("exit %d, stdout:\n%s", code, stdout)
+	}
+}
+
+// Classification: same surface; it fails when the note ignores whether the repo is listed.
+func TestLevelNoNoteWhenRepoNotListed(t *testing.T) {
+	_, host := pusherRepo(t, "")
+	other := t.TempDir()
+	if err := os.WriteFile(filepath.Join(other, "lighthouse.toml"), []byte("[forge]\nrepo = \"acme/other\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(host, []byte(hostWith(other, pusherBare)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, _ := runLevel(t)
+	if strings.Contains(stdout, "reviewers") {
+		t.Errorf("note for an unlisted repo:\n%s", stdout)
+	}
+}
+
+// Classification: same surface; it fails when the note is written for a complete config.
+func TestLevelNoNoteWhenComplete(t *testing.T) {
+	root, host := pusherRepo(t, "")
+	body := pusherBare + "[[dispatch.workflow_push.reviewers]]\ntopic = \"secrets\"\ncommand = [\"a\"]\n" +
+		"[[dispatch.workflow_push.reviewers]]\ntopic = \"injection\"\ncommand = [\"a\"]\n" +
+		"[dispatch.workflow_push.intent]\ncommand = [\"b\"]\n"
+	if err := os.WriteFile(host, []byte(hostWith(root, body)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, _ := runLevel(t)
+	if strings.Contains(stdout, "reviewers") {
+		t.Errorf("note for a complete config:\n%s", stdout)
+	}
+}
+
+// Classification: same surface; it fails when a host.toml that does not parse makes level exit
+// non-zero, or is passed over in silence.
+func TestLevelBrokenHostTomlIsOneNote(t *testing.T) {
+	_, host := pusherRepo(t, "")
+	if err := os.WriteFile(host, []byte("[dispatch\nrepos = "), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, _, code := runLevel(t)
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if n := strings.Count(stdout, "workflow pusher: cannot check"); n != 1 || !strings.Contains(stdout, "host.toml") {
+		t.Errorf("want one note about host.toml, got %d:\n%s", n, stdout)
 	}
 }

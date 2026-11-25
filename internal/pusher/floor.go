@@ -52,6 +52,9 @@ type Request struct {
 	Off string
 	// Language is [project] language of the repo: the language of the comments.
 	Language string
+	// SpecsDir and PlansDir are paths.specs and paths.plans of the repo: a file under them that the
+	// branch adds or changes goes to the intent reviewer.
+	SpecsDir, PlansDir string
 	// Guard are paths no reviewer bind may touch: the forge token file, the state and clone dir.
 	Guard []string
 }
@@ -60,15 +63,18 @@ type Request struct {
 type Checked struct {
 	SHA, MergeBase string
 	Files          []string // changed in MergeBase..SHA
+	// AlreadyPushed is origin/<branch> holding the SHA already: there is nothing left to push.
+	AlreadyPushed bool
 }
 
 // Red is the first red step and why.
 type Red struct{ Step, Why string }
 
-// repairable is whether the branch itself is wrong, so the run that wrote it can mend it: a
-// policy or lint finding. A step that could not run (COULD NOT CHECK) is no mistake of the branch.
+// repairable is whether the run that wrote the branch can mend it: a policy or lint finding, or a
+// roborev record that does not cover the SHA (a skip, none, a stale one), which the run mends by
+// running roborev. A step that could not run (COULD NOT CHECK) is no mistake of the branch.
 func (r Red) repairable() bool {
-	return (r.Step == StepPolicy || r.Step == StepLint) && !strings.HasPrefix(r.Why, "COULD NOT CHECK:")
+	return (r.Step == StepPolicy || r.Step == StepLint || r.Step == StepRoborev) && !strings.HasPrefix(r.Why, "COULD NOT CHECK:")
 }
 
 // lockPoll is how often a waiting pusher retries the clone lock.
@@ -100,8 +106,11 @@ func Floor(ctx context.Context, req Request, lock *CloneLock) (Checked, *Red) {
 	if red := ownHistory(ctx, req, &c); red != nil {
 		return Checked{}, red
 	}
-	if red := reviewed(ctx, req, sha); red != nil {
-		return Checked{}, red
+	// A SHA origin already holds is not pushed, so no review has to cover it.
+	if !c.AlreadyPushed {
+		if red := reviewed(ctx, req, sha); red != nil {
+			return Checked{}, red
+		}
 	}
 	if req.PauseFile == "" {
 		return Checked{}, &Red{StepPause, "COULD NOT CHECK: no pause file given"}
@@ -263,11 +272,18 @@ func fetchOrigin(ctx context.Context, req Request) *Red {
 func ownHistory(ctx context.Context, req Request, c *Checked) *Red {
 	originBranch := "refs/remotes/origin/" + req.Branch
 	if _, err := runGit(ctx, req.CloneDir, nil, "rev-parse", "--verify", "-q", originBranch); err == nil {
+		// A SHA origin already holds, also under a merge pushed by hand, is no fast-forward and
+		// needs none: nothing is pushed.
+		on, err := isAncestor(ctx, req.CloneDir, c.SHA, originBranch)
+		if err != nil {
+			return &Red{StepFastForward, err.Error()}
+		}
+		c.AlreadyPushed = on
 		ff, err := isAncestor(ctx, req.CloneDir, originBranch, c.SHA)
 		if err != nil {
 			return &Red{StepFastForward, err.Error()}
 		}
-		if !ff {
+		if !ff && !on {
 			return &Red{StepFastForward, fmt.Sprintf("origin/%s is not an ancestor of %s: not a fast-forward", req.Branch, c.SHA)}
 		}
 	}

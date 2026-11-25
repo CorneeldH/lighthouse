@@ -17,6 +17,7 @@ base = [
 on = [
   "main-commit-gate",
   "worktree-check",
+  "memory-gate",
   "pr-create-gate",
   "bash-write-check",
   "skill:start-issue",
@@ -26,6 +27,7 @@ on = [
   "skill:close-issue",
   "skill:write-handoff",
   "skill:place-instruction",
+  "skill:migrate-memory",
   "skill:upgrade",
 ]
 
@@ -38,9 +40,11 @@ on = [
 "skill:start-issue" = ["skill:route-issue", "skill:write-handoff"]
 "skill:close-issue" = ["skill:start-issue", "skill:write-handoff"]
 "skill:upgrade" = ["skill:write-pr"]
+"skill:migrate-memory" = ["skill:place-instruction"]
 
 [light.components]
 commit-test-gate = "off"
+memory-gate = "log"
 "skill:map-planned" = "off"
 "skill:architecture-scan" = "off"
 md-link-check = "log"

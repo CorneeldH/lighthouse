@@ -44,7 +44,7 @@ func TestInitRecordsCreatedInEmptyRepo(t *testing.T) {
 	if want := []string{"*.sh eol=lf", ".claude/hooks/lighthouse/** eol=lf"}; !sameList(c.Gitattributes, want) {
 		t.Errorf("gitattributes = %v, want %v", c.Gitattributes, want)
 	}
-	if want := []string{"hooks", "permissions", "permissions.allow"}; !sameList(c.SettingsKeys, want) {
+	if want := []string{"hooks", "permissions", "permissions.allow", "autoMemoryEnabled"}; !sameList(c.SettingsKeys, want) {
 		t.Errorf("settings_keys = %v, want %v", c.SettingsKeys, want)
 	}
 	if c.SettingsLanguage != "" {
@@ -73,7 +73,7 @@ func TestInitRecordsNothingForExistingFiles(t *testing.T) {
 	if len(c.Files) != 0 || len(c.Gitattributes) != 0 || c.SettingsLanguage != "" {
 		t.Errorf("recorded what already existed: %+v", c)
 	}
-	if want := []string{"permissions", "permissions.allow"}; !sameList(c.SettingsKeys, want) {
+	if want := []string{"permissions", "permissions.allow", "autoMemoryEnabled"}; !sameList(c.SettingsKeys, want) {
 		t.Errorf("settings_keys = %v, want %v (hooks existed already)", c.SettingsKeys, want)
 	}
 }
@@ -81,7 +81,7 @@ func TestInitRecordsNothingForExistingFiles(t *testing.T) {
 // Red when --upgrade does not add the language it newly set, or drops earlier items.
 func TestUpgradeAddsLanguageToCreated(t *testing.T) {
 	root := newRepo(t)
-	write(t, root, ".claude/settings.json", "{\n  \"hooks\": {}\n}\n")
+	write(t, root, ".claude/settings.json", "{\n  \"hooks\": {},\n  \"autoMemoryEnabled\": false\n}\n")
 	initYes(t, root)
 	before := readCreated(t, root)
 	if len(before.SettingsKeys) != 0 {
@@ -131,7 +131,7 @@ func TestUpgradeCreatedOnlyGrows(t *testing.T) {
 	write(t, other, "AGENTS.md", "# mine\n")
 	write(t, other, "CLAUDE.md", "@AGENTS.md\n")
 	write(t, other, "lighthouse.toml", "[project]\nlanguage = \"en\"\n")
-	write(t, other, ".claude/settings.json", "{\n  \"hooks\": {}\n}\n")
+	write(t, other, ".claude/settings.json", "{\n  \"hooks\": {},\n  \"autoMemoryEnabled\": false\n}\n")
 	write(t, other, ".gitattributes", "*.sh eol=lf\n.claude/hooks/lighthouse/** eol=lf\n")
 	if r := run(t, other, "", yes); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s\n%s", r.code, r.out, r.err)

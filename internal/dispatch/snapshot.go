@@ -45,6 +45,10 @@ type Item struct {
 	BlockedBy      []forge.Blocker `json:"blocked_by"`
 	PRs            []forge.PR      `json:"prs"`      // closing PRs plus PRs on the open run's branch, by number
 	Comments       []Comment       `json:"comments"` // trusted authors only, oldest first
+	// PushedQuestion is the id of the open pusher Vraag (the last turn, unanswered) whose SHA
+	// origin already holds on its branch: a push by hand. 0 otherwise. Prepare reads it only for
+	// an item in Controller whose last run is a push row closed on a question.
+	PushedQuestion int64 `json:"pushed_question,omitempty"`
 }
 
 // Comment is an issue comment by a trusted author.
