@@ -93,6 +93,41 @@ describe('ComparisonBlock', () => {
     expect(screen.getByRole('img', { name: 'warning' })).toBeTruthy()
   })
 
+  it('shows no label badge on an unmeasured block without a label', () => {
+    render(<ComparisonBlock block={block({ kind: 'unmeasured', label: '', label_note: '', groups: null, reason: 'no source' })} />)
+    const el = screen.getByRole('region', { name: 'route' })
+    expect(within(el).queryByTitle('Comparison label')).toBeNull()
+    expect(within(el).getByText('no source')).toBeTruthy()
+  })
+
+  it('shows the label badge on a comparison block', () => {
+    render(<ComparisonBlock block={block({})} />)
+    expect(within(screen.getByRole('region', { name: 'route' })).getByTitle('Comparison label').textContent).toBe('Correlation')
+  })
+
+  it('shows the reason of a comparison block next to its table', () => {
+    render(<ComparisonBlock block={block({ reason: 'not measured — review costs are not recorded' })} />)
+    const el = screen.getByRole('region', { name: 'route' })
+    expect(within(el).getByText('not measured — review costs are not recorded')).toBeTruthy()
+    expect(within(el).getByRole('table')).toBeTruthy()
+  })
+
+  it('formats seconds as hours, ratios as percentages and cost with two decimals', () => {
+    const g = group('sdd')
+    g.active = m(8876, 14)
+    g.human_wait = m(1800, 14)
+    g.recovered = m(0.9230769230769231, 14)
+    g.found = m(1, 14)
+    g.cost = m(21.402165600000007, 14)
+    render(<ComparisonBlock block={block({ groups: [g] })} />)
+    const el = screen.getByRole('region', { name: 'route' })
+    expect(within(el).getByText('2.5 h')).toBeTruthy()
+    expect(within(el).getByText('0.5 h')).toBeTruthy()
+    expect(within(el).getByText('92%')).toBeTruthy()
+    expect(within(el).getByText('100%')).toBeTruthy()
+    expect(within(el).getByText('21.40')).toBeTruthy()
+  })
+
   it('shows only the reason for an unmeasured block', () => {
     render(<ComparisonBlock block={block({ kind: 'unmeasured', groups: null, reason: 'no data yet' })} />)
     const el = screen.getByRole('region', { name: 'route' })

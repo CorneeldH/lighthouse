@@ -56,6 +56,11 @@ describe('TrajectoryList', () => {
     expect(issues()).toEqual(['2', '3', '1'])
   })
 
+  it('shows the cost with two decimals', async () => {
+    mount(<TrajectoryList filter={{}} />, () => json({ trajectories: [row({ cost: 33.72249430000001, cost_kind: 'estimate' })] }))
+    expect(await screen.findByText('33.72 (estimate)')).toBeTruthy()
+  })
+
   it('sorts on issue and toggles the direction', async () => {
     mount(<TrajectoryList filter={{}} />, () => json({ trajectories: [row({ id: 1, issue: 5 }), row({ id: 2, issue: 3 }), row({ id: 3, issue: 9 })] }))
     await screen.findAllByRole('link')
@@ -86,7 +91,7 @@ describe('TrajectoryDetail', () => {
     id: 7,
     repo: 'a/b',
     issue: 10,
-    runs: [{ id: 1, assignment: 'work', outcome: 'ok', started_at: 's', ended_at: null, usage: [{ model: 'opus', tokens: 1200, cost: 0, cost_kind: 'reported' }] }],
+    runs: [{ id: 1, assignment: 'work', outcome: 'ok', started_at: 's', ended_at: null, usage: [{ model: 'opus', tokens: 1200, cost: 1.23456, cost_kind: 'reported' }] }],
     sessions: [{ id: 4, assignment: 'work', branch: 'b', ended_at: null, harness: 'claude', link_basis: 'branch', started_at: 's', usage: [{ model: 'sonnet', tokens: 300, cost: null, cost_kind: 'estimated' }] }],
     reviews: [1, 2, 3].map((i) => ({
       id: i,
@@ -102,7 +107,7 @@ describe('TrajectoryDetail', () => {
     recoveries: [{ pr: 5, status: 'recovered', merged_at: 'm', items: [{ at: 'a', kind: 'fix', ref: 'r1' }] }],
     events: [],
     questions: { dispatcher: 2, transcript: 3 },
-    by_cause: { review: null, work: 4 },
+    by_cause: { review: null, work: 5400 },
   }
 
   it('shows findings of three reviews with record_path and no text', async () => {
@@ -115,7 +120,9 @@ describe('TrajectoryDetail', () => {
       expect(screen.getByRole('heading', { name: h })).toBeTruthy()
     }
     expect(screen.getByText('review: not measured')).toBeTruthy()
-    expect(screen.getByText('opus: 1200 tokens, cost 0 (reported)')).toBeTruthy()
+    expect(screen.getByText('opus: 1200 tokens, cost 1.23 (reported)')).toBeTruthy()
+    // by_cause is in seconds.
+    expect(screen.getByText('work: 1.5 h')).toBeTruthy()
     expect(screen.getByText('sonnet: 300 tokens, cost not measured (estimated)')).toBeTruthy()
     expect(screen.getByText(/dispatcher: 2/)).toBeTruthy()
     expect(screen.getByText(/transcript: 3/)).toBeTruthy()

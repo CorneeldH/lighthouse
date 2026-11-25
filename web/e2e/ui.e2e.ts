@@ -205,6 +205,13 @@ test('telemetry: tab shows components, timeline, trajectories and coverage', asy
   await expect(planReview).toContainText(CORRELATION)
   // The one trajectory has a plan review: it is in the "with" group with one review that found something.
   await expect(planReview.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'with', exact: true }) })).toContainText('100%')
+  // Review costs are not measured in the block itself, not only in Coverage.
+  await expect(planReview).toContainText('not measured — review costs are not recorded')
+  await expect(planReview.getByTitle('Comparison label')).toHaveText('correlation')
+  // A block without a comparison has no label badge, only its reason.
+  const taskReview = page.getByRole('region', { name: 'task_review', exact: true })
+  await expect(taskReview).toContainText('not measured')
+  await expect(taskReview.getByTitle('Comparison label')).toHaveCount(0)
 
   const coverage = page.getByRole('region', { name: 'Coverage', exact: true })
   const reviewCosts = coverage.getByRole('listitem').filter({ hasText: 'review costs: not recorded' })

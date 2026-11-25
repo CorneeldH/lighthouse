@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { Block, Outside } from '@/api/lighthouse'
+import { hours, money, percent } from './format'
 import { MeasureCell } from './MeasureCell'
 
 const OUTSIDE_LABELS: [keyof Outside, string][] = [
@@ -15,10 +16,6 @@ function outsideLine(outside: Outside): string | null {
   return parts.length === 0 ? null : `Outside the comparison: ${parts.join(', ')}`
 }
 
-const percent = (v: number): string => `${Math.round(v * 100)}%`
-const hours = (v: number): string => `${v.toFixed(1)} h`
-const cost = (v: number): string => v.toFixed(2)
-
 export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
   const outside = outsideLine(block.outside)
   const groups = block.groups ?? []
@@ -26,9 +23,13 @@ export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
     <section aria-label={block.name} className="space-y-2 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-medium">{block.name}</h3>
-        <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border">{block.label}</span>
+        {block.label !== '' && (
+          <span title="Comparison label" className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border">
+            {block.label}
+          </span>
+        )}
       </div>
-      <p className="text-sm text-muted-foreground">{block.label_note}</p>
+      {block.label_note !== '' && <p className="text-sm text-muted-foreground">{block.label_note}</p>}
       {block.kind === 'unmeasured' ? (
         <p>{block.reason}</p>
       ) : (
@@ -50,10 +51,10 @@ export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
               {groups.map((g) => (
                 <tr key={g.name} className="align-top">
                   <th scope="row">{g.name}</th>
-                  <td><MeasureCell measure={g.found} /></td>
+                  <td><MeasureCell measure={g.found} format={percent} /></td>
                   <td><MeasureCell measure={g.adopted} format={percent} /></td>
                   <td>
-                    <MeasureCell measure={g.cost} format={cost} />
+                    <MeasureCell measure={g.cost} format={money} />
                     <span className="block text-xs text-muted-foreground">
                       {g.cost_kind}
                       {g.cost_kind === 'mixed' && (
@@ -63,7 +64,7 @@ export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
                       )}
                     </span>
                   </td>
-                  <td><MeasureCell measure={g.recovered} /></td>
+                  <td><MeasureCell measure={g.recovered} format={percent} /></td>
                   <td><MeasureCell measure={g.questions} /></td>
                   <td><MeasureCell measure={g.active} format={hours} /></td>
                   <td><MeasureCell measure={g.human_wait} format={hours} /></td>
@@ -73,6 +74,7 @@ export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
           </table>
         </div>
       )}
+      {block.kind !== 'unmeasured' && block.reason && <p className="text-sm text-muted-foreground">{block.reason}</p>}
       {outside !== null && <p className="text-sm text-muted-foreground">{outside}</p>}
     </section>
   )

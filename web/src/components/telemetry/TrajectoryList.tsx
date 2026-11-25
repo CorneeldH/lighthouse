@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX } from 'react'
 import type { ListRow } from '@/api/lighthouse'
 import { forgeErrorText, type TelemetryFilter } from '@/lib/api'
 import { useTelemetryTrajectories } from '@/lib/queries'
+import { money } from './format'
 
 type SortKey = 'repo' | 'issue' | 'size' | 'cost' | 'recovery'
 const COLUMNS: SortKey[] = ['repo', 'issue', 'size', 'cost', 'recovery']
@@ -77,7 +78,7 @@ export function TrajectoryList({ filter }: { filter: TelemetryFilter }): JSX.Ele
                 </td>
                 <td>{r.issue}</td>
                 <td>{r.size}</td>
-                <td>{r.cost === null ? 'not measured' : `${r.cost} (${r.cost_kind})`}</td>
+                <td>{r.cost === null ? 'not measured' : `${money(r.cost)} (${r.cost_kind})`}</td>
                 <td>{r.recovery}</td>
                 <td>{(r.components ?? []).join(', ')}</td>
               </tr>

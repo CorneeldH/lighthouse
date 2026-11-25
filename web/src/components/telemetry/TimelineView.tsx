@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import type { Week } from '@/api/lighthouse'
 import { forgeErrorText, type TelemetryFilter } from '@/lib/api'
 import { useTelemetryTimeline } from '@/lib/queries'
+import { money } from './format'
 
 const W = 640
 const H = 180
@@ -122,7 +123,7 @@ export function TimelineView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
               {weeks.map((w) => (
                 <tr key={w.start}>
                   <th scope="row">{w.start}</th>
-                  <td>{cell(w.cost)}</td>
+                  <td>{w.cost === null ? cell(null) : money(w.cost)}</td>
                   <td>{cell(w.questions)}</td>
                   <td>{cell(w.closed)}</td>
                   <td>{cell(w.recovered)}</td>

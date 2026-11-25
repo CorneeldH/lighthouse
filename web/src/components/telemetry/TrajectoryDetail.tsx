@@ -2,8 +2,10 @@ import type { JSX } from 'react'
 import type { FindingRow, UsageRow } from '@/api/lighthouse'
 import { ApiError, forgeErrorText } from '@/lib/api'
 import { useTelemetryTrajectory } from '@/lib/queries'
+import { hours, money } from './format'
 
-const show = (v: number | null): string => (v === null ? 'not measured' : String(v))
+// by_cause is in seconds.
+const show = (v: number | null): string => (v === null ? 'not measured' : hours(v))
 
 function Usage({ rows }: { rows: UsageRow[] | null }): JSX.Element | null {
   if (rows === null || rows.length === 0) return null
@@ -11,7 +13,7 @@ function Usage({ rows }: { rows: UsageRow[] | null }): JSX.Element | null {
     <ul className="ml-4 list-disc">
       {rows.map((u, i) => (
         <li key={`${u.model}-${i}`}>
-          {`${u.model}: ${u.tokens} tokens, cost ${u.cost === null ? 'not measured' : u.cost} (${u.cost_kind})`}
+          {`${u.model}: ${u.tokens} tokens, cost ${u.cost === null ? 'not measured' : money(u.cost)} (${u.cost_kind})`}
         </li>
       ))}
     </ul>

@@ -66,6 +66,13 @@ describe('TimelineView', () => {
     expect(two.container.querySelectorAll('circle[data-questions]').length).toBe(2)
   })
 
+  it('shows the weekly cost with two decimals in the table', async () => {
+    const body: TimelineReport = { weeks: [week('2026-11-23', 1714.8993853000004)], markers: [] }
+    const { container } = renderWith(body, <TimelineView filter={{}} />)
+    await screen.findByRole('img')
+    expect(container.querySelector('table.sr-only')?.textContent).toContain('1714.90')
+  })
+
   it('shows No data yet for empty weeks', async () => {
     renderWith({ weeks: null, markers: null }, <TimelineView filter={{}} />)
     expect(await screen.findByText('No data yet')).toBeTruthy()
