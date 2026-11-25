@@ -32,6 +32,7 @@ The stands come from the `levels.toml` file of each package under `pack/`.
 | Skills `start-issue`, `route-issue`, `forge`, `write-pr`, `close-issue`, `write-handoff`, `place-instruction`, `upgrade` | on | on | on | The chain from issue to PR to a closed issue, plus the way up. |
 | Skills `write-issue`, `fix-pr`, `audit-worktrees`, `audit-agent-config`, `test-standard` | off | on | on | Maintenance of the chain. |
 | Skill `map-planned` | off | on | on | Places planned issues on their map; part of issue management. |
+| Skill `architecture-scan` | off | on | on | Proposes deepening candidates; the scheduled job of the same name runs it. |
 | Skills `review-spec`, `review-plan` | off | off | on | They ask Codex for a review by a second model family. |
 | Flag `labels` | off | on | on | Labels belong to the issue management of `standard`. |
 

@@ -5,6 +5,13 @@ packages = ["core", "go", "node"]
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-architecture-scan/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "52004413f14de079e4722c221e996288a3ab2677b9924d1312b59fee2356e47e"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-audit-agent-config/SKILL.md"
 package = "core"
 version = "dev"
@@ -440,6 +447,13 @@ id = "UserPromptSubmit||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh 
 package = "core"
 version = "dev"
 sha256 = "d5ab47d5af8dfec5a3c8aa1ef64555bce9bb5fac3cce1ffa8a4d5e72f68e689d"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-architecture-scan/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "52004413f14de079e4722c221e996288a3ab2677b9924d1312b59fee2356e47e"
 
 [[unit]]
 kind = "file"
