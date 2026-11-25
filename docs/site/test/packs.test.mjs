@@ -20,6 +20,7 @@ const WHEN = new Map(
       "around every shell command",
     ],
     [[["PreToolUse", "Edit|Write"]], "before every edit"],
+    [[["PreToolUse", "Bash"], ["PreToolUse", "Edit|Write"]], "before every edit and shell command"],
     [[["PostToolUse", "Edit|Write"]], "after every edit"],
     [[["SessionStart", ""]], "when a session starts"],
     [[["Stop", ""]], "when the session stops"],

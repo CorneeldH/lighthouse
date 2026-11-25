@@ -270,3 +270,28 @@ func TestApplyLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyAutoMemory(t *testing.T) {
+	cases := []struct {
+		name, doc, stand, out string
+		changed               bool
+		kept                  any
+	}{
+		{"absent, on", `{"a":1}`, "on", `{"a":1,"autoMemoryEnabled":false}`, true, nil},
+		{"absent, log", `{"a":1}`, "log", `{"a":1,"autoMemoryEnabled":false}`, true, nil},
+		{"absent, off", `{"a":1}`, "off", `{"a":1,"autoMemoryEnabled":false}`, true, nil},
+		{"false, on", `{"autoMemoryEnabled":false,"a":1}`, "on", `{"autoMemoryEnabled":false,"a":1}`, false, nil},
+		{"false, log", `{"autoMemoryEnabled":false,"a":1}`, "log", `{"autoMemoryEnabled":false,"a":1}`, false, nil},
+		{"false, off", `{"autoMemoryEnabled":false,"a":1}`, "off", `{"autoMemoryEnabled":false,"a":1}`, false, nil},
+		{"true, on", `{"autoMemoryEnabled":true,"a":1}`, "on", `{"autoMemoryEnabled":false,"a":1}`, true, true},
+		{"true, log", `{"autoMemoryEnabled":true,"a":1}`, "log", `{"autoMemoryEnabled":true,"a":1}`, false, true},
+		{"true, off", `{"autoMemoryEnabled":true,"a":1}`, "off", `{"autoMemoryEnabled":true,"a":1}`, false, nil},
+	}
+	for _, c := range cases {
+		doc := parse(t, c.doc)
+		changed, kept := ApplyAutoMemory(doc, c.stand)
+		if got := compact(t, doc); got != c.out || changed != c.changed || kept != c.kept {
+			t.Errorf("%s: doc %s changed %v kept %v, want %s changed %v kept %v", c.name, got, changed, kept, c.out, c.changed, c.kept)
+		}
+	}
+}

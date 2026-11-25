@@ -99,6 +99,10 @@ level skips and why.
   the root of the repository before `init`; `--sources` adds the files and line numbers behind
   each finding. An agent that installs lighthouse for you does this as the History step of
   [the agent guide](site/agents/install.md).
+
+Existing auto-memory? After `init`, run `/lighthouse-migrate-memory`: it sorts the Claude Code
+memory files of this repo into instructions, issues, docs and `host.toml`, one group at a time,
+and leaves the deleting to you.
 - **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
   reviews, or once you want `commit-test-gate` to run after each commit; first check that
   `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which

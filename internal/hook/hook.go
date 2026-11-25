@@ -178,7 +178,10 @@ func runLogged(ctx context.Context, name string, f Func, stand string, in io.Rea
 		return
 	}
 	msg, _ := res.Output["systemMessage"].(string)
-	for _, s := range []string{msg, res.Stderr, res.Text} {
+	// A deny of a PreToolUse hook says why in permissionDecisionReason.
+	specific, _ := res.Output["hookSpecificOutput"].(map[string]any)
+	reason, _ := specific["permissionDecisionReason"].(string)
+	for _, s := range []string{msg, reason, res.Stderr, res.Text} {
 		if firstLine(s) != "" {
 			msg = s
 			break

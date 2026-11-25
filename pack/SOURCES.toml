@@ -196,6 +196,10 @@ path = "pack/core/skills/place-instruction/SKILL.md"
 new = true
 
 [[file]]
+path = "pack/core/skills/migrate-memory/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/test-standard/SKILL.md"
 new = true
 

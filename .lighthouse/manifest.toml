@@ -75,6 +75,13 @@ sha256 = "aaa1f819fd634aa3e0d8dac9e936e59a7fc7244d7eb185b9729b33172aa882aa"
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-migrate-memory/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "1786f2b257f68760579c84b5bc12194cc7c05b056521fc077737f19473ae9ea5"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
@@ -363,6 +370,14 @@ sha256 = "6c5c8508589f3e46c35c0693c769f01aa446d945632378d6c08870ce4e270630"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh memory-gate"
+package = "core"
+version = "dev"
+sha256 = "0629e64e198ac17285801840165c7f7b8fa24ae4fb7dce7b2c06eed80285f1ba"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh no-verify-check"
 package = "core"
 version = "dev"
@@ -383,6 +398,14 @@ id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh wo
 package = "core"
 version = "dev"
 sha256 = "7be64f505cb6eb3418c9b66502e24d62babcd8f8e1afc232e918d04b2228a327"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PreToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh memory-gate"
+package = "core"
+version = "dev"
+sha256 = "0629e64e198ac17285801840165c7f7b8fa24ae4fb7dce7b2c06eed80285f1ba"
 
 [[unit]]
 kind = "hook"
@@ -525,6 +548,13 @@ path = ".claude/skills/lighthouse-map-planned/SKILL.md"
 package = "core"
 version = "dev"
 sha256 = "aaa1f819fd634aa3e0d8dac9e936e59a7fc7244d7eb185b9729b33172aa882aa"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-migrate-memory/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "1786f2b257f68760579c84b5bc12194cc7c05b056521fc077737f19473ae9ea5"
 
 [[unit]]
 kind = "file"

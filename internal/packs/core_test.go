@@ -37,6 +37,7 @@ func TestCorePack(t *testing.T) {
 		".agents/skills/lighthouse-forge/github.md",
 		".agents/skills/lighthouse-forge/gitlab.md",
 		".agents/skills/lighthouse-map-planned/SKILL.md",
+		".agents/skills/lighthouse-migrate-memory/SKILL.md",
 		".agents/skills/lighthouse-place-instruction/SKILL.md",
 		".agents/skills/lighthouse-review-plan/SKILL.md",
 		".agents/skills/lighthouse-review-plan/findings.schema.json",
@@ -67,6 +68,7 @@ func TestCorePack(t *testing.T) {
 		".claude/skills/lighthouse-forge/github.md",
 		".claude/skills/lighthouse-forge/gitlab.md",
 		".claude/skills/lighthouse-map-planned/SKILL.md",
+		".claude/skills/lighthouse-migrate-memory/SKILL.md",
 		".claude/skills/lighthouse-place-instruction/SKILL.md",
 		".claude/skills/lighthouse-review-plan/SKILL.md",
 		".claude/skills/lighthouse-review-plan/findings.schema.json",
@@ -92,7 +94,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 20 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 22 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string
