@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-Elke kaart in de Dependencies-weergave toont het getal van de gekozen sortering (prio-weight, weight, of het aantal wachtenden vanaf 2), zodat zichtbaar is waarom een kaart boven een andere staat (#611).
+Each card in the Dependencies view shows the number of the chosen sort (prio-weight, weight, or the waiting count from 2), so it is visible why one card sits above another (#611).
