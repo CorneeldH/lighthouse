@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Issue, Repo } from '@/api/lighthouse'
 import { buildGraph } from '@/lib/priorities/derive'
-import { UnassignedView } from './UnassignedView'
+import { BacklogView } from './BacklogView'
 
 afterEach(cleanup)
 
@@ -12,6 +12,7 @@ const iss = (
   number: number,
   by: Array<[string, number]> = [],
   milestone?: { number: number; state: string; title: string; url: string },
+  over: Partial<Issue> = {},
 ): Issue => ({
   number,
   title: `title-${number}`,
@@ -24,18 +25,19 @@ const iss = (
   factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
   ...(milestone ? { milestone } : {}),
+  ...over,
 })
 const repo = (slug: string, issues: Issue[]): Repo => ({ slug, issues, milestones: [] })
 
 function view(repos: Repo[], selected: string[] = [A]) {
   const graph = buildGraph(repos, [])
   return render(
-    <UnassignedView graph={graph} repos={repos} selected={new Set(selected)} colors={new Map()} />,
+    <BacklogView graph={graph} repos={repos} selected={new Set(selected)} colors={new Map()} />,
   )
 }
-const rows = () => screen.queryAllByTestId('unassigned-row')
+const rows = () => screen.queryAllByTestId('backlog-row')
 
-describe('UnassignedView', () => {
+describe('BacklogView', () => {
   it('shows number as forge link and title per open issue without milestone', () => {
     view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
     expect(rows()).toHaveLength(1)
@@ -60,6 +62,22 @@ describe('UnassignedView', () => {
     expect(within(byNr(6)).getAllByRole('link')).toHaveLength(1)
     expect(within(byNr(7)).queryByRole('link', { name: 'NoUrl' })).toBeNull()
     expect(byNr(7).textContent).toContain('NoUrl · closed')
+  })
+
+  it('shows a status block per row, with the state of the node', () => {
+    view([repo(A, [iss(5), iss(6, [], undefined, { label: 'needs_shaping' })])])
+    const state = (n: number) =>
+      within(rows().find((r) => within(r).queryByText(`title-${n}`))!).getByTestId('backlog-status').getAttribute('data-state')
+    expect(state(5)).toBe('ready')
+    expect(state(6)).toBe('needs_shaping')
+  })
+
+  it('underlines the number only for needs_shaping and needs_human', () => {
+    view([repo(A, [iss(5), iss(6, [], undefined, { label: 'needs_shaping' }), iss(7, [], undefined, { label: 'needs_decision' })])])
+    const num = (n: number) => screen.getByRole('link', { name: String(n) })
+    expect(num(5).getAttribute('data-underlined')).toBeNull()
+    expect(num(6).getAttribute('data-underlined')).toBe('true')
+    expect(num(7).getAttribute('data-underlined')).toBe('true')
   })
 
   it('names the relation with the related number', () => {
@@ -88,6 +106,7 @@ describe('UnassignedView', () => {
     view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one', url: 'u-old' })])])
     const r = rows()[0]
     expect(r.textContent).toContain('Old one · closed')
+    expect(within(r).getByTestId('backlog-status')).toBeTruthy()
   })
 
   it('shows no milestone label for an issue without any milestone', () => {
@@ -104,14 +123,14 @@ describe('UnassignedView', () => {
 
   it('says one sentence and no list when there are none', () => {
     view([repo(A, [iss(1, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
-    expect(screen.getByText('No open issues without a milestone.')).toBeTruthy()
+    expect(screen.getByText('No open issues in the backlog.')).toBeTruthy()
     expect(screen.queryByRole('list')).toBeNull()
     expect(rows()).toHaveLength(0)
   })
 
   it('has a view root, no drag handles and no suggestions', () => {
     view([repo(A, [iss(1)])])
-    const root = screen.getByTestId('view-unassigned')
+    const root = screen.getByTestId('view-backlog')
     expect(root.querySelector('[draggable]')).toBeNull()
     expect(root.querySelector('button, select')).toBeNull()
   })

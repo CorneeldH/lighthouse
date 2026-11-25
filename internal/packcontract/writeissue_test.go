@@ -424,3 +424,22 @@ func TestSkillsStaySilentWithoutDirectionKeys(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when step 3f stops asking, per item, for every field the `Place` column of
+// the field table names, stops writing one complete line per place, loses `no item` as a
+// candidate, writes an incomplete line headless, or loses the skip path without a table or row.
+func TestWriteIssuePlaceCarriesTheFieldsOfTheTable(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "#### 3f. Free labels with a document", "### 4. Create the issue"))
+			wantAll(t, step,
+				"When the taxonomy file has a table with the columns `Label`, `Item` and `Place` with rows for this label, those rows are the kinds of item.",
+				"Ask for each item which kind it is, then keep asking until the place names every field of the `Place` column of that row, each with a value that is valid according to the explanation.",
+				"Write each place as a line of its own, in the form the explanation gives.",
+				"`no item` stays a candidate.",
+				"Headless: write a line only when it names every field of the `Place` column with a valid value; otherwise write no line and leave the question to the scheduled job.",
+				"Without such a table, or without a row for this label: the step as it is without this paragraph.")
+			wantOrder(t, step, "Write each place as a line of its own", "This step never writes the document.")
+		})
+	}
+}

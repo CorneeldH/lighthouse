@@ -84,6 +84,34 @@ func TestDetectRules(t *testing.T) {
 	}
 }
 
+func TestDetectPowershell(t *testing.T) {
+	rule := &packs.Detect{Files: []string{"**/*.ps1", "**/*.psm1"}}
+	cases := []struct {
+		name  string
+		files map[string]string
+		match string
+	}{
+		{"script", map[string]string{"scripts/a.ps1": ""}, "scripts/a.ps1"},
+		{"module", map[string]string{"m.psm1": ""}, "m.psm1"},
+		{"neither", map[string]string{"a.sh": "", "README.md": ""}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			for rel, body := range c.files {
+				write(t, root, rel, body)
+			}
+			match, ok, err := detect(root, rule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ok != (c.match != "") || match != c.match {
+				t.Fatalf("match %q ok %v, want %q", match, ok, c.match)
+			}
+		})
+	}
+}
+
 func TestDetectTrackedFile(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "")

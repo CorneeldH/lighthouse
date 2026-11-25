@@ -23,27 +23,31 @@ var Gates = map[string][]string{
 	".bash":     {"shell-lint-check.sh", "code-language-check.sh"},
 	".py":       {"ruff-format-check.sh", "code-language-check.sh"},
 	".go":       {"gofmt-check.sh", "code-language-check.sh"},
+	".ps1":      {"powershell-lint-check.sh"},
+	".psm1":     {"powershell-lint-check.sh"},
 	".md":       {"md-link-check"},
 	".markdown": {"md-link-check"},
 }
 
 // GatePacks is the package that supplies each gate; a missing gate's notice names it.
 var GatePacks = map[string]string{
-	"shell-lint-check.sh":    "shell",
-	"ruff-format-check.sh":   "python",
-	"gofmt-check.sh":         "go",
-	"md-link-check":          "core",
-	"code-language-check.sh": "core",
+	"shell-lint-check.sh":      "shell",
+	"ruff-format-check.sh":     "python",
+	"gofmt-check.sh":           "go",
+	"powershell-lint-check.sh": "powershell",
+	"md-link-check":            "core",
+	"code-language-check.sh":   "core",
 }
 
 // GateComponents is the component of `.lighthouse/components.toml` (and levels.toml) that each
 // gate belongs to; a gate whose component is off does not run.
 var GateComponents = map[string]string{
-	"shell-lint-check.sh":    "shell-lint-check",
-	"ruff-format-check.sh":   "ruff-format-check",
-	"gofmt-check.sh":         "gofmt-check",
-	"md-link-check":          "md-link-check",
-	"code-language-check.sh": "code-language-check",
+	"shell-lint-check.sh":      "shell-lint-check",
+	"ruff-format-check.sh":     "ruff-format-check",
+	"gofmt-check.sh":           "gofmt-check",
+	"powershell-lint-check.sh": "powershell-lint-check",
+	"md-link-check":            "md-link-check",
+	"code-language-check.sh":   "code-language-check",
 }
 
 // GateArgv holds a gate that runs as `lighthouse hook <name>`: it has no script of its own, and

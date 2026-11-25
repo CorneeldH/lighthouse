@@ -12,7 +12,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/review"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
 	"github.com/CorneeldH/lighthouse/internal/usage"
-	"github.com/CorneeldH/lighthouse/internal/version"
 )
 
 // Execute runs the command line on the process streams and returns the exit code.
@@ -68,6 +67,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.AddCommand(newInitCommand())
+	root.AddCommand(newUninstallCommand())
 	root.AddCommand(newConfigCommand())
 	root.AddCommand(newLevelCommand())
 	root.AddCommand(newHeadingsCommand())
@@ -95,6 +95,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newLintCommand())
 	root.AddCommand(newAskCommand(defaultAskEnv()))
 	root.AddCommand(newSelfUpdateCommand())
+	root.AddCommand(newChannelCommand())
 	root.AddCommand(newReleasesCommand())
 	root.AddCommand(newTurnRootsCommand())
 	root.AddCommand(newPrBodyGateCommand())
@@ -115,14 +116,6 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newCheckHooksCommand())
 	root.AddCommand(newAgentAuditCommand())
 	root.AddCommand(newCheckpointScanCommand())
-	root.AddCommand(&cobra.Command{
-		Use:   "version",
-		Short: "Print the version of this binary",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, err := fmt.Fprintf(cmd.OutOrStdout(), "lighthouse %s\n", version.String())
-			return err
-		},
-	})
+	root.AddCommand(newVersionCommand())
 	return root
 }

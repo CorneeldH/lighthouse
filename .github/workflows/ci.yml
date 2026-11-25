@@ -257,7 +257,17 @@ jobs:
           go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - run: uv sync --locked
+      # PSScriptAnalyzer for the powershell-lint-check canaries (#581), pinned at 1.23.0. AllUsers, not
+      # CurrentUser: runHook gives every hook an empty HOME, so a CurrentUser module is invisible
+      # there. pwsh is on ubuntu-latest. The canaries read LIGHTHOUSE_PSSA_VERSION themselves and,
+      # with CI set, fail when it is empty or the module is missing: no silent skip.
+      - name: install PSScriptAnalyzer
+        run: sudo pwsh -NoProfile -NonInteractive -Command "Install-Module PSScriptAnalyzer -RequiredVersion $LIGHTHOUSE_PSSA_VERSION -Scope AllUsers -Force"
+        env:
+          LIGHTHOUSE_PSSA_VERSION: 1.23.0
       - run: go test -race -tags canary ./internal/canary/ -v
+        env:
+          LIGHTHOUSE_PSSA_VERSION: 1.23.0
       - run: uv run pytest -q tests/pack/python/test_canary.py
       - run: go test -race -tags canary ./internal/importcheck/
       - run: uv run pytest -q tests/pack/python/test_imports_gate_canary.py

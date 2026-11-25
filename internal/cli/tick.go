@@ -589,14 +589,15 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RemoveMarker: func(session, key string) error {
 			return env.removeMarker(ctx, cfg, markerDirs, markerNode[session], session, key)
 		},
-		MaxWait:     cfg.MaxWait,
-		Now:         env.now,
-		NewSession:  runs.NewSessionID,
-		Log:         prefixed{errOut},
-		Getenv:      env.Getenv,
-		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
-		TokenEnvs:   tokenEnvs(cfg),
-		StartPusher: env.startPusher(dir),
+		MaxWait:        cfg.MaxWait,
+		Now:            env.now,
+		NewSession:     runs.NewSessionID,
+		Log:            prefixed{errOut},
+		Getenv:         env.Getenv,
+		TokenEnv:       func(slug string) string { return tokenEnvName(repos[slug]) },
+		TokenEnvs:      tokenEnvs(cfg),
+		StartPusher:    env.startPusher(dir),
+		ClassifyAnswer: env.lazyClassifier(),
 	}, actions)
 	return res, nil
 }
