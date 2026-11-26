@@ -73,15 +73,17 @@ Ecosysteemnamen en herkenning (bestandsnaam in een map):
 
 `renderDependabot` levert `version: 2`, `updates:` met per ecosysteem (alfabetisch) `package-ecosystem`, `directory: "/"` voor `github-actions` en anders `directories:` met de paden, `schedule: {interval: weekly}` en `groups: {all: {patterns: ["*"]}}`. Bovenaan een commentaarregel dat `lighthouse init` het bestand zaaide en dat het van de repo is.
 
+De door lighthouse geïnstalleerde workflows (`.github/workflows/lighthouse-*.yml`, manifest-units met SHA-gepinde actions, `internal/packs/packs.go:140`) mogen Dependabot niet wijzigen: een bump maakt de installatie lokaal gewijzigd (`init --upgrade` weigert, `initcmd.go:268-282`) en laat de CI-stap `No changes.` (`ci.yml:201-205`) rood worden. Daarom krijgt het `github-actions`-blok `exclude-paths: [".github/workflows/lighthouse-*.yml"]`, mits de Dependabot-documentatie `exclude-paths` voor `github-actions` ondersteunt (de uitvoerder controleert dat in de officiële opties-referentie vóór Step 3). Ondersteunt het dat niet: laat de uitsluiting weg en leg de beperking vast in `docs/dependabot.md` en in de PR-body. `TestRenderDependabot` toetst de gekozen variant.
+
 - [ ] **Step 1: Schrijf de falende tests**
   - `TestRenderDependabot`: voor `[{gomod,[/ /web]},{github-actions,[/]}]` bevat de uitvoer `package-ecosystem: "github-actions"` vóór `package-ecosystem: "gomod"`, `directories:` met `"/"` en `"/web"`, `interval: "weekly"` en `patterns:` met `"*"`; de uitvoer parseert als YAML (`gopkg.in/yaml.v3` als het al in `go.mod` staat, anders alleen de stringchecks).
   - `TestInitSeedsDependabot`: repo met `go.mod` en forge-kind github → `.github/dependabot.yml` bestaat, bevat `gomod`, niet in `manifest.Path`.
   - `TestInitSeedsNothingWithoutEcosystems`: lege repo → geen bestand, stderr bevat `dependabot: no ecosystems found; nothing seeded`.
-  - `TestUpgradeLeavesExistingDependabot`: schrijf `# mijn\n` naar het bestand, draai `init --upgrade` en `--upgrade --force`; inhoud ongewijzigd, stderr bevat `dependabot: .github/dependabot.yml exists; left as it is` precies één keer per run.
+  - `TestUpgradeLeavesExistingDependabot`: schrijf `# mijn\n` naar het bestand, opzet: `newRepo`, `git remote add origin https://github.com/x/y.git` (kind komt uit de remote, `initcmd.go:802-806`), plain `init`, daarna het bestand overschrijven met `# mijn\n`; draai `init --upgrade` en `--upgrade --force` (`--upgrade` op een niet-geïnitialiseerde repo faalt, `initcmd.go:180-181`); inhoud ongewijzigd, stderr bevat `dependabot: .github/dependabot.yml exists; left as it is` precies één keer per run.
   - `TestDependabotSkippedOnGitLab`: forge-kind gitlab → geen bestand en geen `dependabot:`-regel.
   - `TestSecondUpgradeNoChanges`: na seeden geeft een tweede `--upgrade` stdout `No changes.\n` en een gelijke snapshot (patroon van `direction_test.go:150-162`).
 - [ ] **Step 2: Run** `go test ./internal/initcmd -run 'Dependabot|SeedsNothing|SecondUpgrade'` — verwacht: FAIL.
-- [ ] **Step 3: Implementeer** `renderDependabot`, `dependabotPlan` (bestand bestaat → stderr-regel; geen ecosystemen → stderr-regel; anders `p.new, p.mode = body, 0o644`), voeg `dependabot bool` toe aan `seeding`, zet het op `kind == "github"` bij de constructie, en roep `dependabotPlan` aan in `buildPlan` direct na het `seeds.direction`-blok. Zonder `--force`-uitzondering: het `existed`-pad schrijft nooit.
+- [ ] **Step 3: Implementeer** `renderDependabot`, `dependabotPlan` (bestand bestaat → stderr-regel; geen ecosystemen → stderr-regel; anders `p.new, p.mode = body, 0o644`), voeg `dependabot bool` toe aan `seeding`, zet het op `kind == "github"` bij de constructie, en roep `dependabotPlan` aan in `buildPlan` direct na het `seeds.direction`-blok. Zonder `--force`-uitzondering: het `existed`-pad schrijft nooit. Detectie leest de schijf vóór `apply`: workflows die dezelfde run pas installeert tellen niet mee. Een repo met alleen `[ci]` krijgt dus pas bij de tweede `--upgrade` een `github-actions`-blok; leg dat vast in `docs/dependabot.md` (Task 4).
 - [ ] **Step 4: Run** `go test ./internal/initcmd/...` — verwacht: PASS, inclusief de bestaande tests (`created_test.go`, budget-tests: controleer dat het nieuwe bestand de budgetrapportage niet breekt).
 - [ ] **Step 5: Commit** `feat(init): zaai een dependabot.yml per gevonden ecosysteem (#617)`.
 
@@ -92,7 +94,7 @@ Ecosysteemnamen en herkenning (bestandsnaam in een map):
 - Test: `internal/initcmd/dependabot_test.go`
 
 **Interfaces:**
-- Produces: `func selfHostedWorkflows(root string) ([]string, error)` die de gevolgde `.github/workflows/*.yml|yaml` teruggeeft waarvan de inhoud `self-hosted` bevat en `dependabot[bot]` niet.
+- Produces: `func selfHostedWorkflows(root string) ([]string, error)` die de gevolgde `.github/workflows/*.yml|yaml` teruggeeft waarvan een `runs-on:`-waarde (regel die na weglaten van commentaar met `runs-on:` begint, ook binnen een flow-lijst) `self-hosted` bevat en waarvan de tekst `dependabot[bot]` niet bevat. Een `self-hosted` in een commentaarregel (`# …`) telt nooit mee: `.github/workflows/cla.yml:21` bevat het alleen in commentaar, `runs-on: ubuntu-latest` staat op :24.
 
 `dependabotPlan` print, nadat het bestand bestaat of gezaaid wordt, per zo'n workflow op stderr: `dependabot: <pad> runs on a self-hosted runner; guard it so Dependabot PRs use a hosted runner (runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || 'self-hosted' }})`.
 
@@ -100,8 +102,9 @@ Ecosysteemnamen en herkenning (bestandsnaam in een map):
   - `TestWarnsSelfHostedWorkflow`: workflow met `runs-on: self-hosted` → stderr bevat `dependabot: .github/workflows/ci.yml runs on a self-hosted runner`.
   - `TestNoWarningWhenGuarded`: workflow met `self-hosted` en `github.actor == 'dependabot[bot]'` → geen waarschuwing.
   - `TestNoWarningHostedOnly`: workflow met `runs-on: ubuntu-latest` → geen waarschuwing.
+  - `TestNoWarningSelfHostedInComment`: workflow met `# this may NEVER become self-hosted` en `runs-on: ubuntu-latest` → geen waarschuwing.
 - [ ] **Step 2: Run** `go test ./internal/initcmd -run 'SelfHosted|Guarded|HostedOnly'` — verwacht: FAIL.
-- [ ] **Step 3: Implementeer** `selfHostedWorkflows` (via `lsFiles`, tekstzoek) en de aanroep in `dependabotPlan`, alleen bij `seeds.dependabot`.
+- [ ] **Step 3: Implementeer** `selfHostedWorkflows` (via `lsFiles`, regelgewijs zoeken op `runs-on:` met commentaar eraf) en de aanroep in `dependabotPlan`, alleen bij `seeds.dependabot`.
 - [ ] **Step 4: Run** `go test ./internal/initcmd/...` — verwacht: PASS.
 - [ ] **Step 5: Commit** `feat(init): waarschuw voor self-hosted workflows naast dependabot (#617)`.
 
@@ -113,9 +116,9 @@ Ecosysteemnamen en herkenning (bestandsnaam in een map):
 - Create: `docs/dependabot.md`, `changelog.d/issue-617-dependabot-yml.md`
 - Modify: `docs/getting-started.md` (één verwijzing)
 
-- [ ] **Step 1: Schrijf de falende test** `TestOwnWorkflowsAreHosted`: leest `../../.github/workflows/*.yml` en eist dat geen enkele `self-hosted` bevat (borgt AC 3 voor lighthouse zelf, en faalt zodra iemand er een toevoegt zonder guard). Run — verwacht: PASS direct (er is geen self-hosted); toets met een tijdelijke `runs-on: self-hosted` in een kopie dat de test faalt, en draai dat terug.
-- [ ] **Step 2: Genereer lighthouses eigen bestand:** `go run ./cmd/lighthouse init --upgrade` (bevestig met `y`); verwacht dat `.github/dependabot.yml` ontstaat met `github-actions` `/`, `gomod` `/` en `/web`, `npm` `/web`, `uv` `/`, en geen `docker`. Controleer dat niets onder `testdata/` is meegenomen; wijkt het af, los dat op in Task 1.
+- [ ] **Step 1: Schrijf de falende test** `TestOwnWorkflowsAreHosted`: leest `../../.github/workflows/*.yml` en eist dat `selfHostedWorkflows` (Task 3) niets teruggeeft; een raw substring-check is fout, want `cla.yml:21` bevat `self-hosted` in commentaar (borgt AC 3 voor lighthouse zelf, en faalt zodra iemand er een toevoegt zonder guard). Run — verwacht: PASS direct (geen enkele `runs-on:` is self-hosted); toets met een tijdelijke `runs-on: self-hosted` in een kopie dat de test faalt, en draai dat terug.
+- [ ] **Step 2: Genereer lighthouses eigen bestand:** `go run ./cmd/lighthouse init --upgrade` (bevestig met `y`); verwacht dat `.github/dependabot.yml` ontstaat met `github-actions` `/`, `gomod` `/` en `/web`, `npm` `/web`, `uv` `/`, en geen `docker`. Controleer dat de uitvoer van `init` naast `exists; left as it is` geen `runs on a self-hosted runner`-regel bevat (lighthouses eigen workflows zijn gehost). Controleer dat niets onder `testdata/` is meegenomen; wijkt het af, los dat op in Task 1.
 - [ ] **Step 3: Controleer idempotentie:** `go run ./cmd/lighthouse init --upgrade` geeft `No changes.` en één regel `dependabot: .github/dependabot.yml exists; left as it is`.
-- [ ] **Step 4: Documenteer** in `docs/dependabot.md` (Nederlands, relatieve links): welke ecosystemen, cadans en groepen, dat het bestand van de repo is, de self-hosted-waarschuwing; verwijs ernaar vanuit `docs/getting-started.md`. Changelog-fragment met `type: added` volgens het formaat van de andere fragmenten in `changelog.d/`.
-- [ ] **Step 5: Run** het volledige gate: `[test_gate] command` uit `lighthouse.toml`, `lighthouse imports check`, `go vet ./...`; verwacht groen.
+- [ ] **Step 4: Documenteer** in `docs/dependabot.md` (Nederlands, relatieve links): welke ecosystemen, cadans en groepen, dat het bestand van de repo is, de self-hosted-waarschuwing en haar grens (alleen de letterlijke `self-hosted` in `runs-on:`; custom labels, runner-groepen en expressies worden niet herkend), de detectie vóór `apply` (tweede `--upgrade` voor een repo met alleen `[ci]`), en dat Dependabot-PR's de `changelog`-job van CI rood maken zolang die geen `dependabot/*`-uitzondering kent (`ci.yml:57-87`; een workflow-wijziging voor de workflow-pusher, buiten deze issue: noem een vervolg-issue in de PR-body); verwijs ernaar vanuit `docs/getting-started.md`. Changelog-fragment met `type: added` volgens het formaat van de andere fragmenten in `changelog.d/`.
+- [ ] **Step 5: Run** het volledige gate (de PR-body zegt expliciet dat AC 3 voor lighthouse zelf bewezen is door test en eigen workflows, en voor andere repos alleen door de waarschuwing): `[test_gate] command` uit `lighthouse.toml`, `lighthouse imports check`, `go vet ./...`; verwacht groen.
 - [ ] **Step 6: Commit** in twee commits: `feat(init): lighthouse heeft zelf een dependabot.yml (#617)` (bestand + test) en `docs(init): dependabot.yml en changelog (#617)`.
