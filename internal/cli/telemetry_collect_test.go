@@ -14,6 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -356,5 +358,56 @@ func TestCollectSkipsVanishedAndUnreadable(t *testing.T) {
 	}
 	if got := r.query(`SELECT session_key FROM sessions`); !strings.Contains(strings.Join(got, ","), "s-ok") {
 		t.Errorf("the readable transcript was not processed: %v", got)
+	}
+}
+
+// writeTCRecord writes a finished plan review record of o/r#7 with review_mode fallback into the
+// data directory root.
+func writeTCRecord(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, "plan-review", "issue-7-plan", "20261124T1000")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"chain_key": "issue-7-plan", "review_mode": "fallback", "trajectory": {"repo": "o/r", "issue": 7},
+		"prompt_sha256": "p1", "written_at": "2026-11-24T10:05:00+00:00"}`
+	if err := os.WriteFile(filepath.Join(dir, "record.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The records come from the data directory of the injected environment, never from the HOME of
+// the process: an injected HOME decides the XDG fallback, and no HOME means no records.
+func TestCollectDeploymentReadsInjectedDataDir(t *testing.T) {
+	home := t.TempDir()
+	writeTCRecord(t, filepath.Join(home, ".local", "share", "lighthouse", "review-records"))
+	env := map[string]string{"HOME": home}
+	reviews, settings := collectDeployment(func(k string) string { return env[k] }, "", repoconfig.Repo{})
+	if len(reviews) != 1 || reviews[0].Issue != 7 || reviews[0].Mode != "fallback" {
+		t.Errorf("reviews under the injected HOME = %+v; want the one record of o/r#7", reviews)
+	}
+	if settings != nil {
+		t.Errorf("settings without [controller] = %v; want nil", settings)
+	}
+
+	data := t.TempDir()
+	writeTCRecord(t, data)
+	env = map[string]string{"LIGHTHOUSE_DATA": data, "HOME": t.TempDir()}
+	if reviews, _ := collectDeployment(func(k string) string { return env[k] }, "", repoconfig.Repo{}); len(reviews) != 1 {
+		t.Errorf("reviews in LIGHTHOUSE_DATA = %+v; want 1", reviews)
+	}
+
+	if reviews, _ := collectDeployment(func(string) string { return "" }, "", repoconfig.Repo{}); reviews != nil {
+		t.Errorf("reviews without HOME, LIGHTHOUSE_DATA or XDG_DATA_HOME = %+v; want none", reviews)
+	}
+}
+
+// runCollect takes the host config from collectEnv.HostToml, not from the host of the process.
+func TestCollectEnvCarriesHostToml(t *testing.T) {
+	if got := defaultCollectEnv().HostToml; got != hostconfig.Path() {
+		t.Errorf("default HostToml = %q; want %q", got, hostconfig.Path())
+	}
+	if got := newTCRig(t).env().HostToml; got != "" {
+		t.Errorf("rig HostToml = %q; want none", got)
 	}
 }

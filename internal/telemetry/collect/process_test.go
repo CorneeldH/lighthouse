@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/review"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/transcript"
@@ -852,5 +853,48 @@ func TestCollectReviewWithoutRunWritesNothing(t *testing.T) {
 	}
 	if n := count(t, db, `SELECT count(*) FROM setups WHERE run_id = ? AND prompt_hashes IS NULL`, rid); n != 1 {
 		t.Errorf("run %d got prompt hashes from a record outside its window", rid)
+	}
+}
+
+// A record without trajectory is traced as review-index does: the issue from issue_spec when
+// the chain_key names none, the repo by the served clone that holds reviewed_sha.
+func TestLoadReviewsTracesRecordWithoutTrajectory(t *testing.T) {
+	clone := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", clone}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("commit", "-q", "--allow-empty", "-m", "x")
+	sha := git("rev-parse", "HEAD")
+
+	data := t.TempDir()
+	write := func(chain, reviewed string) {
+		t.Helper()
+		dir := filepath.Join(data, "spec-review", chain, "20261124T1000")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := fmt.Sprintf(`{"chain_key": %q, "review_mode": "codex", "reviewed_sha": %q, "trajectory": null,
+			"issue_spec": {"issue": 7}, "prompt_sha256": "p", "written_at": "2026-11-24T10:05:00+00:00"}`, chain, reviewed)
+		if err := os.WriteFile(filepath.Join(dir, "record.json"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("docs-spec-x", sha)
+	write("docs-spec-y", strings.Repeat("0", 40)) // in no served clone: stays out
+
+	got := LoadReviews(data, []review.ServedRepo{{Slug: testRepo, Dir: clone}})
+	if len(got) != 1 || got[0].Repo != testRepo || got[0].Issue != 7 || got[0].Kind != "spec" {
+		t.Errorf("reviews = %+v; want the one record traced to %s#7", got, testRepo)
+	}
+	if got := LoadReviews(data, nil); len(got) != 0 {
+		t.Errorf("reviews without served repos = %+v; want none", got)
 	}
 }
