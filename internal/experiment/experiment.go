@@ -63,8 +63,13 @@ func Hash(repo string, issue int) float64 {
 // Decide assigns a trajectory. Without an experiment, before its start, once variantCount has
 // reached the sample, or when Hash is not strictly below Share, it is standard.
 func Decide(exp *repoconfig.Experiment, note string, repo string, issue int, variantCount int, now time.Time) Decision {
+	return DecideWith(Hash, exp, note, repo, issue, variantCount, now)
+}
+
+// DecideWith is Decide with the hash function given, so a test can fix the draw.
+func DecideWith(hash func(string, int) float64, exp *repoconfig.Experiment, note string, repo string, issue int, variantCount int, now time.Time) Decision {
 	std := Decision{Assignment: standard, Note: note}
-	if exp == nil || now.Before(exp.Start) || variantCount >= exp.Sample || !(Hash(repo, issue) < exp.Share) {
+	if exp == nil || now.Before(exp.Start) || variantCount >= exp.Sample || !(hash(repo, issue) < exp.Share) {
 		return std
 	}
 	return Decision{Assignment: exp.Assignment(), ExperimentID: exp.ID, Note: note}
