@@ -208,3 +208,84 @@ func TestBuildRecordTrajectory(t *testing.T) {
 		t.Errorf("trajectory.issue = %v", n)
 	}
 }
+
+func TestRecordAssignmentFields(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	writeFile(t, filepath.Join(repo, "docs", "plan.md"), "# plan\n")
+	skill := filepath.Join(repo, ".claude", "skills", "lighthouse-review-plan")
+	writeFile(t, filepath.Join(skill, "reviewer-prompt.md"), "prompt\n")
+	writeFile(t, filepath.Join(skill, "findings.schema.json"), "{}\n")
+	run("init", "-q")
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	deps := Deps{
+		CodexVersion: func() *string { v := "codex 1"; return &v },
+		Now:          func() time.Time { return time.Date(2026, 11, 8, 12, 30, 45, 0, time.UTC) },
+	}
+	attempt, err := Start(docsDir+"plan.md", repo, t.TempDir(), "plan", deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(attempt, "round-1.json"), `{"review_markdown":"x","status":"s","findings":[]}`)
+	base := RecordInput{
+		Repo: repo, Outcome: "converged", ReviewMode: "codex", FinalSHA: run("rev-parse", "HEAD"),
+		SkillDir: DefaultSkillDirs["plan"], CodexHome: t.TempDir(),
+	}
+	yes, no := true, false
+	const variant = "variant:plan_review=codex"
+
+	tests := []struct {
+		name        string
+		assignment  string
+		applied     *bool
+		want        string
+		wantApplied any
+		wantErr     bool
+	}{
+		{"none given", "", nil, "standard", nil, false},
+		{"standard", "standard", nil, "standard", nil, false},
+		{"variant applied", variant, &yes, variant, true, false},
+		{"variant not applied", variant, &no, variant, false, false},
+		{"variant without applied", variant, nil, "", nil, true},
+		{"unknown form", "codex", &yes, "", nil, true},
+		{"variant without component and choice", "variant:foo", &yes, "", nil, true},
+		{"variant with empty component", "variant:=codex", &yes, "", nil, true},
+		{"variant with empty choice", "variant:plan_review=", &yes, "", nil, true},
+		{"variant with unknown component", "variant:code_review=codex", &yes, "", nil, true},
+		{"variant with unknown choice", "variant:plan_review=gpt", &yes, "", nil, true},
+		// A variant of another component than this review's kind is rejected, not recorded.
+		{"variant of another component", "variant:spec_review=codex", &yes, "", nil, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := base
+			in.Assignment, in.AssignmentApplied = tt.assignment, tt.applied
+			rec, err := BuildRecord(attempt, in, deps)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("BuildRecord: nil error, want one")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if v, ok := rec.Get("assignment"); !ok || v != tt.want {
+				t.Errorf("assignment = %v (present %v), want %q", v, ok, tt.want)
+			}
+			if v, ok := rec.Get("assignment_applied"); !ok || v != tt.wantApplied {
+				t.Errorf("assignment_applied = %v (present %v), want %v", v, ok, tt.wantApplied)
+			}
+			if v, _ := rec.Get("schema_version"); fmt.Sprint(v) != "6" {
+				t.Errorf("schema_version = %v, want 6", v)
+			}
+		})
+	}
+}

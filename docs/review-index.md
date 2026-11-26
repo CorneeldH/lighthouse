@@ -30,10 +30,23 @@ verdubbeld).
   (`issue-<n>`); de repo is `forge.repo` uit `lighthouse.toml`. Een record met `trajectory: null`,
   of van schema 5 of lager, krijgt geen bevindingen, maar wel een `review_runs`-rij zonder traject
   (`trajectory_id` leeg, reden `no_trajectory`), en verschijnt als `skipped` met de reden.
+- **Traject herleiden.** `review-index` herleidt een record zonder `trajectory` (en elke indexering
+  van de datamap, ook die na `plan-review-record write`): het issue is het `issue-<n>` in de
+  `chain_key` (komen er twee verschillende voor, dan geen traject), anders `issue_spec.issue`; de repo
+  is de enige bediende repo (`[dispatch] repos` in de hostconfig, met `forge.repo` uit zijn
+  `lighthouse.toml`) waarvan de kloon `reviewed_sha` bevat. Is het issue of de repo niet eenduidig
+  (de sha staat in twee repo's of in geen), dan blijft het record zoals hierboven: `no_trajectory`,
+  geen bevindingen. Hij faalt dicht: zonder leesbare hostconfig, of als één van de bediende repo's niet laadt (fout in zijn `lighthouse.toml`, dubbele slug), herleidt hij niets, zodat een sha die ook in de weggelaten kloon staat niet naar de verkeerde repo linkt. `issue-<n>` telt alleen op een woordgrens: `reissue-5` en `issue-5bar` zijn geen verwijzing.
+- **Reviewer per bevinding.** `findings` draagt `reviewer_source` (`codex`, `fallback` of `both`) en de ernst per reviewer (`severity_codex`, `severity_fallback`), uit `source` en `severity_by_source` van de bevinding; een bevinding zonder `source` (verificatieronde) laat ze leeg. `findings.source` blijft de herkomst `plan-review-record`.
 - **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
   `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),
   pad en hash van het record, `ran_at` (`written_at`), `outcome` (`converged`, `round_limit` of
-  `aborted`) en `finding_count` (ook 0). Een nieuwere poging vervangt de rij van de oudere, en
+  `aborted`) en `finding_count` (ook 0), `review_mode`, `reviewers` (JSON-array) en de indeling
+  (`assignment`, standaard `standard`, en `assignment_applied`, leeg zonder veld in het record).
+  `reviewers` volgt de werkelijke samenstelling van ronde 1: `["opus"]` bij `review_mode =
+  fallback`, `["codex","opus"]` bij een gepaarde ronde 1 (`paired` in het record), anders
+  `["codex"]`. Een record zonder `review_mode` laat `review_mode` en `reviewers` leeg (NULL). Een
+  nieuwere poging vervangt de rij van de oudere, en
   dezelfde hash verandert niets. Per keten gebeurt het verwijderen van oude rijen, het schrijven
   van de run en het schrijven van de bevindingen in één transactie: bij een fout blijven de rijen
   van de vorige poging staan. Een onleesbaar record of een foute `written_at` blijft een

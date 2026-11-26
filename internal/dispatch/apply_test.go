@@ -19,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/experiment"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -3533,4 +3534,137 @@ func TestApplyPushedClaimsAnswerRowAndRockets(t *testing.T) {
 	if len(*specs) != 1 || (*specs)[0].Permit != "" || (*specs)[0].Worktree != a.Worktree {
 		t.Errorf("specs = %+v, want one start on the worktree without a permit", *specs)
 	}
+}
+
+func testExperiment(id, component string) experiment.Declared {
+	return experiment.Declared{Repo: applyRepo, Experiment: repoconfig.Experiment{
+		ID: id, Component: component, Choice: "codex", Share: 0.2, Sample: 10,
+		Start: applyNow.Add(-24 * time.Hour),
+	}}
+}
+
+func trajectoryAssignment(t *testing.T, db *sql.DB, issue int) (assignment, experimentID string) {
+	t.Helper()
+	var exp sql.NullString
+	if err := db.QueryRow(`SELECT assignment, experiment_id FROM trajectories WHERE repo = ? AND issue = ?`,
+		applyRepo, issue).Scan(&assignment, &exp); err != nil {
+		t.Fatalf("select trajectory: %v", err)
+	}
+	return assignment, exp.String
+}
+
+func TestStartAssignsVariantOnFirstClaim(t *testing.T) {
+	h := newHarness(t)
+	h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+	h.env.Hash = func(string, int) float64 { return 0 }
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if a, id := trajectoryAssignment(t, h.db, 7); a != "variant:plan_review=codex" || id != "e1" {
+		t.Errorf("trajectory = %q, %q, want the variant of e1", a, id)
+	}
+	var runAssign string
+	if err := h.db.QueryRow(`SELECT assignment FROM runs`).Scan(&runAssign); err != nil || runAssign != "variant:plan_review=codex" {
+		t.Errorf("run assignment = %q (%v), want the variant", runAssign, err)
+	}
+}
+
+func TestStartNoAssignmentOnConflictLogs(t *testing.T) {
+	h := newHarness(t)
+	h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review"), testExperiment("e2", "spec_review")}
+	h.env.Hash = func(string, int) float64 { return 0 }
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if a, id := trajectoryAssignment(t, h.db, 7); a != "standard" || id != "" {
+		t.Errorf("trajectory = %q, %q, want standard", a, id)
+	}
+	_, _, note := experiment.Merge(h.env.Experiments)
+	if note == "" || strings.Count(h.out.String(), note) != 1 {
+		t.Errorf("log %q does not hold the note %q once", h.out.String(), note)
+	}
+}
+
+// A served repo that does not declare the experiment does not take part: its start stays
+// standard, even when the draw would make it a variant.
+func TestStartNonDeclaringRepoStaysStandard(t *testing.T) {
+	h := newHarness(t)
+	other := testExperiment("e1", "plan_review")
+	other.Repo = "other/repo"
+	h.env.Experiments = []experiment.Declared{other}
+	h.env.Hash = func(string, int) float64 { return 0 }
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if a, id := trajectoryAssignment(t, h.db, 7); a != "standard" || id != "" {
+		t.Errorf("trajectory = %q, %q, want standard for a repo that does not declare e1", a, id)
+	}
+}
+
+func TestResumeDoesNotReassign(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Question)
+	h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+	h.env.Hash = func(string, int) float64 { return 0 }
+	if _, err := Apply(context.Background(), h.env, []Action{resumeAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if a, id := trajectoryAssignment(t, h.db, 7); a != "standard" || id != "" {
+		t.Errorf("trajectory = %q, %q, want standard to stay", a, id)
+	}
+}
+
+// The assignment line of the prompt comes from the run (the trajectory's assignment), not from
+// what Decide proposes: a second start on a variant trajectory still carries the variant, a
+// standard trajectory carries no line, and a resume after a variant carries it too.
+func TestPromptCarriesAssignment(t *testing.T) {
+	const variant = "variant:plan_review=codex"
+	line := "\nassignment: " + variant
+
+	t.Run("second start on a variant trajectory", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+		h.env.Hash = func(string, int) float64 { return 0 }
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply first: %v", err)
+		}
+		if err := runs.Release(context.Background(), h.db, 1, runs.Returned, "", applyNow); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		h.env.Hash = func(string, int) float64 { return 1 } // Decide now proposes standard
+		second := startAction()
+		second.TriggerKey, second.CommentID = "handoff:56", 56
+		if _, err := Apply(context.Background(), h.env, []Action{second}); err != nil {
+			t.Fatalf("Apply second: %v", err)
+		}
+		if len(h.wp.spawned) != 2 || h.wp.spawned[1].Prompt != second.Prompt+line {
+			t.Errorf("spawned %+v, want the second prompt %q", h.wp.spawned, second.Prompt+line)
+		}
+	})
+	t.Run("standard has no line", func(t *testing.T) {
+		h := newHarness(t)
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != startAction().Prompt {
+			t.Errorf("spawned %+v, want the prompt unchanged", h.wp.spawned)
+		}
+	})
+	t.Run("resume after a variant", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+		h.env.Hash = func(string, int) float64 { return 0 }
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply start: %v", err)
+		}
+		if err := runs.Release(context.Background(), h.db, 1, runs.Question, "", applyNow); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		if _, err := Apply(context.Background(), h.env, []Action{resumeAction()}); err != nil {
+			t.Fatalf("Apply resume: %v", err)
+		}
+		if n := len(h.wp.spawned); n != 2 || h.wp.spawned[n-1].Prompt != "the answer"+line {
+			t.Errorf("spawned %+v, want the resume prompt %q", h.wp.spawned, "the answer"+line)
+		}
+	})
 }

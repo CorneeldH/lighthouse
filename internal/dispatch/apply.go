@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/experiment"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/park"
@@ -38,7 +39,12 @@ type Env struct {
 	Remote     func(repo string) (scheduled.Remote, error)
 	RoundLimit func(repo string) string // what a run does at an adversarial round limit
 	// Labels are the [labels] names of a repo: a 🤖 Returned sets one of them (giveBack).
-	Labels    func(repo string) repoconfig.Labels
+	Labels func(repo string) repoconfig.Labels
+	// Experiments are the [[experiment]] declarations of every served repo; a start proposes an
+	// assignment from them. nil is none.
+	Experiments []experiment.Declared
+	// Hash is the draw of a trajectory in [0,1); nil is experiment.Hash. A test fixes it.
+	Hash      func(repo string, issue int) float64
 	StateDir  string
 	MarkerDir string // the resume markers; "" removes none
 	// RemoveMarker removes the resume marker of session while its key is key, where the marker
@@ -407,6 +413,33 @@ func (ap applier) release(ctx context.Context, a Action) error {
 	return nil
 }
 
+// propose is the assignment proposed for the trajectory of a start: the merged experiment of all
+// served repos (standard for a repo that does not declare it), the variants it has used so far, and the draw of the trajectory. A note (a
+// conflict between declarations) is logged. Take decides: a trajectory that has an assignment
+// keeps it.
+func (ap applier) propose(ctx context.Context, a Action, now time.Time) (assignment, experimentID string, err error) {
+	env := ap.env
+	exp, repos, note := experiment.Merge(env.Experiments)
+	if !repos[a.Repo] {
+		exp = nil // a repo that does not declare the experiment does not take part
+	}
+	count := 0
+	if exp != nil {
+		if count, err = experiment.VariantCount(ctx, env.DB, exp.ID, exp.Component, exp.Start); err != nil {
+			return "", "", err
+		}
+	}
+	hash := env.Hash
+	if hash == nil {
+		hash = experiment.Hash
+	}
+	d := experiment.DecideWith(hash, exp, note, a.Repo, a.Issue, count, now)
+	if d.Note != "" {
+		ap.logf("%s#%d: %s", a.Repo, a.Issue, d.Note)
+	}
+	return d.Assignment, d.ExperimentID, nil
+}
+
 // closeRun closes the run; a run another process already closed is no error.
 func (ap applier) closeRun(ctx context.Context, runID int64, o runs.Outcome, reason string) error {
 	err := runs.Release(ctx, ap.env.DB, runID, o, reason, ap.env.Now())
@@ -470,11 +503,18 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if trigger == triggerRepair {
 		trigger = triggerAnswer
 	}
-	run, err := runs.Take(ctx, env.DB, runs.Claim{
+	claim := runs.Claim{
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Trigger: trigger,
 		TriggerKey: a.TriggerKey, Command: a.Command, Prompt: a.Prompt, Profile: profile,
 		Node: a.Node, Branch: a.Branch, Now: now,
-	})
+	}
+	// Only the start of an issue proposes an assignment; Take keeps the one the trajectory has.
+	if a.Kind == KindStart {
+		if claim.Assignment, claim.ExperimentID, err = ap.propose(ctx, a, now); err != nil {
+			return err
+		}
+	}
+	run, err := runs.Take(ctx, env.DB, claim)
 	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
 		ap.logf("%s#%d: %s not claimed: %v", a.Repo, a.Issue, a.TriggerKey, err)
 		if errors.Is(err, runs.ErrClaimed) {
@@ -516,9 +556,14 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		}
 	}
 
+	// The line comes from the run, which holds what Take settled, never from the claim.
+	prompt := a.Prompt
+	if run.Assignment != "" && run.Assignment != "standard" {
+		prompt += "\nassignment: " + run.Assignment
+	}
 	spec := workplace.LaunchSpec{
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Profile: profile,
-		Prompt: a.Prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
+		Prompt: prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
 	}
 	outcome, reason, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
 	switch outcome {

@@ -16,10 +16,11 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
-	_ "github.com/CorneeldH/lighthouse/internal/scheduled/archscan"   // registers job architecture-scan
-	_ "github.com/CorneeldH/lighthouse/internal/scheduled/mapplanned" // registers job map-planned
-	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh" // registers job map-refresh
-	_ "github.com/CorneeldH/lighthouse/internal/scheduled/reflect"    // registers job reflect
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/archscan"        // registers job architecture-scan
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/mapplanned"      // registers job map-planned
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh"      // registers job map-refresh
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/measurerecovery" // registers job measure-recovery
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/reflect"         // registers job reflect
 )
 
 // job returns the scheduled job called name: from Jobs when a test set it, else the registry.

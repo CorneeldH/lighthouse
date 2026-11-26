@@ -192,8 +192,10 @@ func newPROpenPointsCommand() *cobra.Command {
 type recordFlags struct {
 	outcome, reviewMode, issueBody, issueFetchedAt, finalSHA string
 	level, reviewerModel, shadowModel, skillDir              string
+	assignment                                               string
 	specs                                                    []string
 	issue                                                    int
+	assignmentApplied                                        bool
 }
 
 func newRecordWriteCommand(deps review.Deps) *cobra.Command {
@@ -219,6 +221,8 @@ func newRecordWriteCommand(deps review.Deps) *cobra.Command {
 	fl.StringVar(&f.level, "level", "", "reasoning effort of the review")
 	fl.StringVar(&f.reviewerModel, "reviewer-model", "", "model of the fallback reviewer")
 	fl.StringVar(&f.shadowModel, "shadow-model", "", "model of the paired shadow run")
+	fl.StringVar(&f.assignment, "assignment", "", "the assignment line of the run: standard (default) or variant:<component>=<choice>")
+	fl.BoolVar(&f.assignmentApplied, "assignment-applied", false, "whether the review followed the variant (required with a variant)")
 	fl.StringVar(&f.skillDir, "skill-dir", "", "skill directory (default .claude/skills/lighthouse-review-<kind>)")
 	return cmd
 }
@@ -237,6 +241,13 @@ func checkWriteFlags(cmd *cobra.Command, f *recordFlags) error {
 	}
 	if err := oneOf("--review-mode", f.reviewMode, recordReviewModes); err != nil {
 		return err
+	}
+	var applied *bool
+	if fl.Changed("assignment-applied") {
+		applied = &f.assignmentApplied
+	}
+	if err := review.CheckAssignment(f.assignment, applied); err != nil {
+		return usageErr(err)
 	}
 	given := 0
 	for _, name := range []string{"issue", "issue-body", "issue-fetched-at"} {
@@ -323,6 +334,10 @@ func writeRecord(attemptDir, repo, kind string, hasIssue bool, f *recordFlags, d
 		Repo: repo, Outcome: f.outcome, ReviewMode: f.reviewMode, Specs: f.specs,
 		FinalSHA: f.finalSHA, Level: f.level, ReviewerModel: f.reviewerModel,
 		SkillDir: f.skillDir, ShadowModel: f.shadowModel,
+	}
+	if as := f.assignment; as != "" && as != "standard" {
+		applied := f.assignmentApplied
+		in.Assignment, in.AssignmentApplied = as, &applied
 	}
 	if hasIssue {
 		body, err := os.ReadFile(f.issueBody)

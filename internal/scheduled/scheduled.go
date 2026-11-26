@@ -5,6 +5,7 @@ package scheduled
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
@@ -71,6 +72,13 @@ type Job interface {
 	Check(ctx context.Context, env Env, dir string) error
 	// Finish completes the result: mirroring, index.md.
 	Finish(ctx context.Context, env Env, dir string, v Verdict) error
+}
+
+// Direct is implemented by a job that needs no agent: the controller runs it in process
+// and closes the run as done or failed.
+type Direct interface {
+	Job
+	Run(ctx context.Context, db *sql.DB, env Env) error
 }
 
 // Configurable is implemented by a job whose behaviour depends on the params of its schedule.

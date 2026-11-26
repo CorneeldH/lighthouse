@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/experiment"
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
@@ -602,6 +604,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },
+		Experiments:  declaredExperiments(repos),
 		StateDir:     dir,
 		MarkerDir:    markerDirs[0],
 		RemoveMarker: func(session, key string) error {
@@ -618,6 +621,17 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		ClassifyAnswer: env.lazyClassifier(),
 	}, actions)
 	return res, nil
+}
+
+// declaredExperiments are the [[experiment]] declarations of every served repo, in slug order.
+func declaredExperiments(repos map[string]repoconfig.Repo) []experiment.Declared {
+	var out []experiment.Declared
+	for _, slug := range slices.Sorted(maps.Keys(repos)) {
+		for _, e := range repos[slug].Experiments {
+			out = append(out, experiment.Declared{Repo: slug, Experiment: e})
+		}
+	}
+	return out
 }
 
 // removeMarker removes the resume marker of session while its key is key: on node (DELETE

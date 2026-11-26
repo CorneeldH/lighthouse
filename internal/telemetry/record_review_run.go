@@ -6,6 +6,7 @@ package telemetry
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -24,6 +25,12 @@ type ReviewRunRecord struct {
 	RanAt        time.Time
 	Outcome      string
 	FindingCount int
+	ReviewMode   string   // fallback, codex, codex_same_family; empty when the record has none
+	Reviewers    []string // who reviewed, e.g. ["codex","opus"]; empty stores NULL
+	// Assignment is the experiment arm of the trajectory: "standard" (or empty), "shadow:..." or
+	// "variant:<component>=<choice>". AssignmentApplied is nil when the record does not say.
+	Assignment        string
+	AssignmentApplied *bool
 }
 
 func (r ReviewRunRecord) validate() error {
@@ -47,13 +54,30 @@ func (r ReviewRunRecord) validate() error {
 
 // RecordReviewRun records a review run. Issue 0 stores no trajectory and the
 // reason no_trajectory. A second offering of the same origin updates record
-// path, record sum, ran_at, outcome, finding count, trajectory and
-// recorded_at, and reports not new.
+// path, record sum, ran_at, outcome, finding count, review mode, reviewers,
+// assignment, trajectory and recorded_at, and reports not new.
 func recordReviewRunTx(ctx context.Context, tx *sql.Tx, r ReviewRunRecord) (int64, bool, error) {
 	if err := r.validate(); err != nil {
 		return 0, false, err
 	}
-	var trajectory, reason any
+	var trajectory, reason, reviewers, applied any
+	if len(r.Reviewers) > 0 {
+		b, err := json.Marshal(r.Reviewers)
+		if err != nil {
+			return 0, false, fmt.Errorf("telemetry: encode reviewers: %w", err)
+		}
+		reviewers = string(b)
+	}
+	if r.AssignmentApplied != nil {
+		applied = 0
+		if *r.AssignmentApplied {
+			applied = 1
+		}
+	}
+	assignment := r.Assignment
+	if assignment == "" {
+		assignment = "standard"
+	}
 	if r.Issue > 0 {
 		repo, err := resolveRepo(ctx, tx, r.Repo)
 		if err != nil {
@@ -68,18 +92,21 @@ func recordReviewRunTx(ctx context.Context, tx *sql.Tx, r ReviewRunRecord) (int6
 		reason = "no_trajectory"
 	}
 	id, isNew, err := insertOrFind(ctx, tx, "review_runs", `INSERT INTO review_runs (source, source_id, recorded_at,
-		trajectory_id, unlinked_reason, component, record_path, record_sum, ran_at, outcome, finding_count)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		trajectory_id, unlinked_reason, component, record_path, record_sum, ran_at, outcome, finding_count,
+		review_mode, reviewers, assignment, assignment_applied)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
 		[]any{r.Source, r.SourceID, stamp(r.RecordedAt), trajectory, reason, r.Component, r.RecordPath,
-			r.RecordSum, stamp(r.RanAt), nullString(r.Outcome), r.FindingCount},
+			r.RecordSum, stamp(r.RanAt), nullString(r.Outcome), r.FindingCount,
+			nullString(r.ReviewMode), reviewers, assignment, applied},
 		bySource(r.Origin))
 	if err != nil || isNew {
 		return id, isNew, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE review_runs SET record_path = ?, record_sum = ?, ran_at = ?,
-		outcome = ?, finding_count = ?, trajectory_id = ?, unlinked_reason = ?, recorded_at = ? WHERE id = ?`,
+		outcome = ?, finding_count = ?, trajectory_id = ?, unlinked_reason = ?, recorded_at = ?,
+		review_mode = ?, reviewers = ?, assignment = ?, assignment_applied = ? WHERE id = ?`,
 		r.RecordPath, r.RecordSum, stamp(r.RanAt), nullString(r.Outcome), r.FindingCount, trajectory, reason,
-		stamp(r.RecordedAt), id); err != nil {
+		stamp(r.RecordedAt), nullString(r.ReviewMode), reviewers, assignment, applied, id); err != nil {
 		return 0, false, fmt.Errorf("telemetry: update review run: %w", err)
 	}
 	return id, false, nil

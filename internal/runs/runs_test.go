@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -537,5 +538,135 @@ func TestTakeRefusedLeavesNoTrajectory(t *testing.T) {
 	}
 	if tid.Valid {
 		t.Errorf("seeded run trajectory_id = %d, want NULL", tid.Int64)
+	}
+}
+
+func runAssignment(t *testing.T, db *sql.DB, id int64) string {
+	t.Helper()
+	var a string
+	if err := db.QueryRow(`SELECT assignment FROM runs WHERE id = ?`, id).Scan(&a); err != nil {
+		t.Fatalf("select run assignment: %v", err)
+	}
+	return a
+}
+
+func TestTakeKeepsTrajectoryAssignment(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c1 := claim("owner/a", 7, "start:7")
+	c1.Assignment, c1.ExperimentID = "variant:plan_review=codex", "e1"
+	r1, err := Take(ctx, db, c1)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, r1.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	c2 := claim("owner/a", 7, "answer:7")
+	c2.Assignment = "standard"
+	r2, err := Take(ctx, db, c2)
+	if err != nil {
+		t.Fatalf("second Take: %v", err)
+	}
+	for _, id := range []int64{r1.ID, r2.ID} {
+		if got := runAssignment(t, db, id); got != "variant:plan_review=codex" {
+			t.Errorf("run %d assignment = %q, want the first claim's", id, got)
+		}
+	}
+	var exp string
+	if err := db.QueryRow(`SELECT experiment_id FROM trajectories WHERE repo = 'owner/a' AND issue = 7`).Scan(&exp); err != nil || exp != "e1" {
+		t.Errorf("experiment_id = %q, %v; want e1", exp, err)
+	}
+}
+
+func TestTakeLegacyTrajectoryStaysStandard(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	// A trajectory the migration left on standard, and a NULL one that already has a run.
+	if _, err := db.Exec(`INSERT INTO trajectories (repo, issue, created_at, assignment) VALUES ('owner/a', 1, 'x', 'standard')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO trajectories (repo, issue, created_at) VALUES ('owner/a', 2, 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, started_at, trajectory_id, outcome, ended_at)
+		SELECT 'owner/a', 2, 's', 'start', 'handoff', 'start:old', 1, 'x', id, 'done', 'x' FROM trajectories WHERE issue = 2`); err != nil {
+		t.Fatal(err)
+	}
+	for _, issue := range []int{1, 2} {
+		c := claim("owner/a", issue, fmt.Sprintf("answer:%d", issue))
+		c.Assignment = "variant:plan_review=codex"
+		r, err := Take(ctx, db, c)
+		if err != nil {
+			t.Fatalf("Take %d: %v", issue, err)
+		}
+		if got := runAssignment(t, db, r.ID); got != "standard" {
+			t.Errorf("issue %d assignment = %q, want standard", issue, got)
+		}
+	}
+}
+
+func TestTakeAppliesToTelemetryCreatedTrajectory(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	if _, err := db.Exec(`INSERT INTO trajectories (repo, issue, created_at) VALUES ('owner/a', 3, 'x')`); err != nil {
+		t.Fatal(err)
+	}
+	c := claim("owner/a", 3, "start:3")
+	c.Assignment = "variant:plan_review=codex"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if got := runAssignment(t, db, r.ID); got != "variant:plan_review=codex" {
+		t.Errorf("assignment = %q, want the claim's", got)
+	}
+}
+
+func TestTakeReturnsEffectiveAssignment(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c1 := claim("owner/a", 7, "start:7")
+	c1.Assignment = "shadow:plan_review"
+	r1, err := Take(ctx, db, c1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1.Assignment != "shadow:plan_review" {
+		t.Errorf("Run.Assignment = %q", r1.Assignment)
+	}
+	if err := Release(ctx, db, r1.ID, Done, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	c2 := claim("owner/a", 7, "answer:7")
+	c2.Assignment = "variant:plan_review=codex"
+	r2, err := Take(ctx, db, c2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2.Assignment != "shadow:plan_review" {
+		t.Errorf("Run.Assignment = %q, want the stored one", r2.Assignment)
+	}
+	c3 := claim("owner/a", 8, "start:8")
+	r3, err := Take(ctx, db, c3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r3.Assignment != "standard" {
+		t.Errorf("empty claim gives %q, want standard", r3.Assignment)
+	}
+}
+
+func TestTakeScheduledNoAssignment(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := Claim{Repo: "owner/a", Schedule: "job", SessionID: NewSessionID(), Mode: "start", Trigger: TriggerScheduled,
+		TriggerKey: "scheduled:job:1", Assignment: "variant:plan_review=codex", Now: time.Now()}
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if r.Assignment != "standard" || runAssignment(t, db, r.ID) != "standard" {
+		t.Errorf("scheduled run assignment = %q, want standard", r.Assignment)
 	}
 }

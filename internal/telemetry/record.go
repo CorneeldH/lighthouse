@@ -8,6 +8,7 @@ package telemetry
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -62,6 +63,20 @@ type SetupRecord struct {
 	Model, Effort, Harness, HarnessVersion             *string
 	SuperpowersVersion, LighthouseVersion, PackVersion *string
 	SkillsHash, Lane                                   *string
+	// PromptHashes maps a skill (review-plan, review-spec, review-plan:schema, ...) to its
+	// sha256; ControllerSettings holds profile, spec_review, plan_review and at_round_limit.
+	// Both are stored as a JSON object; nil keeps what a row already has (NULL on a new row).
+	PromptHashes, ControllerSettings map[string]string
+	// Switches are the changes of model or reviewer during the run. A switch already stored
+	// for the setup (same at and field) is left as it is.
+	Switches []SetupSwitch
+}
+
+// SetupSwitch is one change during a run: Field is model or reviewer; a fallback from Codex
+// to Opus is {Field: "reviewer", From: "codex", To: "opus"}.
+type SetupSwitch struct {
+	At              time.Time
+	Field, From, To string
 }
 
 // UsageRecord is the token use of one model in one run or session: exactly
@@ -85,6 +100,9 @@ type FindingRecord struct {
 	Issue                                                            int
 	RunID, SessionID                                                 int64
 	Component, FindingKey, Severity, Decision, RecordPath, RecordSum string
+	// ReviewerSource is codex, fallback or both; SeverityCodex and SeverityFallback
+	// are the severity each reviewer gave. Empty is NULL.
+	ReviewerSource, SeverityCodex, SeverityFallback string
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -398,26 +416,65 @@ func recordSetupTx(ctx context.Context, tx *sql.Tx, s SetupRecord) (int64, bool,
 	if err := oneOwner(s.RunID, s.SessionID); err != nil {
 		return 0, false, err
 	}
+	for _, w := range s.Switches {
+		if w.At.IsZero() || w.From == "" || w.To == "" || (w.Field != "model" && w.Field != "reviewer") {
+			return 0, false, fmt.Errorf("telemetry: setup switch needs a time, field model or reviewer, from and to; got %+v", w)
+		}
+	}
+	hashes, err := jsonObject(s.PromptHashes)
+	if err != nil {
+		return 0, false, err
+	}
+	settings, err := jsonObject(s.ControllerSettings)
+	if err != nil {
+		return 0, false, err
+	}
 	fields := []any{nullPtr(s.Model), nullPtr(s.Effort), nullPtr(s.Harness), nullPtr(s.HarnessVersion),
 		nullPtr(s.SuperpowersVersion), nullPtr(s.LighthouseVersion), nullPtr(s.PackVersion),
-		nullPtr(s.SkillsHash), nullPtr(s.Lane)}
+		nullPtr(s.SkillsHash), nullPtr(s.Lane), hashes, settings}
 	args := append([]any{s.Source, s.SourceID, stamp(s.RecordedAt), nullID(s.RunID), nullID(s.SessionID)}, fields...)
-	id, isNew, err := insertOrFind(ctx, tx, "setups", `INSERT INTO setups (source, source_id, recorded_at, run_id, session_id,
-		model, effort, harness, harness_version, superpowers_version, lighthouse_version, pack_version, skills_hash, lane)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-		args, bySource(s.Origin), byOwner(s.RunID, s.SessionID, ""))
-	if err != nil || isNew {
-		return id, isNew, err
-	}
 	owner := byOwner(s.RunID, s.SessionID, "")
-	upd := append(append([]any{}, fields...), stamp(s.RecordedAt), id)
-	upd = append(upd, owner.args...)
-	if _, err := tx.ExecContext(ctx, `UPDATE setups SET model = ?, effort = ?, harness = ?, harness_version = ?,
-		superpowers_version = ?, lighthouse_version = ?, pack_version = ?, skills_hash = ?, lane = ?, recorded_at = ?
-		WHERE id = ? AND `+owner.where, upd...); err != nil {
-		return 0, false, fmt.Errorf("telemetry: update setup: %w", err)
+	id, isNew, err := insertOrFind(ctx, tx, "setups", `INSERT INTO setups (source, source_id, recorded_at, run_id, session_id,
+		model, effort, harness, harness_version, superpowers_version, lighthouse_version, pack_version, skills_hash, lane,
+		prompt_hashes, controller_settings)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		args, bySource(s.Origin), owner)
+	if err != nil {
+		return 0, false, err
 	}
-	return id, false, nil
+	if !isNew {
+		upd := append(append([]any{}, fields...), stamp(s.RecordedAt), id)
+		upd = append(upd, owner.args...)
+		if _, err := tx.ExecContext(ctx, `UPDATE setups SET model = ?, effort = ?, harness = ?, harness_version = ?,
+			superpowers_version = ?, lighthouse_version = ?, pack_version = ?, skills_hash = ?, lane = ?,
+			prompt_hashes = coalesce(?, prompt_hashes), controller_settings = coalesce(?, controller_settings),
+			recorded_at = ? WHERE id = ? AND `+owner.where, upd...); err != nil {
+			return 0, false, fmt.Errorf("telemetry: update setup: %w", err)
+		}
+	}
+	// Only the owner's own row gets switches: a (source, source_id) of another run or session
+	// changes nothing, per RecordSetup.
+	for _, w := range s.Switches {
+		wargs := append([]any{id, stamp(w.At), w.Field, w.From, w.To, id}, owner.args...)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO setup_switches (setup_id, at, field, from_value, to_value)
+			SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM setups WHERE id = ? AND `+owner.where+`)
+			ON CONFLICT DO NOTHING`, wargs...); err != nil {
+			return 0, false, fmt.Errorf("telemetry: insert setup switch: %w", err)
+		}
+	}
+	return id, isNew, nil
+}
+
+// jsonObject is m as a JSON object with sorted keys, or NULL for a nil map.
+func jsonObject(m map[string]string) (any, error) {
+	if m == nil {
+		return nil, nil
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: encode %v: %w", m, err)
+	}
+	return string(b), nil
 }
 
 // RecordUsage records the tokens and cost of one model in one run or
@@ -471,7 +528,7 @@ func recordUsageTx(ctx context.Context, tx *sql.Tx, u UsageRecord) (int64, bool,
 // session given with it must point at that trajectory, else
 // ErrTrajectoryMismatch; nothing is written then, not even the trajectory. A
 // second offering of the same origin updates severity, decision, record path,
-// record sum and recorded_at, and reports not new.
+// record sum, recorded_at and the reviewer columns, and reports not new.
 func RecordFinding(ctx context.Context, db *sql.DB, f FindingRecord) (int64, bool, error) {
 	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordFindingTx(ctx, tx, f) })
 }
@@ -499,17 +556,20 @@ func recordFindingTx(ctx context.Context, tx *sql.Tx, f FindingRecord) (int64, b
 		return 0, false, err
 	}
 	id, isNew, err := insertOrFind(ctx, tx, "findings", `INSERT INTO findings (source, source_id, recorded_at,
-		trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum,
+		reviewer_source, severity_codex, severity_fallback)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
 		[]any{f.Source, f.SourceID, stamp(f.RecordedAt), tid, nullID(f.RunID), nullID(f.SessionID),
-			f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum},
+			f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum,
+			nullString(f.ReviewerSource), nullString(f.SeverityCodex), nullString(f.SeverityFallback)},
 		bySource(f.Origin))
 	if err != nil || isNew {
 		return id, isNew, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE findings SET severity = ?, decision = ?, record_path = ?,
-		record_sum = ?, recorded_at = ? WHERE id = ?`,
-		f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt), id); err != nil {
+		record_sum = ?, recorded_at = ?, reviewer_source = ?, severity_codex = ?, severity_fallback = ? WHERE id = ?`,
+		f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt),
+		nullString(f.ReviewerSource), nullString(f.SeverityCodex), nullString(f.SeverityFallback), id); err != nil {
 		return 0, false, fmt.Errorf("telemetry: update finding: %w", err)
 	}
 	return id, false, nil

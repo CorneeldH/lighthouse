@@ -557,3 +557,32 @@ func TestRecordWriteTrajectoryFromIssueFlag(t *testing.T) {
 		t.Errorf("trajectory = %#v, want %#v", record["trajectory"], want)
 	}
 }
+
+func TestRecordWriteAssignmentFlags(t *testing.T) {
+	record := func(t *testing.T, extra ...string) map[string]any {
+		t.Helper()
+		s := newScenario(t, map[string]any{})
+		s.runStep(step{"op": "run", "args": []any{"start", "${PLAN}"}, "bind": "a"})
+		s.roundStep(step{"attempt": "a", "n": float64(1), "severities": []any{}})
+		args := append([]any{"write", "${a}", "--outcome", "converged", "--review-mode", "codex", "--spec", "${SPEC}"}, toAny(extra)...)
+		s.runStep(step{"op": "run", "args": args})
+		var rec map[string]any
+		readJSON(t, filepath.Join(strings.TrimSpace(s.vars["stdout"]), "record.json"), &rec)
+		return rec
+	}
+	rec := record(t, "--assignment", "variant:plan_review=codex", "--assignment-applied=true")
+	if rec["assignment"] != "variant:plan_review=codex" || rec["assignment_applied"] != true {
+		t.Errorf("assignment = %v, applied = %v, want the variant and true", rec["assignment"], rec["assignment_applied"])
+	}
+	rec = record(t)
+	if v, ok := rec["assignment_applied"]; rec["assignment"] != "standard" || !ok || v != nil {
+		t.Errorf("assignment = %v, applied = %v (present %v), want standard and null", rec["assignment"], v, ok)
+	}
+	// A variant without --assignment-applied is a usage error (exit 2): the skill must note it.
+	s := newScenario(t, map[string]any{})
+	s.runStep(step{"op": "run", "args": []any{"start", "${PLAN}"}, "bind": "a"})
+	s.roundStep(step{"attempt": "a", "n": float64(1), "severities": []any{}})
+	s.runStep(step{"op": "run", "args": []any{"write", "${a}", "--outcome", "converged",
+		"--review-mode", "codex", "--spec", "${SPEC}", "--assignment", "variant:plan_review=codex"},
+		"expect": map[string]any{"code": float64(2)}})
+}

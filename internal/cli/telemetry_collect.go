@@ -9,13 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/gitpath"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
@@ -28,14 +31,16 @@ import (
 // replace it.
 type collectEnv struct {
 	Getenv func(string) string
-	Now    func() time.Time
+	// HostToml is the host config whose served repos trace review records; "" is none.
+	HostToml string
+	Now      func() time.Time
 	// AfterMeasure, when set, runs after the size of a transcript is measured and before it is
 	// read: the moment a growing file is cut off.
 	AfterMeasure func()
 }
 
 func defaultCollectEnv() collectEnv {
-	return collectEnv{Getenv: os.Getenv, Now: time.Now}
+	return collectEnv{Getenv: os.Getenv, HostToml: hostconfig.Path(), Now: time.Now}
 }
 
 // collectOpts are the switches of one collection.
@@ -200,6 +205,7 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 		Repo: repo.Slug, DefaultBranch: repo.DefaultBranch, PlansDir: plansDir, RepoDir: repoDir,
 		StateDir: stateDir, Now: env.Now, SinceLast: opts.SinceLast, DryRun: opts.DryRun,
 	}
+	procOpt.Reviews, procOpt.Controller = collectDeployment(env.Getenv, env.HostToml, repo)
 	for _, f := range found {
 		out, err := collectOne(ctx, env, st, f, procOpt)
 		switch {
@@ -308,4 +314,46 @@ func collectOne(ctx context.Context, env collectEnv, st *store.Store, s transcri
 	return collect.Process(ctx, st.DB, collect.Source{
 		SessionID: s.ID, TranscriptPath: s.Path, Files: files, MTime: mtime, Recorded: recorded,
 	}, opt)
+}
+
+// collectDeployment is what collect adds to the setup of a run: the review records of the data
+// directory (traced over the served repos of hostToml, as review-index does) and the
+// [controller] of the repo. An unresolvable data directory gives no records.
+func collectDeployment(getenv func(string) string, hostToml string, repo repoconfig.Repo) ([]collect.Review, map[string]string) {
+	var reviews []collect.Review
+	if root := reviewDataDir(getenv); root != "" {
+		reviews = collect.LoadReviews(root, servedRepos(hostToml))
+	}
+	c := repo.Controller
+	if c == nil {
+		return reviews, nil
+	}
+	return reviews, map[string]string{
+		"profile": c.Profile, "spec_review": strconv.FormatBool(c.SpecReview),
+		"plan_review": strconv.FormatBool(c.PlanReview), "at_round_limit": c.AtRoundLimit,
+	}
+}
+
+// reviewDataDir is datadir.Dir, but its home fallback is getenv("HOME") instead of the home of
+// the process, so an injected environment alone decides where records are read. It is "" when
+// the environment names no data directory and no absolute HOME, or the directory is unusable.
+func reviewDataDir(getenv func(string) string) string {
+	env := getenv
+	if getenv("LIGHTHOUSE_DATA") == "" && !filepath.IsAbs(getenv("XDG_DATA_HOME")) {
+		home := getenv("HOME")
+		if !filepath.IsAbs(home) {
+			return ""
+		}
+		env = func(k string) string {
+			if k == "XDG_DATA_HOME" {
+				return filepath.Join(home, ".local", "share")
+			}
+			return getenv(k)
+		}
+	}
+	dir, err := datadir.Dir(env)
+	if err != nil {
+		return ""
+	}
+	return dir
 }

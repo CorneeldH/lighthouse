@@ -21,6 +21,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // SchemaVersion is the schema_version of the record that Write stores.
@@ -665,6 +666,36 @@ type RecordInput struct {
 	Issue         *Issue
 	ShadowModel   string
 	Trajectory    *Trajectory // nil when repo or issue is unknown
+	// Assignment is "standard" (or empty) or "variant:<component>=<choice>", as the prompt of the
+	// run carried it; AssignmentApplied is whether the review followed it, required for a variant.
+	Assignment        string
+	AssignmentApplied *bool
+}
+
+// CheckAssignment is the error of an assignment the record cannot take: a form other than
+// standard or variant:<component>=<choice> with a component and choice that can be assigned, or a
+// variant without the note whether it was applied.
+func CheckAssignment(assignment string, applied *bool) error {
+	if assignment == "" || assignment == "standard" {
+		return nil
+	}
+	if _, _, ok := repoconfig.ParseAssignment(assignment); !ok {
+		return fmt.Errorf("assignment %q: want standard or variant:<component>=<choice> (component plan_review or spec_review, choice codex or opus)", assignment)
+	}
+	if applied == nil {
+		return fmt.Errorf("assignment %q needs --assignment-applied=true or =false", assignment)
+	}
+	return nil
+}
+
+// checkAssignmentKind is the error of a variant of another component than the review of kind:
+// such a variant does not apply here, so the skill records standard for it.
+func checkAssignmentKind(assignment, kind string) error {
+	component, _, ok := repoconfig.ParseAssignment(assignment)
+	if ok && component != kind+"_review" {
+		return fmt.Errorf("assignment %q belongs to another component than %s_review: record --assignment standard", assignment, kind)
+	}
+	return nil
 }
 
 func closes(kind, decision string) bool { return slices.Contains(closedByKind[kind], decision) }
@@ -872,6 +903,19 @@ func BuildRecord(attemptDir string, in RecordInput, deps Deps) (*orderedjson.Obj
 		} else {
 			rec.Set("level", nil)
 		}
+	}
+	if err := CheckAssignment(in.Assignment, in.AssignmentApplied); err != nil {
+		return nil, err
+	}
+	if err := checkAssignmentKind(in.Assignment, kind); err != nil {
+		return nil, err
+	}
+	if in.Assignment == "" || in.Assignment == "standard" {
+		rec.Set("assignment", "standard")
+		rec.Set("assignment_applied", nil)
+	} else {
+		rec.Set("assignment", in.Assignment)
+		rec.Set("assignment_applied", *in.AssignmentApplied)
 	}
 	rec.Set("rounds", json.Number(strconv.Itoa(len(order))))
 	kinds := make([]any, len(roundKinds))

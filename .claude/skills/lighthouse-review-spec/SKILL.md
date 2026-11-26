@@ -273,7 +273,25 @@ and Opus*. Follow that: two background reviewers in one message, then
 `lighthouse review-pair blind <ATTEMPT>` and decide on the A/B table
 (step 3), and for a failed pair the table there. You run `blind`, like `merge` and `write`, with
 `dangerouslyDisableSandbox: true`. Where that table says "run the retry from step 5 once", that
-is the retry in step 2 here. Only this differs here:
+is the retry in step 2 here.
+
+**Assignment (before the dispatch).** Read `assignment:` from the prompt of the session;
+absent means `standard`. A variant of another component (`variant:plan_review=…`)
+is `standard` for this review: record `--assignment standard`; `write` refuses it. Under
+`variant:spec_review=codex` round 1 runs only the Codex side and the Opus side is skipped; under `variant:spec_review=opus` it is the reverse (only the Opus side, no
+Codex). `standard` keeps the pair. The Codex budget check stays the hard limit: if Codex falls
+back to Opus, the assignment stays `variant:…` (intention to treat) and the record gets
+`--assignment-applied=true` with `--review-mode fallback`. An interactive review without an
+`assignment:` line in a trajectory that has a variant notes `--assignment standard`, and the
+record keeps showing "not applied". Without a pair there is no `blind`: take the ID table from
+the jq fragment in *Opus dispatch*, as in the table below. Under `=codex` the record gets
+`--review-mode codex` without `--shadow-model`. Under `=opus` an Opus-only round 1 is recorded as
+`--review-mode fallback --reviewer-model <reported model>` with `--assignment-applied=true`: no
+existing mode names an Opus-only round except `fallback`, and the `variant:…=opus` assignment in
+the record tells it from a Codex failure. No *Fallback without Codex* banner then: the Opus-only
+round is by assignment, not a failure. Change no model or harness by yourself.
+
+Only this differs here:
 
 - **Codex** (Bash, `run_in_background: true`, `dangerouslyDisableSandbox: true`), without
   `--context`:
@@ -437,6 +455,14 @@ No `--spec` or `--issue`: for a spec review that is exit 2.
 
 The verification rounds on Opus do not change `--review-mode`. Without a pair no
 `--shadow-model`; `write` refuses both wrong sides with exit 4.
+
+`--assignment <value> --assignment-applied=<true|false>` go to the record: `<value>` is the
+`assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
+round 1 followed it (a variant requires the flag, `standard` needs none). The record has no
+reason field: a non-applied assignment shows either as `assignment = standard` in a review run
+whose `review_runs.component` is the component of the trajectory's variant (join
+`review_runs.assignment` with `trajectories.assignment`; an interactive review without the prompt
+line) or as `assignment_applied = 0` (a variant that this skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|

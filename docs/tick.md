@@ -584,7 +584,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)), `architecture-scan` ook (zie [Job `architecture-scan`](#job-architecture-scan)). Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)), `architecture-scan` ook (zie [Job `architecture-scan`](#job-architecture-scan)), `measure-recovery` ook (zie [Job `measure-recovery`](#job-measure-recovery)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -875,6 +875,36 @@ exitcode 1. Een fout van `Cleanup`, `Check` of `Finish` na de sessie sluit de ru
 exitcode 0. Faalt `Cleanup` of `Check`, dan is er geen issue of comment; een fout van `Finish` zelf kan een
 al gepubliceerd issue of een al geplaatste comment laten staan. Elke `Finish`-route verwijdert het resultaatbestand, ook vroege uitgangen, zodat het
 nooit op een branch komt. Telemetrie van de run volgt in #375.
+
+## Job `measure-recovery`
+
+De job draait per bediende repo de meting van `lighthouse measure-recovery` (zie
+[install.md](install.md#herstel-na-merge)): herstel na merge in `recoveries` en `recovery_items`, en
+route, gebied en omvang per traject. Het `[[schedule]]`-blok noemt `job = "measure-recovery"`; de enige
+`params`-sleutel is `days` (een geheel getal van 1 tot en met 3650, standaard 30): de PR's die in de
+laatste `days` dagen mergeden, naast elke open meting daarbuiten. `days = 0`, een andere waarde of een
+onbekende sleutel is een configfout, zoals bij `map-refresh`.
+
+```toml
+[[schedule]]
+name = "recovery"
+job  = "measure-recovery"
+cron = "0 3 * * *"
+
+[schedule.params]
+days = 45
+```
+
+**Zonder agent.** De job heeft geen poort die overslaat (elke beurt krijgt een run; de meting slaat
+zelf over wat al afgesloten is) en geen agent. De controller claimt de run en draait de meting in zijn
+eigen proces, synchroon binnen de tick (de tick gaat pas verder als de meting klaar is), met zijn
+eigen `lighthouse.db`: geen werkplek, geen instructiebestand, geen branch, geen
+PR. De meting haalt eerst `origin/<standaardbranch>` op in de checkout van de repo (de map van zijn
+`lighthouse.toml`) en leest de forge van de tick. Lukt ze, dan sluit de run als `done`; faalt ze (git,
+forge, database, of een GitLab-repo, waar `MergedPRs` nog niet bestaat), dan als `failed` met
+`run: <oorzaak>` als reden, en de tick meldt de fout. `failed` sluit de beurt af: de volgende poging
+is de volgende beurt van de cron. De regels per PR en de `traits`-regels van de opdracht gaan in een
+tick nergens heen.
 
 ## Exitcodes
 

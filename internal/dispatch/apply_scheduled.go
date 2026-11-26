@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -16,7 +17,8 @@ import (
 )
 
 // startScheduled starts a scheduled run: resolve its job, claim the run row (the only write
-// that sets the slot in motion), prepare the workplace on this host (node "") and record it,
+// that sets the slot in motion), and for a scheduled.Direct job run it in process and close it
+// (runDirect). For any other job it goes on to prepare the workplace on this host (node "") and record it,
 // record the start state (start sha, and the git state in the verdict record) for the check
 // after the run, stage the job, write the job's instructions, and spawn the agent with the job's
 // tools and no MCP config. It posts nothing: a scheduled run has no issue.
@@ -43,17 +45,13 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 	}
 	now := env.Now()
 	session := env.NewSession()
-	run, err := runs.Take(ctx, env.DB, runs.Claim{
-		Repo: a.Repo, Schedule: a.Schedule, SessionID: session, Mode: a.Mode, Trigger: runs.TriggerScheduled,
-		TriggerKey: a.TriggerKey, Command: a.Command, Prompt: a.Prompt, Profile: a.Profile,
-		Branch: a.Branch, Verdict: a.Verdict, Now: now,
-	})
-	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
-		ap.logf("%s: not claimed: %v", subject(a), err)
-		return nil
-	}
-	if err != nil {
+	run, claimed, err := ap.claimScheduled(ctx, a, session, now)
+	if err != nil || !claimed {
 		return err
+	}
+	if d, ok := job.(scheduled.Direct); ok {
+		jenv.Now = now
+		return ap.runDirect(ctx, a, run, d, jenv)
 	}
 	retry := func(step string, cause error) error { return ap.retryScheduled(ctx, run, step, cause) }
 	// The branch follows the attempt Take counted; it differs from Decide's only when another
@@ -123,6 +121,43 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 	}
 	ap.logf("%s: started run %d (attempt %d) on %s", subject(a), run.ID, run.Attempt, branch)
 	return nil
+}
+
+// claimScheduled claims the run row of scheduled start a, the only write that sets the slot in
+// motion. A claim another process holds (an open run of the schedule, also one a dead tick left
+// behind) or a spent trigger is no error: claimed is false and nothing else may happen.
+func (ap applier) claimScheduled(ctx context.Context, a Action, session string, now time.Time) (run runs.Run, claimed bool, err error) {
+	run, err = runs.Take(ctx, ap.env.DB, runs.Claim{
+		Repo: a.Repo, Schedule: a.Schedule, SessionID: session, Mode: a.Mode, Trigger: runs.TriggerScheduled,
+		TriggerKey: a.TriggerKey, Command: a.Command, Prompt: a.Prompt, Profile: a.Profile,
+		Branch: a.Branch, Verdict: a.Verdict, Now: now,
+	})
+	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
+		ap.logf("%s: not claimed: %v", subject(a), err)
+		return runs.Run{}, false, nil
+	}
+	if err != nil {
+		return runs.Run{}, false, err
+	}
+	return run, true, nil
+}
+
+// runDirect runs a claimed scheduled run of a job that needs no agent in process, with the
+// controller's database: no workplace, no instructions file, no spawn. A success closes the run
+// as done; an error closes it as failed with reason "run: <cause>", which settles the slot, and
+// is returned. The release ignores a cancelled ctx: the cancel may be what made Run fail.
+func (ap applier) runDirect(ctx context.Context, a Action, run runs.Run, job scheduled.Direct, jenv scheduled.Env) error {
+	o, reason := runs.Done, ""
+	err := job.Run(ctx, ap.env.DB, jenv)
+	if err != nil {
+		err = fmt.Errorf("run: %w", err)
+		o, reason = runs.Failed, oneLine(withoutPath(err))
+	}
+	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, run.ID, o, reason, ap.env.Now()); rerr != nil {
+		return errors.Join(err, fmt.Errorf("release run %d: %w", run.ID, rerr))
+	}
+	ap.logf("%s: ran run %d in process: %s", subject(a), run.ID, o)
+	return err
 }
 
 // retryScheduled closes a claimed scheduled run whose start failed with reason "<step>: <cause>"

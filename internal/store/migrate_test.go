@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 14 {
-		t.Errorf("user_version = %d, want 14", v2)
+	if v2 != 18 {
+		t.Errorf("user_version = %d, want 18", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "review_runs", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "review_runs", "runs", "schedule_slots", "sessions", "setup_switches", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -891,7 +891,12 @@ func TestTelemetrySchemaHasNoContentColumns(t *testing.T) {
 	db := openTelemetryDB(t)
 	want := map[string][]string{
 		"findings": {"id", "source", "source_id", "recorded_at", "trajectory_id", "run_id", "session_id", "component",
-			"finding_key", "severity", "decision", "record_path", "record_sum"},
+			"finding_key", "severity", "decision", "record_path", "record_sum",
+			"reviewer_source", "severity_codex", "severity_fallback"},
+		"setups": {"id", "source", "source_id", "recorded_at", "run_id", "session_id", "model", "effort",
+			"harness", "harness_version", "superpowers_version", "lighthouse_version", "pack_version", "skills_hash",
+			"lane", "prompt_hashes", "controller_settings"},
+		"setup_switches": {"id", "setup_id", "at", "field", "from_value", "to_value"},
 		"sessions": {"id", "source", "source_id", "recorded_at", "repo", "harness", "session_key", "transcript_path",
 			"branch", "trajectory_id", "link_basis", "unlinked_reason", "assignment", "started_at", "ended_at"},
 	}
@@ -1161,5 +1166,38 @@ func TestMigration0014AddsReviewRunsAndTraits(t *testing.T) {
 	}
 	if _, err := s.DB.Exec(ins, "a", "2", nil, "no_trajectory", "task_review"); err == nil {
 		t.Error("component task_review: want CHECK failure")
+	}
+}
+
+var upTo14 = append(append([]string{}, upTo12...), "0013_deployment.sql", "0014_review_runs.sql")
+
+// 0015 marks a trajectory that already has a run as standard (it ran before assignments
+// existed); a trajectory without a run stays NULL: it is not assigned until its first claim.
+func TestMigrate0015AssignsOnlyTrajectoriesWithRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo14...)); err != nil {
+		t.Fatalf("migrate to 14: %v", err)
+	}
+	for _, q := range []string{
+		`INSERT INTO trajectories (id, repo, issue, created_at) VALUES (1, 'o/r', 7, 't0'), (2, 'o/r', 8, 't0')`,
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at, trajectory_id)
+			VALUES (41, 'o/r', 7, 's1', 'start', 'handoff', 'start:7', 1, 'c', '2026-01-02T00:00:00Z', 1)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("insert at v14: %v", err)
+		}
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(append([]string{}, upTo14...), "0015_assignment.sql")...)); err != nil {
+		t.Fatalf("migrate to 15: %v", err)
+	}
+	for id, want := range map[int]sql.NullString{1: {String: "standard", Valid: true}, 2: {}} {
+		var got sql.NullString
+		if err := db.QueryRow(`SELECT assignment FROM trajectories WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatalf("read trajectory %d: %v", id, err)
+		}
+		if got != want {
+			t.Errorf("trajectory %d assignment = %v, want %v", id, got, want)
+		}
 	}
 }

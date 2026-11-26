@@ -44,6 +44,8 @@ type Repo struct {
 	ReportErr error
 	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
 	Schedules []Schedule
+	// Experiments is [[experiment]], validated by Load; empty when the repo has none.
+	Experiments []Experiment
 	// Paths is [paths]: repo-relative paths, "" when a key is not set.
 	Paths Paths
 	// SpecsDir and PlansDir are paths.specs and paths.plans, relative to the repo, with the
@@ -172,8 +174,9 @@ type rawFile struct {
 		Specs    string `toml:"specs"`
 		Plans    string `toml:"plans"`
 	} `toml:"paths"`
-	Report   toml.Primitive `toml:"report"`
-	Schedule []rawSchedule  `toml:"schedule"`
+	Report     toml.Primitive  `toml:"report"`
+	Schedule   []rawSchedule   `toml:"schedule"`
+	Experiment []rawExperiment `toml:"experiment"`
 }
 
 // DefaultLabels are the blocking label names of a repo without a repo config: the defaults of
@@ -310,6 +313,11 @@ func LoadFile(path string) (Repo, error) {
 		return Repo{}, fmt.Errorf("%s: %w", path, err)
 	}
 	r.Schedules = schedules
+	experiments, err := experimentsFrom(raw.Experiment, md)
+	if err != nil {
+		return Repo{}, fmt.Errorf("%s: %w", path, err)
+	}
+	r.Experiments = experiments
 	return r, nil
 }
 

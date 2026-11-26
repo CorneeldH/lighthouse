@@ -36,7 +36,7 @@ type rawSchedule struct {
 }
 
 // scheduleJobs are the jobs a schedule can name.
-var scheduleJobs = []string{"architecture-scan", "map-planned", "map-refresh", "reflect"}
+var scheduleJobs = []string{"architecture-scan", "map-planned", "map-refresh", "measure-recovery", "reflect"}
 
 // scheduleName is a branch-name-safe key.
 var scheduleName = regexp.MustCompile(`^[a-z0-9-]+$`)

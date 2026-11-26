@@ -715,3 +715,82 @@ func TestRecordSessionRefusesRetargetWithEvents(t *testing.T) {
 		t.Errorf("retarget err = %v, want ErrSessionHasEvents", err)
 	}
 }
+
+func TestRecordSetupDeployment(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	o := Origin{Source: "transcript", SourceID: "transcript:a", RecordedAt: t0}
+	id1, _, err := RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID,
+		PromptHashes:       map[string]string{"review-plan": "aaa"},
+		ControllerSettings: map[string]string{"profile": "software", "plan_review": "true"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() (hashes, settings sql.NullString) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT prompt_hashes, controller_settings FROM setups WHERE id = ?`, id1).Scan(&hashes, &settings); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if h, s := read(); h.String != `{"review-plan":"aaa"}` || s.String != `{"plan_review":"true","profile":"software"}` {
+		t.Errorf("first = %v, %v", h, s)
+	}
+	o.RecordedAt = t0.Add(time.Hour)
+	id2, isNew, err := RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID,
+		PromptHashes:       map[string]string{"review-plan": "bbb", "review-spec": "ccc"},
+		ControllerSettings: map[string]string{"profile": "research"},
+	})
+	if err != nil || isNew || id2 != id1 {
+		t.Fatalf("second: id %d, new %v, err %v; want id %d, not new", id2, isNew, err, id1)
+	}
+	if h, s := read(); h.String != `{"review-plan":"bbb","review-spec":"ccc"}` || s.String != `{"profile":"research"}` {
+		t.Errorf("second = %v, %v", h, s)
+	}
+	// A pass that knows no hashes or settings (no records, no [controller]) keeps what is there.
+	if _, _, err := RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID}); err != nil {
+		t.Fatal(err)
+	}
+	if h, s := read(); h.String != `{"review-plan":"bbb","review-spec":"ccc"}` || s.String != `{"profile":"research"}` {
+		t.Errorf("after an empty offering = %v, %v; want kept", h, s)
+	}
+	// UNIQUE (run_id) stays: a second row for the same run is refused.
+	if _, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, run_id) VALUES ('x', 'y', 'z', ?)`, runID); err == nil {
+		t.Error("second setups row for one run accepted")
+	}
+}
+
+func TestRecordSetupSwitches(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	rec := SetupRecord{Origin: Origin{Source: "transcript", SourceID: "transcript:a", RecordedAt: t0}, RunID: runID,
+		Switches: []SetupSwitch{
+			{At: t0.Add(time.Minute), Field: "reviewer", From: "codex", To: "opus"},
+			{At: t0.Add(2 * time.Minute), Field: "model", From: "claude-opus-5-5", To: "claude-sonnet-5-5"},
+		}}
+	id, _, err := RecordSetup(ctx, db, rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := RecordSetup(ctx, db, rec); err != nil {
+		t.Fatalf("second offering: %v", err)
+	}
+	if n := count(t, db, `SELECT count(*) FROM setup_switches WHERE setup_id = ?`, id); n != 2 {
+		t.Errorf("%d switch rows; want 2", n)
+	}
+	var at, from, to string
+	if err := db.QueryRow(`SELECT at, from_value, to_value FROM setup_switches WHERE field = 'reviewer'`).Scan(&at, &from, &to); err != nil {
+		t.Fatal(err)
+	}
+	if at != stamp(t0.Add(time.Minute)) || from != "codex" || to != "opus" {
+		t.Errorf("reviewer switch = %s %s→%s", at, from, to)
+	}
+	bad := rec
+	bad.Switches = []SetupSwitch{{At: t0, Field: "harness", From: "a", To: "b"}}
+	if _, _, err := RecordSetup(ctx, db, bad); err == nil {
+		t.Error("switch field harness accepted")
+	}
+}

@@ -132,6 +132,15 @@ date -u +%Y-%m-%dT%H:%M:%SZ
 round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does not exist; every
 round runs through Codex, as below.
 
+**Assignment.** Read `assignment:` from the prompt of the session; absent means `standard`.
+A variant of another component (`variant:spec_review=…`) is `standard` for
+this review: record `--assignment standard`; `write` refuses it.
+This variant runs round 1 only on Codex, so `variant:plan_review=codex` is applied as is
+(`--assignment-applied=true`); `variant:plan_review=opus` cannot be applied here (there is no Opus
+side): run Codex as usual and record `--assignment-applied=false`. The Codex budget check stays
+the hard limit; exit 6 stops, as below. An interactive review without an `assignment:` line in a
+trajectory that has a variant notes `--assignment standard`.
+
 Here you call the runner yourself. Before *every* round a snapshot of the plan:
 
 ```bash
@@ -306,6 +315,14 @@ lighthouse plan-review-record write <ATTEMPT> \
 
 Issue as spec: `--issue <N> --issue-body <ATTEMPT>/issue-<N>.md --issue-fetched-at <time>`
 instead of `--spec`. From inside Codex itself: `--review-mode codex_same_family` (step 5).
+
+`--assignment <value> --assignment-applied=<true|false>` go to the record: `<value>` is the
+`assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
+round 1 followed it (a variant requires the flag, `standard` needs none). The record has no
+reason field: a non-applied assignment shows either as `assignment = standard` in a review run
+whose `review_runs.component` is the component of the trajectory's variant (join
+`review_runs.assignment` with `trajectories.assignment`; an interactive review without the prompt
+line) or as `assignment_applied = 0` (a variant that this skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|

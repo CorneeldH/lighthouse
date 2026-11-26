@@ -442,7 +442,8 @@ empty for them.
 werk na de merge hersteld moest worden, en schrijft dat in `recoveries` (een rij per PR, uniek op
 traject en PR: `merged_at`, `window_end`, `status`, `fixpr_rounds`) en `recovery_items` (een rij per
 herstel: `kind` `fix`, `revert` of `bug_issue`, met `ref` en `at`). De opdracht draait niet vanzelf;
-start haar met de hand of vanuit een eigen cron. `--days` is standaard 14, `--db` standaard de
+start haar met de hand, vanuit een eigen cron, of als geplande job `measure-recovery` (zie
+[tick.md](tick.md#job-measure-recovery)). `--days` is standaard 14, `--db` standaard de
 `lighthouse.db` van de statusmap. Repo en default branch komen uit de `lighthouse.toml` in
 `--repo-dir`; de opdracht haalt eerst `origin/<default branch>` op (mislukt dat, dan is het exit 1 en
 wordt niets geschreven) en meet op die ref.
@@ -517,6 +518,18 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
   model zonder prijs, zoals de aliassen `sonnet`, `opus` en `haiku`, geeft `NULL` kosten, nooit
   een gok. Zijvragen komen niet altijd in het transcript terecht en worden dus
   ondergeteld. Er is geen quotum: `quota` blijft leeg.
+- **Inzet van een run uit de reviewrecords** (migratie `0018`). Een run krijgt in
+  `setups.controller_settings` de `[controller]` van de repo bij het verzamelen (JSON met
+  `profile`, `spec_review`, `plan_review`, `at_round_limit`) en in `setups.prompt_hashes` de
+  hashes van de plan- en specreviews die tijdens de run liepen (JSON, sleutel `review-plan` of
+  `review-spec` voor `prompt_sha256`, met `:verifier_prompt`, `:schema` of
+  `:verification_schema` voor de andere hashes). Een record hoort bij de run van zijn traject
+  waarvan `[started_at, ended_at]` zijn `written_at` bevat; het traject komt uit `trajectory` of
+  wordt herleid zoals `review-index` dat doet. Een record met `review_mode: fallback` geeft een
+  rij in `setup_switches` (`reviewer`, `codex` naar `opus`, op `written_at`), uniek op
+  `(setup_id, at, field)`, behalve onder `assignment: variant:<kind>_review=opus`: daar is de
+  Opus-only ronde de indeling en geen uitval van Codex, dus geen wissel. Een record zonder run schrijft niets; een pas zonder records of zonder
+  `[controller]` laat de bestaande waarden staan.
 - **Vragen en antwoorden.** Van een afgesloten sessie (`ended_at` gezet) die aan een traject hangt,
   schrijft de collector per `AskUserQuestion` een `question`-gebeurtenis en, zodra het antwoord er
   is, een `answer`-gebeurtenis in `trajectory_events`, met alleen soort, `ref`
@@ -562,6 +575,79 @@ reviewtijd kan bevatten eindigt op `incl. ci_review`.
 
 Exit: 0 uitvoer geprint | 1 een config-, forge- of databasefout, of `no trajectory for issue <N>`
 | 2 verkeerd gebruik (geen of geen geldig issuenummer, onbekende vlag).
+
+### Indeling in een experiment (`[[experiment]]`)
+
+Een experiment deelt een aandeel van de trajecten in een variant in: voor één onderdeel krijgen die
+trajecten een andere keuze dan de standaard (#572, spec
+[explore/exploit](developer/planning/specs/2026-11-24-issue-388-explore-exploit-design.md)). Een mens
+zet het aan en uit met een PR op de `lighthouse.toml` van elke meedoende repo:
+
+```toml
+[[experiment]]
+id        = "plan-review-codex-2026-12"   # verplicht; uniek binnen de repo
+component = "plan_review"                 # verplicht; plan_review of spec_review
+choice    = "codex"                       # verplicht; codex of opus
+share     = 0.10                          # verplicht; boven 0 en hooguit 0.20
+sample    = 20                            # verplicht; geheel getal vanaf 1: variant-trajecten
+start     = "2026-12-01"                  # verplicht; YYYY-MM-DD, middernacht lokale tijd
+```
+
+Een fout veld, een onbekende sleutel of een dubbel `id` maakt de config van de repo ongeldig, zoals
+elke andere configfout. Er is geen `end`: een experiment stopt door zijn blok te verwijderen of door
+de steekproef.
+
+- **Wanneer een traject een variant krijgt.** De dispatcher deelt een traject in bij de eerste
+  claim van zijn issue. Het wordt een variant (`variant:<component>=<choice>`) als de start is
+  bereikt, het aantal variant-trajecten van het experiment onder de `sample` ligt en de hash van
+  `repo` en `issue` onder `share` valt (een vaste waarde: dezelfde keuze bij elke herhaling).
+  Anders blijft het `standard`. Alleen trajecten met een reviewrun van het onderdeel tellen mee voor
+  de steekproef, ook bij nul bevindingen; een traject dat zijn variant nog niet gebruikte telt niet.
+  Telling en analyse nemen alleen runs vanaf `start`.
+- **Het traject houdt zijn indeling.** Elke latere run van het traject krijgt dezelfde indeling,
+  ook als het experiment ondertussen stopt of verandert. Trajecten van vóór deze functie die al een
+  run hebben, worden bij de migratie `standard` en blijven dat; een traject zonder run (de collector
+  maakt trajecten ook vóór de eerste claim) blijft leeg tot zijn eerste claim. Een run krijgt zijn
+  indeling als regel `assignment: <indeling>` in de prompt; bij `standard` ontbreekt de regel.
+  Interactieve sessies delen niet in.
+- **Reikwijdte over repo's.** De dispatcher bedient meerdere repo's. Hetzelfde `id` in meer repo's is
+  één experiment en moet in elke repo in alle velden gelijk zijn, anders deelt hij niets in. Aandeel
+  en steekproef tellen over die repo's samen. Alleen een repo die het experiment declareert doet mee:
+  de trajecten van een bediende repo zonder het blok blijven `standard`. Hooguit één experiment tegelijk geldt over alle
+  bediende repo's: declareren ze experimenten met verschillende `id`'s (op verschillende of op
+  hetzelfde onderdeel), dan deelt hij niets in en logt hij
+  `<repo>#<issue>: <reden>`. Alles blijft dan `standard`.
+- **Toepassen en vastleggen.** De skills `lighthouse-review-plan` en `lighthouse-review-spec`
+  lezen de indeling en passen de keuze toe: onder `variant:plan_review=codex` draait ronde 1 zonder de
+  Opus-kant. Het reviewrecord legt de indeling vast en of die is toegepast (`assignment_applied`).
+  Een variant van een ander onderdeel geldt voor die review als `standard`; `write` weigert hem.
+  Een interactieve review zonder `assignment:`-regel schrijft `standard` met een lege
+  `assignment_applied`; dat de indeling niet is toegepast blijkt pas uit de join van
+  `review_runs.assignment` met `trajectories.assignment`, voor een reviewrun waarvan
+  `review_runs.component` het onderdeel van de variant van het traject is.
+  Valt een `codex`-variant door de budgetcheck terug op Opus, dan blijft het traject in zijn groep
+  (intention to treat); de fallback staat in `review_mode` en in `setup_switches`.
+
+**Nieuwe kolommen in `lighthouse.db`** (migraties `0015` tot en met `0018`):
+
+| Tabel | Kolom | Inhoud |
+| --- | --- | --- |
+| `trajectories` | `assignment` | `standard`, `shadow:<x>` of `variant:<onderdeel>=<keuze>`; gezet bij de eerste claim, daarna vast |
+| `trajectories` | `experiment_id` | het `id` van het experiment bij een variant, anders leeg |
+| `review_runs` | `review_mode` | hoe de review draaide, bijvoorbeeld `fallback` |
+| `review_runs` | `reviewers` | JSON-array van de reviewers, bijvoorbeeld `["codex","opus"]` |
+| `review_runs` | `assignment` | de indeling uit het record, standaard `standard` |
+| `review_runs` | `assignment_applied` | 1 toegepast, 0 niet toegepast, leeg zonder veld in het record |
+| `findings` | `reviewer_source` | `codex`, `fallback` of `both` |
+| `findings` | `severity_codex`, `severity_fallback` | de ernst per reviewer |
+| `setups` | `prompt_hashes` | JSON met de hashes van de reviewprompts van de run |
+| `setups` | `controller_settings` | JSON met de `[controller]` van de repo bij het verzamelen |
+| `setup_switches` | (nieuwe tabel) | een wissel binnen een run: `setup_id`, `at`, `field` (`model` of `reviewer`), `from_value`, `to_value` |
+
+Hoe de collector `setups.prompt_hashes`, `setups.controller_settings` en `setup_switches` vult staat
+bij *Inzet, kosten en tokens*, de herleiding van het traject van een reviewrecord in
+[`review-index.md`](review-index.md). De indeling van trajecten die nog geen experiment kennen blijft
+`standard`; `runs.assignment` volgt het traject.
 
 ## Run the tick
 
@@ -661,7 +747,7 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh, reflect, map-planned or architecture-scan
+job  = "map-refresh"    # required; map-refresh, reflect, map-planned, architecture-scan or measure-recovery
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
@@ -682,7 +768,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 ```
 
 An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
-`reflect`, `map-planned` and `architecture-scan` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect) and [tick.md](tick.md#job-architecture-scan); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
+`reflect`, `map-planned`, `architecture-scan` and `measure-recovery` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect), [tick.md](tick.md#job-architecture-scan) and [tick.md](tick.md#job-measure-recovery); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.

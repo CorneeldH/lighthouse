@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
@@ -49,8 +50,9 @@ type IndexResult struct {
 // IndexRecords walks <dataRoot>/{plan,spec}-review/<chain>/ and indexes the
 // findings of the newest attempt of each chain. An attempt that is only
 // staged (no record.json) counts as not succeeded: the findings of older
-// attempts of that chain are removed and none are added.
-func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() time.Time) (IndexResult, error) {
+// attempts of that chain are removed and none are added. A record without trajectory is traced
+// through repos (see Trace); nil repos trace nothing.
+func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() time.Time, repos []ServedRepo) (IndexResult, error) {
 	var res IndexResult
 	for _, kind := range []string{"plan", "spec"} {
 		chains, err := os.ReadDir(filepath.Join(dataRoot, kind+"-review"))
@@ -65,7 +67,7 @@ func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() tim
 			if !c.IsDir() {
 				continue
 			}
-			if err := indexChain(ctx, db, dataRoot, kind, c.Name(), &res); err != nil {
+			if err := indexChain(ctx, db, dataRoot, kind, c.Name(), repos, &res); err != nil {
 				return res, err
 			}
 		}
@@ -98,6 +100,22 @@ func newestAttempt(chainDir string) (attempt string, finished bool, err error) {
 	return attempt, finished, nil
 }
 
+// reviewersOf derives who reviewed round 1 from the record's real composition: a fallback ran Opus
+// alone (a Codex failure, or variant:…=opus recorded as fallback); a paired round 1 ran Codex and
+// Opus; any other Codex round ran Codex alone (the agents skill, an Opus side that failed, or
+// variant:…=codex that skipped it). A record without review_mode has no reviewers.
+func reviewersOf(mode string, paired bool) []string {
+	switch {
+	case mode == "":
+		return nil
+	case mode == "fallback":
+		return []string{"opus"}
+	case paired:
+		return []string{"codex", "opus"}
+	}
+	return []string{"codex"}
+}
+
 // unlinkedRepo is the repo of a review run that belongs to no trajectory:
 // the row stores no repo, but RecordReviewRun wants a non-empty one.
 const unlinkedRepo = "-"
@@ -117,7 +135,7 @@ func deleteChain(ctx context.Context, db *sql.DB, chainPrefix, keep string, res 
 	return err
 }
 
-func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, res *IndexResult) error {
+func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, repos []ServedRepo, res *IndexResult) error {
 	chainDir := filepath.Join(dataRoot, kind+"-review", chain)
 	// Data and read errors of one chain are skips, so that one bad chain does not
 	// stop the others; only database errors are returned.
@@ -148,8 +166,13 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 		res.Skipped = append(res.Skipped, Skip{Path: recordPath, Reason: reason})
 	}
 	var doc struct {
-		SchemaVersion int `json:"schema_version"`
-		Trajectory    *struct {
+		SchemaVersion int    `json:"schema_version"`
+		ChainKey      string `json:"chain_key"`
+		ReviewedSHA   string `json:"reviewed_sha"`
+		IssueSpec     *struct {
+			Issue int `json:"issue"`
+		} `json:"issue_spec"`
+		Trajectory *struct {
 			Repo  string `json:"repo"`
 			Issue int    `json:"issue"`
 		} `json:"trajectory"`
@@ -157,9 +180,18 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			ID       string  `json:"finding_id"`
 			Severity string  `json:"severity"`
 			Decision *string `json:"decision"`
+			Source   string  `json:"source"`
+			SevBySrc struct {
+				Codex    string `json:"codex"`
+				Fallback string `json:"fallback"`
+			} `json:"severity_by_source"`
 		} `json:"findings"`
-		Outcome   string `json:"outcome"`
-		WrittenAt string `json:"written_at"`
+		Outcome           string `json:"outcome"`
+		WrittenAt         string `json:"written_at"`
+		ReviewMode        string `json:"review_mode"`
+		Paired            bool   `json:"paired"`
+		Assignment        string `json:"assignment"`
+		AssignmentApplied *bool  `json:"assignment_applied"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		skip("unreadable record: " + err.Error())
@@ -173,11 +205,26 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 		skip("bad written_at: " + err.Error())
 		return deleteChain(ctx, db, chainPrefix, keep, res)
 	}
+	if doc.Assignment != "" && doc.Assignment != "standard" {
+		if _, _, ok := repoconfig.ParseAssignment(doc.Assignment); !ok {
+			skip(fmt.Sprintf("bad assignment %q: want standard or variant:<component>=<choice>", doc.Assignment))
+			return deleteChain(ctx, db, chainPrefix, keep, res)
+		}
+	}
 	linked := doc.Trajectory != nil && doc.Trajectory.Repo != "" && doc.Trajectory.Issue >= 1
 	repo, issue := unlinkedRepo, 0
 	if linked {
 		repo, issue = doc.Trajectory.Repo, doc.Trajectory.Issue
-	} else {
+	} else if len(repos) > 0 {
+		var spec *int
+		if doc.IssueSpec != nil {
+			spec = &doc.IssueSpec.Issue
+		}
+		if tr, ok := Trace(doc.ChainKey, spec, doc.ReviewedSHA, repos, hasCommit); ok {
+			linked, repo, issue = true, tr.Repo, tr.Issue
+		}
+	}
+	if !linked {
 		skip(fmt.Sprintf("no trajectory in the record (schema %d): not linked to a repo and issue", doc.SchemaVersion))
 	}
 	sum := Sum(data)
@@ -190,6 +237,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 	// Findings of an unlinked record are not written; the run row counts them anyway.
 	type pending struct {
 		sourceID, id, severity, decision string
+		reviewer, sevCodex, sevFallback  string
 		found                            bool
 	}
 	var todo []pending
@@ -209,7 +257,11 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			if f.Decision != nil {
 				decision = FindingDecision(*f.Decision)
 			}
-			todo = append(todo, pending{sourceID, f.ID, f.Severity, decision, found})
+			reviewer := ""
+			if f.Source == "codex" || f.Source == "fallback" || f.Source == "both" {
+				reviewer = f.Source
+			}
+			todo = append(todo, pending{sourceID, f.ID, f.Severity, decision, reviewer, f.SevBySrc.Codex, f.SevBySrc.Fallback, found})
 		}
 	}
 	var removed int64
@@ -224,6 +276,8 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 				Repo:   repo, Issue: issue, Component: kind + "_review",
 				RecordPath: recordPath, RecordSum: sum, RanAt: at,
 				Outcome: doc.Outcome, FindingCount: len(doc.Findings),
+				ReviewMode: doc.ReviewMode, Reviewers: reviewersOf(doc.ReviewMode, doc.Paired),
+				Assignment: doc.Assignment, AssignmentApplied: doc.AssignmentApplied,
 			}); err != nil {
 				return err
 			}
@@ -234,6 +288,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 				Repo:   repo, Issue: issue,
 				Component: kind + "_review", FindingKey: f.id, Severity: f.severity, Decision: f.decision,
 				RecordPath: recordPath, RecordSum: sum,
+				ReviewerSource: f.reviewer, SeverityCodex: f.sevCodex, SeverityFallback: f.sevFallback,
 			}); err != nil {
 				return err
 			}
