@@ -282,7 +282,12 @@ back to Opus, the assignment stays `variant:…` (intention to treat) and the re
 `--assignment-applied=true` with `--review-mode fallback`. An interactive review without an
 `assignment:` line in a trajectory that has a variant notes `--assignment standard`, and the
 record keeps showing "not applied". Without a pair there is no `blind`: take the ID table from
-the jq fragment in *Opus dispatch*, as in the table below. Change no model or harness by yourself.
+the jq fragment in *Opus dispatch*, as in the table below. Under `=codex` the record gets
+`--review-mode codex` without `--shadow-model`. Under `=opus` an Opus-only round 1 is recorded as
+`--review-mode fallback --reviewer-model <reported model>` with `--assignment-applied=true`: no
+existing mode names an Opus-only round except `fallback`, and the `variant:…=opus` assignment in
+the record tells it from a Codex failure. No *Fallback without Codex* banner then: the Opus-only
+round is by assignment, not a failure. Change no model or harness by yourself.
 
 Only this differs here:
 
@@ -453,7 +458,9 @@ The verification rounds on Opus do not change `--review-mode`. Without a pair no
 `assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
 round 1 followed it (a variant requires the flag, `standard` needs none). A non-applied assignment
 shows in the record as `assignment = standard` while the trajectory has a variant (join
-`review_runs.assignment` with `trajectories.assignment`); the record has no reason field.
+`review_runs.assignment` with `trajectories.assignment`); the record has no reason field. A non-applied assignment shows either as `assignment = standard`
+(an interactive review without the prompt line) or as `assignment_applied = 0` (a variant that this
+skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|

@@ -12,11 +12,15 @@ func TestReviewSkillsApplyAssignment(t *testing.T) {
 		"review-plan": "variant:plan_review=codex",
 		"review-spec": "variant:spec_review=codex",
 	}
-	forEachReviewVariant(t, func(t *testing.T, name, _, body string) {
+	forEachReviewVariant(t, func(t *testing.T, name, variant, body string) {
 		wantAll(t, flat(body),
 			variantLiteral[name],
 			"--assignment-applied",
 			"A non-applied assignment shows in the record as `assignment = standard` while the trajectory has a variant (join `review_runs.assignment` with `trajectories.assignment`); the record has no reason field",
+			"or as `assignment_applied = 0` (a variant that this skill cannot apply)",
 		)
+		if variant == "claude" {
+			wantAll(t, flat(body), "`--review-mode fallback --reviewer-model <reported model>` with `--assignment-applied=true`", "No *Fallback without Codex* banner")
+		}
 	})
 }

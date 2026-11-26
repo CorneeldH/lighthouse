@@ -319,7 +319,9 @@ instead of `--spec`. From inside Codex itself: `--review-mode codex_same_family`
 `assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
 round 1 followed it (a variant requires the flag, `standard` needs none). A non-applied assignment
 shows in the record as `assignment = standard` while the trajectory has a variant (join
-`review_runs.assignment` with `trajectories.assignment`); the record has no reason field.
+`review_runs.assignment` with `trajectories.assignment`); the record has no reason field. A non-applied assignment shows either as `assignment = standard`
+(an interactive review without the prompt line) or as `assignment_applied = 0` (a variant that this
+skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|
