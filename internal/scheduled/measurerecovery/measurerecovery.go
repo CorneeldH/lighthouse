@@ -69,16 +69,17 @@ func parseDays(params map[string]any) (int, error) {
 	days := defaultDays
 	if v, ok := params["days"]; ok {
 		var n int64
+		whole := true
 		switch x := v.(type) {
 		case int64:
 			n = x
 		case int:
 			n = int64(x)
 		default:
-			n = -1
+			whole = false
 			errs = append(errs, errors.New("params days: must be a whole number"))
 		}
-		if n != -1 && (n < 1 || n > maxDays) {
+		if whole && (n < 1 || n > maxDays) {
 			errs = append(errs, fmt.Errorf("params days: must be between 1 and %d", maxDays))
 		}
 		days = int(n)

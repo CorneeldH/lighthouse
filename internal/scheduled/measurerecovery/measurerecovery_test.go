@@ -39,13 +39,14 @@ func TestMeasureRecoveryParams(t *testing.T) {
 		params map[string]any
 		want   string // "" valid, else part of the error
 	}{
-		"none":     {nil, ""},
-		"days 45":  {map[string]any{"days": int64(45)}, ""},
-		"days 0":   {map[string]any{"days": int64(0)}, "params days: must be between 1 and 3650"},
-		"negative": {map[string]any{"days": int64(-3)}, "params days: must be between 1 and 3650"},
-		"too big":  {map[string]any{"days": int64(3651)}, "params days: must be between 1 and 3650"},
-		"string":   {map[string]any{"days": "30"}, "params days: must be a whole number"},
-		"unknown":  {map[string]any{"dayz": int64(3)}, `params: unknown key "dayz"`},
+		"none":      {nil, ""},
+		"days 45":   {map[string]any{"days": int64(45)}, ""},
+		"days 0":    {map[string]any{"days": int64(0)}, "params days: must be between 1 and 3650"},
+		"negative":  {map[string]any{"days": int64(-3)}, "params days: must be between 1 and 3650"},
+		"minus one": {map[string]any{"days": int64(-1)}, "params days: must be between 1 and 3650"},
+		"too big":   {map[string]any{"days": int64(3651)}, "params days: must be between 1 and 3650"},
+		"string":    {map[string]any{"days": "30"}, "params days: must be a whole number"},
+		"unknown":   {map[string]any{"dayz": int64(3)}, `params: unknown key "dayz"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := bind(t, tt.params)
