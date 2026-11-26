@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/packs"
 )
 
 // ecosystem is one Dependabot package ecosystem with the directories (Dependabot
@@ -47,6 +49,8 @@ func detectEcosystems(root string) ([]ecosystem, error) {
 		dir, base := path.Split(f)
 		dir = path.Clean("/" + dir)
 		switch {
+		case strings.HasPrefix(f, packs.WorkflowPrefix):
+			// installed and excluded from the block; they say nothing about the repo
 		case strings.HasPrefix(f, ".github/workflows/"), dir == "/" && (base == "action.yml" || base == "action.yaml"):
 			add("github-actions", "/")
 		case base == "go.mod":
@@ -104,7 +108,7 @@ func renderDependabot(eco []ecosystem) []byte {
 	eco = append([]ecosystem(nil), eco...)
 	sort.Slice(eco, func(i, j int) bool { return eco[i].Name < eco[j].Name })
 	var b strings.Builder
-	b.WriteString("# Gezaaid door `lighthouse init`; dit bestand is van de repo en wordt niet meer overschreven.\n")
+	b.WriteString("# Seeded by `lighthouse init`; this file belongs to the repo and is never overwritten again.\n")
 	b.WriteString("version: 2\nupdates:\n")
 	for _, e := range eco {
 		fmt.Fprintf(&b, "  - package-ecosystem: %q\n", e.Name)
@@ -127,6 +131,11 @@ func renderDependabot(eco []ecosystem) []byte {
 // project's and is never written, also with --force. Detection reads the disk before
 // apply, so workflows that this run installs are not counted yet.
 func dependabotPlan(root string, o Options, load func(string) (*planned, error)) error {
+	// dependabot.yaml is the same config under its other name: never seed next to it.
+	if _, err := os.Stat(filepath.Join(root, ".github", "dependabot.yaml")); err == nil {
+		_, _ = fmt.Fprintf(o.Err, "dependabot: %s exists; left as it is\n", ".github/dependabot.yaml")
+		return warnSelfHosted(root, o)
+	}
 	p, err := load(dependabotPath)
 	if err != nil {
 		return err

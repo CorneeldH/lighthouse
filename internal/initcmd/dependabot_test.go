@@ -249,3 +249,28 @@ func TestWarnsSelfHostedWhenDependabotExists(t *testing.T) {
 		t.Errorf("stderr = %q", r.err)
 	}
 }
+
+func TestDetectEcosystemsIgnoresLighthouseWorkflows(t *testing.T) {
+	root := newRepo(t)
+	writeAll(t, root, ".github/workflows/lighthouse-x.yml")
+	got, err := detectEcosystems(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("got %v, want no ecosystems", got)
+	}
+}
+
+func TestUpgradeLeavesExistingDependabotYaml(t *testing.T) {
+	root := githubRepo(t)
+	write(t, root, "go.mod", "module x\n")
+	write(t, root, ".github/dependabot.yaml", "# mine\n")
+	r := mustRun(t, root, yes)
+	if exists(root, dependabotPath) {
+		t.Error("dependabot.yml seeded next to dependabot.yaml")
+	}
+	if !strings.Contains(r.err, "dependabot: .github/dependabot.yaml exists; left as it is\n") {
+		t.Errorf("stderr = %q", r.err)
+	}
+}
