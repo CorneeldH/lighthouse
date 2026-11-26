@@ -9,13 +9,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/gitpath"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
@@ -200,6 +203,7 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 		Repo: repo.Slug, DefaultBranch: repo.DefaultBranch, PlansDir: plansDir, RepoDir: repoDir,
 		StateDir: stateDir, Now: env.Now, SinceLast: opts.SinceLast, DryRun: opts.DryRun,
 	}
+	procOpt.Reviews, procOpt.Controller = collectDeployment(env.Getenv, hostconfig.Path(), repo)
 	for _, f := range found {
 		out, err := collectOne(ctx, env, st, f, procOpt)
 		switch {
@@ -308,4 +312,22 @@ func collectOne(ctx context.Context, env collectEnv, st *store.Store, s transcri
 	return collect.Process(ctx, st.DB, collect.Source{
 		SessionID: s.ID, TranscriptPath: s.Path, Files: files, MTime: mtime, Recorded: recorded,
 	}, opt)
+}
+
+// collectDeployment is what collect adds to the setup of a run: the review records of the data
+// directory (traced over the served repos of hostToml, as review-index does) and the
+// [controller] of the repo. An unresolvable data directory gives no records.
+func collectDeployment(getenv func(string) string, hostToml string, repo repoconfig.Repo) ([]collect.Review, map[string]string) {
+	var reviews []collect.Review
+	if root, err := datadir.Dir(getenv); err == nil {
+		reviews = collect.LoadReviews(root, servedRepos(hostToml))
+	}
+	c := repo.Controller
+	if c == nil {
+		return reviews, nil
+	}
+	return reviews, map[string]string{
+		"profile": c.Profile, "spec_review": strconv.FormatBool(c.SpecReview),
+		"plan_review": strconv.FormatBool(c.PlanReview), "at_round_limit": c.AtRoundLimit,
+	}
 }

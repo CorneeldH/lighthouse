@@ -517,6 +517,17 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
   model zonder prijs, zoals de aliassen `sonnet`, `opus` en `haiku`, geeft `NULL` kosten, nooit
   een gok. Zijvragen komen niet altijd in het transcript terecht en worden dus
   ondergeteld. Er is geen quotum: `quota` blijft leeg.
+- **Inzet van een run uit de reviewrecords** (migratie `0018`). Een run krijgt in
+  `setups.controller_settings` de `[controller]` van de repo bij het verzamelen (JSON met
+  `profile`, `spec_review`, `plan_review`, `at_round_limit`) en in `setups.prompt_hashes` de
+  hashes van de plan- en specreviews die tijdens de run liepen (JSON, sleutel `review-plan` of
+  `review-spec` voor `prompt_sha256`, met `:verifier_prompt`, `:schema` of
+  `:verification_schema` voor de andere hashes). Een record hoort bij de run van zijn traject
+  waarvan `[started_at, ended_at]` zijn `written_at` bevat; het traject komt uit `trajectory` of
+  wordt herleid zoals `review-index` dat doet. Een record met `review_mode: fallback` geeft een
+  rij in `setup_switches` (`reviewer`, `codex` naar `opus`, op `written_at`), uniek op
+  `(setup_id, at, field)`. Een record zonder run schrijft niets; een pas zonder records of zonder
+  `[controller]` laat de bestaande waarden staan.
 - **Vragen en antwoorden.** Van een afgesloten sessie (`ended_at` gezet) die aan een traject hangt,
   schrijft de collector per `AskUserQuestion` een `question`-gebeurtenis en, zodra het antwoord er
   is, een `answer`-gebeurtenis in `trajectory_events`, met alleen soort, `ref`

@@ -53,3 +53,7 @@ func Trace(chainKey string, issueSpec *int, reviewedSHA string, repos []ServedRe
 	}
 	return Trajectory{Repo: found.Slug, Issue: issue}, true
 }
+
+// HasCommit reports whether the clone in dir contains the commit sha, for Trace outside this
+// package.
+func HasCommit(dir, sha string) bool { return hasCommit(dir, sha) }

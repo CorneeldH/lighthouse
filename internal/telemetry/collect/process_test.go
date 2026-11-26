@@ -784,3 +784,73 @@ func TestProcessScheduledArchitectureScanUsage(t *testing.T) {
 		t.Errorf("usage in=%d out=%d cost=%v", in, outTok, cost)
 	}
 }
+
+// writeReviewRecord writes a finished review record of the trajectory o/r#issue, written at
+// base+min, into dataRoot as plan-review-record does.
+func writeReviewRecord(t *testing.T, dataRoot, kind, chain string, issue, min int, mode string) {
+	t.Helper()
+	dir := filepath.Join(dataRoot, kind+"-review", chain, fmt.Sprintf("2026112%dT1000", min%10))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	at := base.Add(time.Duration(min)*time.Minute).Format("2006-01-02T15:04:05") + "+00:00"
+	body := fmt.Sprintf(`{"schema_version": 9, "kind": %q, "chain_key": %q, "review_mode": %q,
+		"reviewed_sha": "abc", "trajectory": {"repo": %q, "issue": %d},
+		"prompt_sha256": "p1", "verifier_prompt_sha256": "v1", "schema_sha256": "s1", "verification_schema_sha256": null,
+		"reviewer": {"model": "claude-opus-5-5", "codex_version": null, "same_family": true},
+		"findings": [], "outcome": "converged", "written_at": %q}`, kind, chain, mode, testRepo, issue, at)
+	if err := os.WriteFile(filepath.Join(dir, "record.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCollectSetupFromReviewFallback(t *testing.T) {
+	db := openDB(t)
+	rid := takeRun(t, db, 7, "s1", "start:7", 0, -1)
+	data := t.TempDir()
+	writeReviewRecord(t, data, "plan", "issue-7-plan", 7, 5, "fallback")
+	opt := opts(t.TempDir(), base.Add(time.Hour))
+	opt.Reviews = LoadReviews(data, nil)
+	opt.Controller = map[string]string{"profile": "software", "spec_review": "true", "plan_review": "true", "at_round_limit": "continue"}
+	process(t, db, source("s1", base.Add(time.Minute), sessionBranchLines()...), opt)
+	process(t, db, source("s1", base.Add(time.Minute), sessionBranchLines()...), opt) // a second pass adds nothing
+
+	var at, field, from, to string
+	if err := db.QueryRow(`SELECT w.at, w.field, w.from_value, w.to_value FROM setup_switches w
+		JOIN setups s ON s.id = w.setup_id WHERE s.run_id = ?`, rid).Scan(&at, &field, &from, &to); err != nil {
+		t.Fatalf("switch of run %d: %v", rid, err)
+	}
+	if field != "reviewer" || from != "codex" || to != "opus" || at != base.Add(5*time.Minute).Format(time.RFC3339) {
+		t.Errorf("switch = %s %s %s→%s; want reviewer codex→opus at base+5m", at, field, from, to)
+	}
+	if n := count(t, db, `SELECT count(*) FROM setup_switches`); n != 1 {
+		t.Errorf("%d switch rows; want 1", n)
+	}
+	var hashes, settings string
+	if err := db.QueryRow(`SELECT prompt_hashes, controller_settings FROM setups WHERE run_id = ?`, rid).Scan(&hashes, &settings); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"review-plan":"p1","review-plan:schema":"s1","review-plan:verifier_prompt":"v1"}`; hashes != want {
+		t.Errorf("prompt_hashes = %s, want %s", hashes, want)
+	}
+	if want := `{"at_round_limit":"continue","plan_review":"true","profile":"software","spec_review":"true"}`; settings != want {
+		t.Errorf("controller_settings = %s, want %s", settings, want)
+	}
+}
+
+func TestCollectReviewWithoutRunWritesNothing(t *testing.T) {
+	db := openDB(t)
+	rid := takeRun(t, db, 7, "s1", "start:7", 0, 10)
+	data := t.TempDir()
+	writeReviewRecord(t, data, "plan", "issue-7-plan", 7, 30, "fallback") // after the run ended
+	writeReviewRecord(t, data, "spec", "issue-8-spec", 8, 5, "fallback")  // another trajectory
+	opt := opts(t.TempDir(), base.Add(time.Hour))
+	opt.Reviews = LoadReviews(data, nil)
+	process(t, db, source("s1", base.Add(time.Minute), sessionBranchLines()...), opt)
+	if n := count(t, db, `SELECT count(*) FROM setup_switches`); n != 0 {
+		t.Errorf("%d switch rows; want 0", n)
+	}
+	if n := count(t, db, `SELECT count(*) FROM setups WHERE run_id = ? AND prompt_hashes IS NULL`, rid); n != 1 {
+		t.Errorf("run %d got prompt hashes from a record outside its window", rid)
+	}
+}

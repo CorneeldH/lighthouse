@@ -40,6 +40,11 @@ type Options struct {
 	// DryRun parses and assigns but writes nothing: no transaction and no plan update. The
 	// outcome carries the runs the transcript would go to; SessionID stays 0.
 	DryRun bool
+	// Reviews are the review records (LoadReviews) a run's setup takes its prompt hashes and
+	// reviewer switches from; Controller is the [controller] of the repo as profile,
+	// spec_review, plan_review and at_round_limit, nil without one. Both apply to runs only.
+	Reviews    []Review
+	Controller map[string]string
 }
 
 // Outcome says what Process did with a transcript: Kind is "run", "session" or "skipped".
@@ -225,6 +230,12 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 	if err != nil {
 		return Outcome{}, err
 	}
+	reviews := make([][]Review, len(segs))
+	for i, s := range segs {
+		if reviews[i], err = reviewsOfRun(ctx, db, s.run, opt.Reviews); err != nil {
+			return Outcome{}, err
+		}
+	}
 	out := Outcome{Kind: outcomeRun}
 	if opt.DryRun {
 		for _, s := range segs {
@@ -234,7 +245,7 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 	}
 	err = telemetry.InTransaction(ctx, db, func(tx *telemetry.Tx) error {
 		out.RunIDs = nil
-		for _, s := range segs {
+		for i, s := range segs {
 			suffix := ""
 			if len(runRows) > 1 {
 				suffix = fmt.Sprintf(":%d", s.run.ID)
@@ -245,8 +256,9 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 			w := writing{
 				sid: src.SessionID, suffix: suffix, recorded: src.Recorded, runID: s.run.ID,
 				setup: reading.SetupBetween(s.from, s.to), usage: reading.UsageBetween(s.from, s.to),
-				obs: PickObservation(obs, s.window),
+				obs: PickObservation(obs, s.window), controller: opt.Controller,
 			}
+			w.promptHashes, w.switches = deploymentOf(reviews[i])
 			if err := writeSetupAndUsage(ctx, tx, w); err != nil {
 				return err
 			}
@@ -350,6 +362,9 @@ type writing struct {
 	setup     transcript.Setup
 	usage     map[string]transcript.ModelUsage
 	obs       *Observation
+	// Of a run only: see Options.Reviews and Options.Controller.
+	promptHashes, controller map[string]string
+	switches                 []telemetry.SetupSwitch
 }
 
 // writeSetupAndUsage is the part the run path and the session path share.
@@ -359,6 +374,7 @@ func writeSetupAndUsage(ctx context.Context, tx *telemetry.Tx, w writing) error 
 		RunID:  w.runID, SessionID: w.sessionID,
 		Model: w.setup.Model, Effort: w.setup.Effort, Harness: w.setup.Harness, HarnessVersion: w.setup.HarnessVersion,
 		SuperpowersVersion: w.setup.SuperpowersVersion, SkillsHash: w.setup.SkillsHash, Lane: w.setup.Lane,
+		PromptHashes: w.promptHashes, ControllerSettings: w.controller, Switches: w.switches,
 	}
 	if w.obs != nil {
 		rec.LighthouseVersion, rec.PackVersion = nonEmpty(w.obs.LighthouseVersion), nonEmpty(w.obs.PackVersion)

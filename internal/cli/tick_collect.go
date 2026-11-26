@@ -251,7 +251,8 @@ func unreachable(err error) bool {
 }
 
 // collectOptions are the repo facts of one collection: its slug, default branch, plans
-// directory and the state directory of the sidecar files. The tick must keep serving a repo
+// directory, the state directory of the sidecar files, and the review records and [controller]
+// for the setup of a run (collectDeployment). The tick must keep serving a repo
 // whose lighthouse.toml config.Load rejects (repoconfig loads it more leniently), so the plans
 // directory then falls back to its default.
 func collectOptions(env tickEnv, repo repoconfig.Repo, stateDir string) (collect.Options, error) {
@@ -267,10 +268,12 @@ func collectOptions(env tickEnv, repo repoconfig.Repo, stateDir string) (collect
 		}
 		plans, _ = def.(string)
 	}
-	return collect.Options{
+	opt := collect.Options{
 		Repo: repo.Slug, DefaultBranch: repo.DefaultBranch, PlansDir: plans, RepoDir: repo.Dir,
 		StateDir: stateDir, Now: env.Now, SinceLast: true,
-	}, nil
+	}
+	opt.Reviews, opt.Controller = collectDeployment(env.Getenv, env.HostToml, repo)
+	return opt, nil
 }
 
 // processDeltas hands the whole files of one session to collect.Process. The bytes carry no

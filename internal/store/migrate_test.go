@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 17 {
-		t.Errorf("user_version = %d, want 17", v2)
+	if v2 != 18 {
+		t.Errorf("user_version = %d, want 18", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "review_runs", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "review_runs", "runs", "schedule_slots", "sessions", "setup_switches", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -893,6 +893,10 @@ func TestTelemetrySchemaHasNoContentColumns(t *testing.T) {
 		"findings": {"id", "source", "source_id", "recorded_at", "trajectory_id", "run_id", "session_id", "component",
 			"finding_key", "severity", "decision", "record_path", "record_sum",
 			"reviewer_source", "severity_codex", "severity_fallback"},
+		"setups": {"id", "source", "source_id", "recorded_at", "run_id", "session_id", "model", "effort",
+			"harness", "harness_version", "superpowers_version", "lighthouse_version", "pack_version", "skills_hash",
+			"lane", "prompt_hashes", "controller_settings"},
+		"setup_switches": {"id", "setup_id", "at", "field", "from_value", "to_value"},
 		"sessions": {"id", "source", "source_id", "recorded_at", "repo", "harness", "session_key", "transcript_path",
 			"branch", "trajectory_id", "link_basis", "unlinked_reason", "assignment", "started_at", "ended_at"},
 	}
