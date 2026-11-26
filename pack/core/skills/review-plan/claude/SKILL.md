@@ -232,6 +232,16 @@ after the snapshot.
 from round 2 on or the retry; wait for every notification. What still runs after the last
 answer dies with the session.
 
+**Assignment (before the dispatch).** Read `assignment:` from the prompt of the session;
+absent means `standard`. Under `variant:plan_review=codex` round 1 runs only the Codex side and the
+Opus side is skipped; under `variant:plan_review=opus` it is the reverse (only the Opus side, no
+Codex). `standard` keeps the pair. The Codex budget check stays the hard limit: if Codex falls
+back to Opus, the assignment stays `variant:…` (intention to treat) and the record gets
+`--assignment-applied=true` with `--review-mode fallback`. An interactive review without an
+`assignment:` line in a trajectory that has a variant notes `--assignment standard`, and the
+record keeps showing "not applied". Without a pair there is no `blind`: take the ID table from
+the jq fragment in *Opus dispatch*, as in the table below. Change no model or harness by yourself.
+
 1. **Codex**, through a Bash call with `run_in_background: true` and
    `dangerouslyDisableSandbox: true`:
 
@@ -422,6 +432,12 @@ instead of `--spec`.
 The verification rounds on Opus do not change `--review-mode`: they are the rule, no fallback,
 and `round_kinds` in the record marks them. Without a pair no `--shadow-model`; `write` refuses
 both wrong sides with exit 4.
+
+`--assignment <value> --assignment-applied=<true|false>` go to the record: `<value>` is the
+`assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
+round 1 followed it (a variant requires the flag, `standard` needs none). A non-applied assignment
+shows in the record as `assignment = standard` while the trajectory has a variant (join
+`review_runs.assignment` with `trajectories.assignment`); the record has no reason field.
 
 | exit | Meaning | You do |
 |---|---|---|
