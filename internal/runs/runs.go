@@ -63,13 +63,18 @@ type Claim struct {
 	Branch     string // written at claim time, so a run that closes before launch still has it
 	StartSHA   string // scheduled run: the commit the run started from
 	Verdict    string // scheduled run: the job's verdict as opaque JSON
-	Now        time.Time
+	// Assignment is the explore/exploit assignment for a trajectory that has none yet; "" is
+	// standard. A trajectory keeps the first one it got, and a scheduled run ignores it.
+	Assignment   string
+	ExperimentID string // the experiment behind Assignment, stored with the trajectory
+	Now          time.Time
 }
 
 // Run identifies a claimed run.
 type Run struct {
-	ID      int64
-	Attempt int
+	ID         int64
+	Attempt    int
+	Assignment string // the assignment stored on the trajectory, "standard" for a scheduled run
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -118,6 +123,7 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	attempt := failed + 1
 
 	var issue, schedule, trajectory any
+	assignment := "standard"
 	if scheduled {
 		schedule = c.Schedule
 	} else {
@@ -133,13 +139,28 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 			return Run{}, fmt.Errorf("runs: select trajectory: %w", err)
 		}
 		trajectory = tid
+		// A trajectory without assignment and without runs is not assigned yet (telemetry creates
+		// trajectories before the first claim); one with runs and NULL predates assignment.
+		want := c.Assignment
+		if want == "" {
+			want = "standard"
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE trajectories SET assignment = ?, experiment_id = nullif(?, '')
+			WHERE id = ? AND assignment IS NULL AND NOT EXISTS (SELECT 1 FROM runs WHERE trajectory_id = ?)`,
+			want, c.ExperimentID, tid, tid); err != nil {
+			return Run{}, fmt.Errorf("runs: assign trajectory: %w", err)
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT coalesce(assignment, 'standard') FROM trajectories WHERE id = ?`,
+			tid).Scan(&assignment); err != nil {
+			return Run{}, fmt.Errorf("runs: select assignment: %w", err)
+		}
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO runs
 		(repo, issue, schedule, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, node, branch,
-		start_sha, verdict, started_at, trajectory_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		start_sha, verdict, started_at, trajectory_id, assignment)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.Repo, issue, schedule, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
-		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, c.StartSHA, c.Verdict, stamp(c.Now), trajectory)
+		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, c.StartSHA, c.Verdict, stamp(c.Now), trajectory, assignment)
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -154,7 +175,7 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	if err := tx.Commit(); err != nil {
 		return Run{}, fmt.Errorf("runs: commit: %w", err)
 	}
-	return Run{ID: id, Attempt: attempt}, nil
+	return Run{ID: id, Attempt: attempt, Assignment: assignment}, nil
 }
 
 // Release closes an open run with an outcome. A scheduled run ends only as done, failed or
