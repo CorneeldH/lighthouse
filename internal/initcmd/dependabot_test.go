@@ -194,3 +194,58 @@ func TestSecondUpgradeNoChanges(t *testing.T) {
 		t.Error("second upgrade changed files")
 	}
 }
+
+const selfHostedWarning = "runs on a self-hosted runner"
+
+func initWithWorkflow(t *testing.T, content string) string {
+	t.Helper()
+	root := githubRepo(t)
+	write(t, root, "go.mod", "module x\n")
+	write(t, root, ".github/workflows/ci.yml", content)
+	return mustRun(t, root, yes).err
+}
+
+func TestWarnsSelfHostedWorkflow(t *testing.T) {
+	for name, content := range map[string]string{
+		"scalar": "jobs:\n  a:\n    runs-on: self-hosted\n",
+		"flow":   "jobs:\n  a:\n    runs-on: [self-hosted, linux]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			errOut := initWithWorkflow(t, content)
+			want := "dependabot: .github/workflows/ci.yml runs on a self-hosted runner; guard it so Dependabot PRs use a hosted runner (runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || 'self-hosted' }})\n"
+			if !strings.Contains(errOut, want) {
+				t.Errorf("stderr = %q", errOut)
+			}
+		})
+	}
+}
+
+func TestNoWarningWhenGuarded(t *testing.T) {
+	errOut := initWithWorkflow(t, "jobs:\n  a:\n    runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || 'self-hosted' }}\n")
+	if strings.Contains(errOut, selfHostedWarning) {
+		t.Errorf("stderr = %q", errOut)
+	}
+}
+
+func TestNoWarningHostedOnly(t *testing.T) {
+	errOut := initWithWorkflow(t, "jobs:\n  a:\n    runs-on: ubuntu-latest\n")
+	if strings.Contains(errOut, selfHostedWarning) {
+		t.Errorf("stderr = %q", errOut)
+	}
+}
+
+func TestNoWarningSelfHostedInComment(t *testing.T) {
+	errOut := initWithWorkflow(t, "# this may NEVER become self-hosted\njobs:\n  a:\n    runs-on: ubuntu-latest # not self-hosted\n")
+	if strings.Contains(errOut, selfHostedWarning) {
+		t.Errorf("stderr = %q", errOut)
+	}
+}
+
+func TestWarnsSelfHostedWhenDependabotExists(t *testing.T) {
+	root := githubRepo(t)
+	write(t, root, dependabotPath, "# mijn\n")
+	write(t, root, ".github/workflows/ci.yml", "jobs:\n  a:\n    runs-on: self-hosted\n")
+	if r := mustRun(t, root, yes); !strings.Contains(r.err, selfHostedWarning) {
+		t.Errorf("stderr = %q", r.err)
+	}
+}

@@ -1,8 +1,12 @@
 package initcmd
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 )
@@ -129,7 +133,7 @@ func dependabotPlan(root string, o Options, load func(string) (*planned, error))
 	}
 	if p.existed {
 		_, _ = fmt.Fprintf(o.Err, "dependabot: %s exists; left as it is\n", dependabotPath)
-		return nil
+		return warnSelfHosted(root, o)
 	}
 	eco, err := detectEcosystems(root)
 	if err != nil {
@@ -137,8 +141,57 @@ func dependabotPlan(root string, o Options, load func(string) (*planned, error))
 	}
 	if len(eco) == 0 {
 		_, _ = fmt.Fprintln(o.Err, "dependabot: no ecosystems found; nothing seeded")
-		return nil
+		return warnSelfHosted(root, o)
 	}
 	p.new, p.mode = renderDependabot(eco), 0o644
+	return warnSelfHosted(root, o)
+}
+
+// warnSelfHosted names the workflows that a Dependabot PR would send to a self-hosted runner.
+func warnSelfHosted(root string, o Options) error {
+	files, err := selfHostedWorkflows(root)
+	if err != nil {
+		return err
+	}
+	for _, f := range files {
+		_, _ = fmt.Fprintf(o.Err, "dependabot: %s runs on a self-hosted runner; guard it so Dependabot PRs use a hosted runner (runs-on: ${{ github.actor == 'dependabot[bot]' && 'ubuntu-latest' || 'self-hosted' }})\n", f)
+	}
 	return nil
+}
+
+// selfHostedWorkflows lists the workflows git knows whose runs-on names self-hosted
+// and that do not mention dependabot[bot] anywhere (an unguarded Dependabot PR would
+// wait for a runner it cannot use). Comment text never counts.
+func selfHostedWorkflows(root string) ([]string, error) {
+	files, err := lsFiles(root, []string{".github/workflows/*.yml", ".github/workflows/*.yaml"})
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, f := range files {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f)))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue // tracked but deleted from the work tree
+		}
+		if err != nil {
+			return nil, err
+		}
+		selfHosted, guarded := false, false
+		for _, line := range strings.Split(string(data), "\n") {
+			if i := strings.Index(line, "#"); i >= 0 && (i == 0 || line[i-1] == ' ' || line[i-1] == '\t') {
+				line = line[:i]
+			}
+			if strings.Contains(line, "dependabot[bot]") {
+				guarded = true
+			}
+			if t := strings.TrimLeft(line, " \t-"); strings.HasPrefix(t, "runs-on:") && strings.Contains(t, "self-hosted") {
+				selfHosted = true
+			}
+		}
+		if selfHosted && !guarded {
+			out = append(out, f)
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
