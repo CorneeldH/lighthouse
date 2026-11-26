@@ -575,6 +575,73 @@ reviewtijd kan bevatten eindigt op `incl. ci_review`.
 Exit: 0 uitvoer geprint | 1 een config-, forge- of databasefout, of `no trajectory for issue <N>`
 | 2 verkeerd gebruik (geen of geen geldig issuenummer, onbekende vlag).
 
+### Indeling in een experiment (`[[experiment]]`)
+
+Een experiment deelt een aandeel van de trajecten in een variant in: voor één onderdeel krijgen die
+trajecten een andere keuze dan de standaard (#572, spec
+[explore/exploit](developer/planning/specs/2026-11-24-issue-388-explore-exploit-design.md)). Een mens
+zet het aan en uit met een PR op de `lighthouse.toml` van elke meedoende repo:
+
+```toml
+[[experiment]]
+id        = "plan-review-codex-2026-12"   # verplicht; uniek binnen de repo
+component = "plan_review"                 # verplicht; plan_review of spec_review
+choice    = "codex"                       # verplicht; codex of opus
+share     = 0.10                          # verplicht; boven 0 en hooguit 0.20
+sample    = 20                            # verplicht; geheel getal vanaf 1: variant-trajecten
+start     = "2026-12-01"                  # verplicht; YYYY-MM-DD, middernacht lokale tijd
+```
+
+Een fout veld, een onbekende sleutel of een dubbel `id` maakt de config van de repo ongeldig, zoals
+elke andere configfout. Er is geen `end`: een experiment stopt door zijn blok te verwijderen of door
+de steekproef.
+
+- **Wanneer een traject een variant krijgt.** De dispatcher deelt een traject in bij de eerste
+  claim van zijn issue. Het wordt een variant (`variant:<component>=<choice>`) als de start is
+  bereikt, het aantal variant-trajecten van het experiment onder de `sample` ligt en de hash van
+  `repo` en `issue` onder `share` valt (een vaste waarde: dezelfde keuze bij elke herhaling).
+  Anders blijft het `standard`. Alleen trajecten met een reviewrun van het onderdeel tellen mee voor
+  de steekproef, ook bij nul bevindingen; een traject dat zijn variant nog niet gebruikte telt niet.
+  Telling en analyse nemen alleen runs vanaf `start`.
+- **Het traject houdt zijn indeling.** Elke latere run van het traject krijgt dezelfde indeling,
+  ook als het experiment ondertussen stopt of verandert. Trajecten van vóór deze functie
+  (`assignment` was leeg) worden bij de migratie `standard` en blijven dat. Een run krijgt zijn
+  indeling als regel `assignment: <indeling>` in de prompt; bij `standard` ontbreekt de regel.
+  Interactieve sessies delen niet in.
+- **Reikwijdte over repo's.** De dispatcher bedient meerdere repo's. Hetzelfde `id` in meer repo's is
+  één experiment en moet in elke repo in alle velden gelijk zijn, anders deelt hij niets in. Aandeel
+  en steekproef tellen over die repo's samen. Hooguit één experiment tegelijk geldt over alle
+  bediende repo's: declareren ze experimenten met verschillende `id`'s (op verschillende of op
+  hetzelfde onderdeel), dan deelt hij niets in en logt hij
+  `<repo>#<issue>: <reden>`. Alles blijft dan `standard`.
+- **Toepassen en vastleggen.** De skills `lighthouse-review-plan` en `lighthouse-review-spec`
+  lezen de indeling en passen de keuze toe: onder `variant:plan_review=codex` draait ronde 1 zonder de
+  Opus-kant. Het reviewrecord legt de indeling vast en of die is toegepast
+  (`assignment_applied`; een interactieve review zonder indeling noteert dat ze niet is toegepast).
+  Valt een `codex`-variant door de budgetcheck terug op Opus, dan blijft het traject in zijn groep
+  (intention to treat); de fallback staat in `review_mode` en in `setup_switches`.
+
+**Nieuwe kolommen in `lighthouse.db`** (migraties `0015` tot en met `0018`):
+
+| Tabel | Kolom | Inhoud |
+| --- | --- | --- |
+| `trajectories` | `assignment` | `standard`, `shadow:<x>` of `variant:<onderdeel>=<keuze>`; gezet bij de eerste claim, daarna vast |
+| `trajectories` | `experiment_id` | het `id` van het experiment bij een variant, anders leeg |
+| `review_runs` | `review_mode` | hoe de review draaide, bijvoorbeeld `fallback` |
+| `review_runs` | `reviewers` | JSON-array van de reviewers, bijvoorbeeld `["codex","opus"]` |
+| `review_runs` | `assignment` | de indeling uit het record, standaard `standard` |
+| `review_runs` | `assignment_applied` | 1 toegepast, 0 niet toegepast, leeg zonder veld in het record |
+| `findings` | `reviewer_source` | `codex`, `fallback` of `both` |
+| `findings` | `severity_codex`, `severity_fallback` | de ernst per reviewer |
+| `setups` | `prompt_hashes` | JSON met de hashes van de reviewprompts van de run |
+| `setups` | `controller_settings` | JSON met de `[controller]` van de repo bij het verzamelen |
+| `setup_switches` | (nieuwe tabel) | een wissel binnen een run: `setup_id`, `at`, `field` (`model` of `reviewer`), `from_value`, `to_value` |
+
+Hoe de collector `setups.prompt_hashes`, `setups.controller_settings` en `setup_switches` vult staat
+bij *Inzet, kosten en tokens*, de herleiding van het traject van een reviewrecord in
+[`review-index.md`](review-index.md). De indeling van trajecten die nog geen experiment kennen blijft
+`standard`; `runs.assignment` volgt het traject.
+
 ## Run the tick
 
 `lighthouse tick` is the dispatcher. With `[dispatch] workplace = "local"` in `host.toml` it needs no
