@@ -465,3 +465,73 @@ func TestIndexRecordsWithoutAssignmentIsStandard(t *testing.T) {
 		t.Errorf("mode = %v, reviewers = %v; want NULL for a record without review_mode", mode, reviewers)
 	}
 }
+
+func findingReviewerCols(t *testing.T, db *sql.DB, key string) (src, sevCodex, sevFallback sql.NullString, source, severity string) {
+	t.Helper()
+	err := db.QueryRow(`SELECT reviewer_source, severity_codex, severity_fallback, source, severity FROM findings
+		WHERE finding_key = ?`, key).Scan(&src, &sevCodex, &sevFallback, &source, &severity)
+	if err != nil {
+		t.Fatalf("read finding %s: %v", key, err)
+	}
+	return
+}
+
+func recWithSources(issue int) map[string]any {
+	r := rec(issue, [3]string{"F1", "major", ""}, [3]string{"F2", "minor", ""}, [3]string{"F3", "critical", ""})
+	fs := r["findings"].([]any)
+	set := func(i int, src string, by map[string]any) {
+		fs[i].(map[string]any)["source"] = src
+		fs[i].(map[string]any)["severity_by_source"] = by
+	}
+	set(0, "codex", map[string]any{"codex": "major"})
+	set(1, "fallback", map[string]any{"fallback": "minor"})
+	set(2, "both", map[string]any{"codex": "critical", "fallback": "major"})
+	return r
+}
+
+func TestIndexFindingReviewerSource(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", recWithSources(572))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ key, src, codex, fallback, severity string }{
+		{"F1", "codex", "major", "", "major"},
+		{"F2", "fallback", "", "minor", "minor"},
+		{"F3", "both", "critical", "major", "critical"},
+	} {
+		src, codex, fallback, source, severity := findingReviewerCols(t, db, c.key)
+		if src.String != c.src || codex.String != c.codex || fallback.String != c.fallback ||
+			codex.Valid != (c.codex != "") || fallback.Valid != (c.fallback != "") {
+			t.Errorf("%s: reviewer_source %v codex %v fallback %v; want %s %q %q", c.key, src, codex, fallback, c.src, c.codex, c.fallback)
+		}
+		if source != "plan-review-record" || severity != c.severity {
+			t.Errorf("%s: source %q severity %q; want plan-review-record %q", c.key, source, severity, c.severity)
+		}
+	}
+
+	r := recWithSources(572)
+	r["findings"].([]any)[0].(map[string]any)["source"] = "both"
+	r["findings"].([]any)[0].(map[string]any)["severity_by_source"] = map[string]any{"codex": "major", "fallback": "minor"}
+	r["written_at"] = "2026-11-20T11:00:00+00:00"
+	writeChain(t, root, "plan", "c1", "A1", r)
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	src, codex, fallback, _, _ := findingReviewerCols(t, db, "F1")
+	if src.String != "both" || codex.String != "major" || fallback.String != "minor" {
+		t.Errorf("after change: %v %v %v; want both major minor", src, codex, fallback)
+	}
+}
+
+func TestIndexFindingWithoutSource(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", rec(572, [3]string{"V1", "major", ""}))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	src, codex, fallback, _, _ := findingReviewerCols(t, db, "V1")
+	if src.Valid || codex.Valid || fallback.Valid {
+		t.Errorf("columns = %v %v %v; want all NULL", src, codex, fallback)
+	}
+}

@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 16 {
-		t.Errorf("user_version = %d, want 16", v2)
+	if v2 != 17 {
+		t.Errorf("user_version = %d, want 17", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -891,7 +891,8 @@ func TestTelemetrySchemaHasNoContentColumns(t *testing.T) {
 	db := openTelemetryDB(t)
 	want := map[string][]string{
 		"findings": {"id", "source", "source_id", "recorded_at", "trajectory_id", "run_id", "session_id", "component",
-			"finding_key", "severity", "decision", "record_path", "record_sum"},
+			"finding_key", "severity", "decision", "record_path", "record_sum",
+			"reviewer_source", "severity_codex", "severity_fallback"},
 		"sessions": {"id", "source", "source_id", "recorded_at", "repo", "harness", "session_key", "transcript_path",
 			"branch", "trajectory_id", "link_basis", "unlinked_reason", "assignment", "started_at", "ended_at"},
 	}

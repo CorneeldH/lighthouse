@@ -30,6 +30,7 @@ verdubbeld).
   (`issue-<n>`); de repo is `forge.repo` uit `lighthouse.toml`. Een record met `trajectory: null`,
   of van schema 5 of lager, krijgt geen bevindingen, maar wel een `review_runs`-rij zonder traject
   (`trajectory_id` leeg, reden `no_trajectory`), en verschijnt als `skipped` met de reden.
+- **Reviewer per bevinding.** `findings` draagt `reviewer_source` (`codex`, `fallback` of `both`) en de ernst per reviewer (`severity_codex`, `severity_fallback`), uit `source` en `severity_by_source` van de bevinding; een bevinding zonder `source` (verificatieronde) laat ze leeg. `findings.source` blijft de herkomst `plan-review-record`.
 - **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
   `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),
   pad en hash van het record, `ran_at` (`written_at`), `outcome` (`converged`, `round_limit` of

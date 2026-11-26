@@ -179,6 +179,11 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			ID       string  `json:"finding_id"`
 			Severity string  `json:"severity"`
 			Decision *string `json:"decision"`
+			Source   string  `json:"source"`
+			SevBySrc struct {
+				Codex    string `json:"codex"`
+				Fallback string `json:"fallback"`
+			} `json:"severity_by_source"`
 		} `json:"findings"`
 		Outcome           string `json:"outcome"`
 		WrittenAt         string `json:"written_at"`
@@ -215,6 +220,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 	// Findings of an unlinked record are not written; the run row counts them anyway.
 	type pending struct {
 		sourceID, id, severity, decision string
+		reviewer, sevCodex, sevFallback  string
 		found                            bool
 	}
 	var todo []pending
@@ -234,7 +240,11 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			if f.Decision != nil {
 				decision = FindingDecision(*f.Decision)
 			}
-			todo = append(todo, pending{sourceID, f.ID, f.Severity, decision, found})
+			reviewer := ""
+			if f.Source == "codex" || f.Source == "fallback" || f.Source == "both" {
+				reviewer = f.Source
+			}
+			todo = append(todo, pending{sourceID, f.ID, f.Severity, decision, reviewer, f.SevBySrc.Codex, f.SevBySrc.Fallback, found})
 		}
 	}
 	var removed int64
@@ -261,6 +271,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 				Repo:   repo, Issue: issue,
 				Component: kind + "_review", FindingKey: f.id, Severity: f.severity, Decision: f.decision,
 				RecordPath: recordPath, RecordSum: sum,
+				ReviewerSource: f.reviewer, SeverityCodex: f.sevCodex, SeverityFallback: f.sevFallback,
 			}); err != nil {
 				return err
 			}

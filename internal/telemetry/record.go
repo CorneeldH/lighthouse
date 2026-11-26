@@ -85,6 +85,9 @@ type FindingRecord struct {
 	Issue                                                            int
 	RunID, SessionID                                                 int64
 	Component, FindingKey, Severity, Decision, RecordPath, RecordSum string
+	// ReviewerSource is codex, fallback or both; SeverityCodex and SeverityFallback
+	// are the severity each reviewer gave. Empty is NULL.
+	ReviewerSource, SeverityCodex, SeverityFallback string
 }
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
@@ -471,7 +474,7 @@ func recordUsageTx(ctx context.Context, tx *sql.Tx, u UsageRecord) (int64, bool,
 // session given with it must point at that trajectory, else
 // ErrTrajectoryMismatch; nothing is written then, not even the trajectory. A
 // second offering of the same origin updates severity, decision, record path,
-// record sum and recorded_at, and reports not new.
+// record sum, recorded_at and the reviewer columns, and reports not new.
 func RecordFinding(ctx context.Context, db *sql.DB, f FindingRecord) (int64, bool, error) {
 	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordFindingTx(ctx, tx, f) })
 }
@@ -499,17 +502,20 @@ func recordFindingTx(ctx context.Context, tx *sql.Tx, f FindingRecord) (int64, b
 		return 0, false, err
 	}
 	id, isNew, err := insertOrFind(ctx, tx, "findings", `INSERT INTO findings (source, source_id, recorded_at,
-		trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum,
+		reviewer_source, severity_codex, severity_fallback)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
 		[]any{f.Source, f.SourceID, stamp(f.RecordedAt), tid, nullID(f.RunID), nullID(f.SessionID),
-			f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum},
+			f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum,
+			nullString(f.ReviewerSource), nullString(f.SeverityCodex), nullString(f.SeverityFallback)},
 		bySource(f.Origin))
 	if err != nil || isNew {
 		return id, isNew, err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE findings SET severity = ?, decision = ?, record_path = ?,
-		record_sum = ?, recorded_at = ? WHERE id = ?`,
-		f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt), id); err != nil {
+		record_sum = ?, recorded_at = ?, reviewer_source = ?, severity_codex = ?, severity_fallback = ? WHERE id = ?`,
+		f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt),
+		nullString(f.ReviewerSource), nullString(f.SeverityCodex), nullString(f.SeverityFallback), id); err != nil {
 		return 0, false, fmt.Errorf("telemetry: update finding: %w", err)
 	}
 	return id, false, nil
