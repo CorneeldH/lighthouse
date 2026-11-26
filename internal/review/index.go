@@ -49,8 +49,9 @@ type IndexResult struct {
 // IndexRecords walks <dataRoot>/{plan,spec}-review/<chain>/ and indexes the
 // findings of the newest attempt of each chain. An attempt that is only
 // staged (no record.json) counts as not succeeded: the findings of older
-// attempts of that chain are removed and none are added.
-func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() time.Time) (IndexResult, error) {
+// attempts of that chain are removed and none are added. A record without trajectory is traced
+// through repos (see Trace); nil repos trace nothing.
+func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() time.Time, repos []ServedRepo) (IndexResult, error) {
 	var res IndexResult
 	for _, kind := range []string{"plan", "spec"} {
 		chains, err := os.ReadDir(filepath.Join(dataRoot, kind+"-review"))
@@ -65,7 +66,7 @@ func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() tim
 			if !c.IsDir() {
 				continue
 			}
-			if err := indexChain(ctx, db, dataRoot, kind, c.Name(), &res); err != nil {
+			if err := indexChain(ctx, db, dataRoot, kind, c.Name(), repos, &res); err != nil {
 				return res, err
 			}
 		}
@@ -139,7 +140,7 @@ func deleteChain(ctx context.Context, db *sql.DB, chainPrefix, keep string, res 
 	return err
 }
 
-func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, res *IndexResult) error {
+func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, repos []ServedRepo, res *IndexResult) error {
 	chainDir := filepath.Join(dataRoot, kind+"-review", chain)
 	// Data and read errors of one chain are skips, so that one bad chain does not
 	// stop the others; only database errors are returned.
@@ -170,8 +171,13 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 		res.Skipped = append(res.Skipped, Skip{Path: recordPath, Reason: reason})
 	}
 	var doc struct {
-		SchemaVersion int `json:"schema_version"`
-		Trajectory    *struct {
+		SchemaVersion int    `json:"schema_version"`
+		ChainKey      string `json:"chain_key"`
+		ReviewedSHA   string `json:"reviewed_sha"`
+		IssueSpec     *struct {
+			Issue int `json:"issue"`
+		} `json:"issue_spec"`
+		Trajectory *struct {
 			Repo  string `json:"repo"`
 			Issue int    `json:"issue"`
 		} `json:"trajectory"`
@@ -207,7 +213,16 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 	repo, issue := unlinkedRepo, 0
 	if linked {
 		repo, issue = doc.Trajectory.Repo, doc.Trajectory.Issue
-	} else {
+	} else if len(repos) > 0 {
+		var spec *int
+		if doc.IssueSpec != nil {
+			spec = &doc.IssueSpec.Issue
+		}
+		if tr, ok := Trace(doc.ChainKey, spec, doc.ReviewedSHA, repos, hasCommit); ok {
+			linked, repo, issue = true, tr.Repo, tr.Issue
+		}
+	}
+	if !linked {
 		skip(fmt.Sprintf("no trajectory in the record (schema %d): not linked to a repo and issue", doc.SchemaVersion))
 	}
 	sum := Sum(data)

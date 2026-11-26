@@ -30,6 +30,13 @@ verdubbeld).
   (`issue-<n>`); de repo is `forge.repo` uit `lighthouse.toml`. Een record met `trajectory: null`,
   of van schema 5 of lager, krijgt geen bevindingen, maar wel een `review_runs`-rij zonder traject
   (`trajectory_id` leeg, reden `no_trajectory`), en verschijnt als `skipped` met de reden.
+- **Traject herleiden.** `review-index` herleidt een record zonder `trajectory` (en elke indexering
+  van de datamap, ook die na `plan-review-record write`): het issue is het `issue-<n>` in de
+  `chain_key` (komen er twee verschillende voor, dan geen traject), anders `issue_spec.issue`; de repo
+  is de enige bediende repo (`[dispatch] repos` in de hostconfig, met `forge.repo` uit zijn
+  `lighthouse.toml`) waarvan de kloon `reviewed_sha` bevat. Is het issue of de repo niet eenduidig
+  (de sha staat in twee repo's of in geen), dan blijft het record zoals hierboven: `no_trajectory`,
+  geen bevindingen. Zonder leesbare hostconfig herleidt hij niets.
 - **Reviewer per bevinding.** `findings` draagt `reviewer_source` (`codex`, `fallback` of `both`) en de ernst per reviewer (`severity_codex`, `severity_fallback`), uit `source` en `severity_by_source` van de bevinding; een bevinding zonder `source` (verificatieronde) laat ze leeg. `findings.source` blijft de herkomst `plan-review-record`.
 - **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
   `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),

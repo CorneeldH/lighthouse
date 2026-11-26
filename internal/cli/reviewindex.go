@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/datadir"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/review"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
@@ -22,7 +24,24 @@ func indexDataRoot(ctx context.Context, db *sql.DB) (review.IndexResult, error) 
 	if err != nil {
 		return review.IndexResult{}, err
 	}
-	return review.IndexRecords(ctx, db, root, time.Now)
+	return review.IndexRecords(ctx, db, root, time.Now, servedRepos(hostconfig.Path()))
+}
+
+// servedRepos lists the repos of the host's dispatch config with their forge.repo slug, for
+// tracing records without trajectory. A host config or repo config that cannot be read is
+// left out: tracing is best effort and then finds nothing.
+func servedRepos(hostToml string) []review.ServedRepo {
+	cfg, err := hostconfig.LoadDispatch(hostToml)
+	if err != nil {
+		return nil
+	}
+	var out []review.ServedRepo
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		if l.Err == nil && l.Repo.Slug != "" {
+			out = append(out, review.ServedRepo{Slug: l.Repo.Slug, Dir: l.Path})
+		}
+	}
+	return out
 }
 
 func newReviewIndexCommand() *cobra.Command {

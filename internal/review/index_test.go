@@ -91,7 +91,7 @@ func TestIndexRecordsLinksFindings(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	path := writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "BLOCKER", "accept"}, [3]string{"r1-f2", "MINOR", "minor_no"}))
 	data, _ := os.ReadFile(path)
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,11 +112,11 @@ func TestIndexRecordsLinksFindings(t *testing.T) {
 func TestIndexRecordsDetectsChangedFile(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}, [3]string{"r1-f2", "MINOR", "accept"}))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "reject"}, [3]string{"r1-f2", "MINOR", "reject"}))
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Updated != 2 || res.New != 0 || res.Unchanged != 0 {
 		t.Fatalf("second = %+v, %v; want Updated 2", res, err)
 	}
@@ -126,7 +126,7 @@ func TestIndexRecordsDetectsChangedFile(t *testing.T) {
 	if n := rows(t, db, `1 = 1`); n != 2 {
 		t.Errorf("rows = %d, want 2", n)
 	}
-	res, err = IndexRecords(ctx, db, root, fixedNow)
+	res, err = IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Unchanged != 2 || res.Updated != 0 {
 		t.Errorf("third = %+v, %v; want Unchanged 2", res, err)
 	}
@@ -137,11 +137,11 @@ func TestIndexRecordsNewestAttemptWins(t *testing.T) {
 	t.Run("newest attempt only staged", func(t *testing.T) {
 		ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 		writeChain(t, root, "plan", "c1", "A1", two)
-		if res, err := IndexRecords(ctx, db, root, fixedNow); err != nil || res.New != 2 {
+		if res, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil || res.New != 2 {
 			t.Fatalf("first = %+v, %v", res, err)
 		}
 		writeChain(t, root, "plan", "c1", "A2", nil)
-		res, err := IndexRecords(ctx, db, root, fixedNow)
+		res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 		if err != nil || res.Removed != 2 {
 			t.Fatalf("second = %+v, %v; want Removed 2", res, err)
 		}
@@ -152,11 +152,11 @@ func TestIndexRecordsNewestAttemptWins(t *testing.T) {
 	t.Run("newest attempt has record", func(t *testing.T) {
 		ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 		writeChain(t, root, "plan", "c1", "A1", two)
-		if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 			t.Fatal(err)
 		}
 		writeChain(t, root, "plan", "c1", "A2", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
-		res, err := IndexRecords(ctx, db, root, fixedNow)
+		res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 		if err != nil || res.Removed != 2 || res.New != 1 {
 			t.Fatalf("second = %+v, %v; want Removed 2, New 1", res, err)
 		}
@@ -178,7 +178,7 @@ func TestIndexRecordsSkipsWithoutTrajectory(t *testing.T) {
 	old["schema_version"] = 5
 	delete(old, "trajectory")
 	writeChain(t, root, "spec", "old", "A1", old)
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +200,7 @@ func TestIndexRecordsSpecIsIssue(t *testing.T) {
 	r := rec(42, [3]string{"r1-f1", "MAJOR", "accept"})
 	r["issue_spec"] = map[string]any{"issue": 42, "file": "issue-42.md"}
 	writeChain(t, root, "plan", "c1", "A1", r)
-	if res, err := IndexRecords(ctx, db, root, fixedNow); err != nil || res.New != 1 {
+	if res, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil || res.New != 1 {
 		t.Fatalf("result = %+v, %v", res, err)
 	}
 	var n int
@@ -219,7 +219,7 @@ func TestIndexRecordsBadChainDoesNotStopTheRest(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeChain(t, root, "plan", "c-good", "A1", rec(3, [3]string{"r1-f1", "MAJOR", "accept"}))
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil {
 		t.Fatalf("IndexRecords: %v", err)
 	}
@@ -250,7 +250,7 @@ func TestIndexRecordsWritesRunWithoutFindings(t *testing.T) {
 	r["outcome"] = "converged"
 	path := writeChain(t, root, "plan", "c1", "A1", r)
 	data, _ := os.ReadFile(path)
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Runs != 1 || res.New != 0 || len(res.Skipped) != 0 {
 		t.Fatalf("res = %+v, %v; want Runs 1", res, err)
 	}
@@ -266,7 +266,7 @@ func TestIndexRecordsUnlinkedRecordGetsRunAndSkip(t *testing.T) {
 	null := rec(1, [3]string{"r1-f1", "MAJOR", "accept"})
 	null["trajectory"] = nil
 	writeChain(t, root, "spec", "u", "A1", null)
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Runs != 1 || len(res.Skipped) != 1 {
 		t.Fatalf("res = %+v, %v; want Runs 1 and one Skip", res, err)
 	}
@@ -287,7 +287,7 @@ func TestIndexRecordsUnreadableRecordWritesNoRun(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || len(res.Skipped) != 2 || res.Runs != 0 {
 		t.Fatalf("res = %+v, %v; want 2 skips, no runs", res, err)
 	}
@@ -300,10 +300,10 @@ func TestIndexRecordsSameSumChangesNothing(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
 	writeChain(t, root, "plan", "c2", "A1", rec(377))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Runs != 0 || res.New != 0 || res.Updated != 0 || res.Removed != 0 || res.Unchanged != 1 {
 		t.Fatalf("res = %+v, %v; want only Unchanged 1", res, err)
 	}
@@ -315,11 +315,11 @@ func TestIndexRecordsSameSumChangesNothing(t *testing.T) {
 func TestIndexRecordsNewerAttemptReplacesRun(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	writeChain(t, root, "plan", "c1", "A2", rec(376))
-	res, err := IndexRecords(ctx, db, root, fixedNow)
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
 	if err != nil || res.Runs != 1 || res.Removed != 1 {
 		t.Fatalf("res = %+v, %v; want Runs 1, Removed 1 (findings only)", res, err)
 	}
@@ -336,7 +336,7 @@ func TestIndexRecordsAbortedOutcome(t *testing.T) {
 	r := rec(376, [3]string{"r1-f1", "MAJOR", ""}, [3]string{"r1-f2", "MINOR", ""})
 	r["outcome"] = "aborted"
 	writeChain(t, root, "plan", "c1", "A1", r)
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	if n := runRows(t, db, `outcome = 'aborted' AND finding_count = 2`); n != 1 {
@@ -347,7 +347,7 @@ func TestIndexRecordsAbortedOutcome(t *testing.T) {
 func TestIndexRecordsFailureKeepsOldRows(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`CREATE TRIGGER fail_finding BEFORE INSERT ON findings WHEN NEW.finding_key = 'boom'
@@ -355,7 +355,7 @@ func TestIndexRecordsFailureKeepsOldRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeChain(t, root, "plan", "c1", "A2", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}, [3]string{"boom", "MAJOR", "accept"}))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err == nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err == nil {
 		t.Fatal("IndexRecords succeeded, want the trigger failure")
 	}
 	if n := rows(t, db, `source_id = 'plan/c1/A1/r1-f1'`); n != 1 {
@@ -427,7 +427,7 @@ func TestIndexRecordsReviewRunColumns(t *testing.T) {
 	r["assignment"] = "variant:plan_review=codex"
 	r["assignment_applied"] = true
 	writeChain(t, root, "plan", "c1", "A1", r)
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	mode, reviewers, assignment, applied := runCols(t, db)
@@ -442,7 +442,7 @@ func TestIndexRecordsReviewRunColumns(t *testing.T) {
 	r["review_mode"] = "codex"
 	r["assignment_applied"] = false
 	writeChain(t, root, "plan", "c1", "A1", r)
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	mode, reviewers, _, applied = runCols(t, db)
@@ -454,7 +454,7 @@ func TestIndexRecordsReviewRunColumns(t *testing.T) {
 func TestIndexRecordsWithoutAssignmentIsStandard(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(572))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	mode, reviewers, assignment, applied := runCols(t, db)
@@ -492,7 +492,7 @@ func recWithSources(issue int) map[string]any {
 func TestIndexFindingReviewerSource(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", recWithSources(572))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	for _, c := range []struct{ key, src, codex, fallback, severity string }{
@@ -515,7 +515,7 @@ func TestIndexFindingReviewerSource(t *testing.T) {
 	r["findings"].([]any)[0].(map[string]any)["severity_by_source"] = map[string]any{"codex": "major", "fallback": "minor"}
 	r["written_at"] = "2026-11-20T11:00:00+00:00"
 	writeChain(t, root, "plan", "c1", "A1", r)
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	src, codex, fallback, _, _ := findingReviewerCols(t, db, "F1")
@@ -527,11 +527,65 @@ func TestIndexFindingReviewerSource(t *testing.T) {
 func TestIndexFindingWithoutSource(t *testing.T) {
 	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
 	writeChain(t, root, "plan", "c1", "A1", rec(572, [3]string{"V1", "major", ""}))
-	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
 	}
 	src, codex, fallback, _, _ := findingReviewerCols(t, db, "V1")
 	if src.Valid || codex.Valid || fallback.Valid {
 		t.Errorf("columns = %v %v %v; want all NULL", src, codex, fallback)
+	}
+}
+
+// derivedRecord is a record without trajectory that carries what Trace needs.
+func derivedRecord(chain string) map[string]any {
+	r := rec(1, [3]string{"r1-f1", "MAJOR", "accept"})
+	r["trajectory"] = nil
+	r["chain_key"] = chain
+	r["reviewed_sha"] = "abc"
+	return r
+}
+
+func TestIndexDerivedTrajectory(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "issue-572-x", "A1", derivedRecord("issue-572-x"))
+	repos := []ServedRepo{{Slug: "o/a", Dir: "/a"}, {Slug: "o/b", Dir: "/b"}}
+	oldHas := hasCommit
+	hasCommit = func(dir, sha string) bool { return dir == "/b" && sha == "abc" }
+	t.Cleanup(func() { hasCommit = oldHas })
+	res, err := IndexRecords(ctx, db, root, fixedNow, repos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.New != 1 || len(res.Skipped) != 0 {
+		t.Errorf("res = %+v, want New 1 and no Skip", res)
+	}
+	if n := runRows(t, db, `trajectory_id IS NOT NULL AND unlinked_reason IS NULL`); n != 1 {
+		t.Errorf("linked run rows = %d, want 1", n)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM findings f JOIN trajectories t ON t.id = f.trajectory_id WHERE t.repo = 'o/b' AND t.issue = 572`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("finding rows = %d (%v), want 1", n, err)
+	}
+}
+
+func TestIndexAmbiguousDerivationStaysUnlinked(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "issue-572-x", "A1", derivedRecord("issue-572-x"))
+	repos := []ServedRepo{{Slug: "o/a", Dir: "/a"}, {Slug: "o/b", Dir: "/b"}}
+	oldHas := hasCommit
+	hasCommit = func(string, string) bool { return true }
+	t.Cleanup(func() { hasCommit = oldHas })
+	res, err := IndexRecords(ctx, db, root, fixedNow, repos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0].Reason, "no trajectory") {
+		t.Errorf("Skipped = %+v, want the no-trajectory skip", res.Skipped)
+	}
+	if n := runRows(t, db, `trajectory_id IS NULL AND unlinked_reason = 'no_trajectory'`); n != 1 {
+		t.Errorf("unlinked run rows = %d, want 1", n)
+	}
+	if n := rows(t, db, `1 = 1`); n != 0 {
+		t.Errorf("finding rows = %d, want 0", n)
 	}
 }
