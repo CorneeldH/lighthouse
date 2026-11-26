@@ -612,7 +612,8 @@ de steekproef.
   Interactieve sessies delen niet in.
 - **Reikwijdte over repo's.** De dispatcher bedient meerdere repo's. Hetzelfde `id` in meer repo's is
   één experiment en moet in elke repo in alle velden gelijk zijn, anders deelt hij niets in. Aandeel
-  en steekproef tellen over die repo's samen. Hooguit één experiment tegelijk geldt over alle
+  en steekproef tellen over die repo's samen. Alleen een repo die het experiment declareert doet mee:
+  de trajecten van een bediende repo zonder het blok blijven `standard`. Hooguit één experiment tegelijk geldt over alle
   bediende repo's: declareren ze experimenten met verschillende `id`'s (op verschillende of op
   hetzelfde onderdeel), dan deelt hij niets in en logt hij
   `<repo>#<issue>: <reden>`. Alles blijft dan `standard`.

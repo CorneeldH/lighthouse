@@ -897,7 +897,8 @@ days = 45
 
 **Zonder agent.** De job heeft geen poort die overslaat (elke beurt krijgt een run; de meting slaat
 zelf over wat al afgesloten is) en geen agent. De controller claimt de run en draait de meting in zijn
-eigen proces, met zijn eigen `lighthouse.db`: geen werkplek, geen instructiebestand, geen branch, geen
+eigen proces, synchroon binnen de tick (de tick gaat pas verder als de meting klaar is), met zijn
+eigen `lighthouse.db`: geen werkplek, geen instructiebestand, geen branch, geen
 PR. De meting haalt eerst `origin/<standaardbranch>` op in de checkout van de repo (de map van zijn
 `lighthouse.toml`) en leest de forge van de tick. Lukt ze, dan sluit de run als `done`; faalt ze (git,
 forge, database, of een GitLab-repo, waar `MergedPRs` nog niet bestaat), dan als `failed` met

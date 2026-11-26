@@ -1,5 +1,6 @@
 -- What a review run did and which experiment arm its trajectory was in. review_mode and reviewers
--- stay NULL for a record that does not carry them; assignment follows trajectories.assignment.
+-- stay NULL for a record that does not carry them; assignment comes from the record (standard when
+-- it has none), not from trajectories.assignment.
 ALTER TABLE review_runs ADD COLUMN review_mode TEXT;
 ALTER TABLE review_runs ADD COLUMN reviewers TEXT;       -- JSON array, e.g. ["codex","opus"]
 ALTER TABLE review_runs ADD COLUMN assignment TEXT NOT NULL DEFAULT 'standard'
