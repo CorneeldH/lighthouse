@@ -527,7 +527,8 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
   waarvan `[started_at, ended_at]` zijn `written_at` bevat; het traject komt uit `trajectory` of
   wordt herleid zoals `review-index` dat doet. Een record met `review_mode: fallback` geeft een
   rij in `setup_switches` (`reviewer`, `codex` naar `opus`, op `written_at`), uniek op
-  `(setup_id, at, field)`. Een record zonder run schrijft niets; een pas zonder records of zonder
+  `(setup_id, at, field)`, behalve onder `assignment: variant:<kind>_review=opus`: daar is de
+  Opus-only ronde de indeling en geen uitval van Codex, dus geen wissel. Een record zonder run schrijft niets; een pas zonder records of zonder
   `[controller]` laat de bestaande waarden staan.
 - **Vragen en antwoorden.** Van een afgesloten sessie (`ended_at` gezet) die aan een traject hangt,
   schrijft de collector per `AskUserQuestion` een `question`-gebeurtenis en, zodra het antwoord er

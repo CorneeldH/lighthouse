@@ -839,6 +839,35 @@ func TestCollectSetupFromReviewFallback(t *testing.T) {
 	}
 }
 
+// An Opus-only round under variant:<kind>_review=opus is recorded as fallback by assignment, not
+// by a Codex failure: no reviewer switch. A fallback under a codex variant is still a switch.
+func TestDeploymentOfOpusVariantIsNoSwitch(t *testing.T) {
+	data := t.TempDir()
+	writeReviewRecord(t, data, "plan", "issue-7-plan", 7, 5, "fallback")
+	writeReviewRecord(t, data, "spec", "issue-7-spec", 7, 6, "fallback")
+	setAssignment := func(kind, chain, assignment string) {
+		t.Helper()
+		matches, _ := filepath.Glob(filepath.Join(data, kind+"-review", chain, "*", "record.json"))
+		if len(matches) != 1 {
+			t.Fatalf("record of %s: %v", chain, matches)
+		}
+		body, err := os.ReadFile(matches[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		body = []byte(strings.Replace(string(body), `"review_mode"`, `"assignment": "`+assignment+`", "review_mode"`, 1))
+		if err := os.WriteFile(matches[0], body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	setAssignment("plan", "issue-7-plan", "variant:plan_review=opus")
+	setAssignment("spec", "issue-7-spec", "variant:spec_review=codex")
+	_, switches := deploymentOf(LoadReviews(data, nil))
+	if len(switches) != 1 || !switches[0].At.Equal(base.Add(6*time.Minute)) {
+		t.Errorf("switches = %+v, want only the fallback under the codex variant (base+6m)", switches)
+	}
+}
+
 func TestCollectReviewWithoutRunWritesNothing(t *testing.T) {
 	db := openDB(t)
 	rid := takeRun(t, db, 7, "s1", "start:7", 0, 10)

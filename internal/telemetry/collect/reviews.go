@@ -22,6 +22,7 @@ type Review struct {
 	Issue        int
 	At           time.Time // written_at
 	Mode         string    // review_mode
+	Assignment   string    // assignment of the record; "" when it has none
 	PromptHashes map[string]string
 }
 
@@ -79,6 +80,7 @@ func readReview(path, kind string, repos []review.ServedRepo) (Review, bool) {
 		ChainKey    string `json:"chain_key"`
 		ReviewedSHA string `json:"reviewed_sha"`
 		ReviewMode  string `json:"review_mode"`
+		Assignment  string `json:"assignment"`
 		WrittenAt   string `json:"written_at"`
 		IssueSpec   *struct {
 			Issue int `json:"issue"`
@@ -96,7 +98,7 @@ func readReview(path, kind string, repos []review.ServedRepo) (Review, bool) {
 	if err != nil || at.IsZero() {
 		return Review{}, false
 	}
-	r := Review{Kind: kind, At: at, Mode: doc.ReviewMode}
+	r := Review{Kind: kind, At: at, Mode: doc.ReviewMode, Assignment: doc.Assignment}
 	if t := doc.Trajectory; t != nil && t.Repo != "" && t.Issue >= 1 {
 		r.Repo, r.Issue = t.Repo, t.Issue
 	} else {
@@ -188,7 +190,9 @@ func runAt(ctx context.Context, db *sql.DB, repo string, issue int, at time.Time
 }
 
 // deploymentOf is what the reviews of a run add to its setup: the prompt hashes (a later
-// record of the same skill wins) and a reviewer switch for each fallback from Codex to Opus.
+// record of the same skill wins) and a reviewer switch for each fallback from Codex to Opus. An
+// Opus-only round under variant:<kind>_review=opus is recorded as fallback by assignment, not by a
+// Codex failure: it is no switch.
 func deploymentOf(reviews []Review) (map[string]string, []telemetry.SetupSwitch) {
 	var hashes map[string]string
 	var switches []telemetry.SetupSwitch
@@ -203,7 +207,7 @@ func deploymentOf(reviews []Review) (map[string]string, []telemetry.SetupSwitch)
 			}
 			hashes[k], latest[k] = v, r.At
 		}
-		if r.Mode == "fallback" {
+		if r.Mode == "fallback" && r.Assignment != "variant:"+r.Kind+"_review=opus" {
 			switches = append(switches, telemetry.SetupSwitch{At: r.At, Field: "reviewer", From: "codex", To: "opus"})
 		}
 	}
