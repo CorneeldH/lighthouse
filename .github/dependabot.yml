@@ -1,4 +1,4 @@
-# Gezaaid door `lighthouse init`; dit bestand is van de repo en wordt niet meer overschreven.
+# Seeded by `lighthouse init`; this file belongs to the repo and is never overwritten again.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
