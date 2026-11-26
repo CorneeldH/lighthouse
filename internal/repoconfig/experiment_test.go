@@ -37,7 +37,7 @@ func TestExperimentsFrom(t *testing.T) {
 		{"valid", valid, nil},
 		{"share above cap", block(`"e"`, `"plan_review"`, `"opus"`, "0.21", "5", `"2026-12-01"`), []string{"share"}},
 		{"share zero", block(`"e"`, `"plan_review"`, `"opus"`, "0", "5", `"2026-12-01"`), []string{"share"}},
-		{"component not assignable", block(`"e"`, `"harness"`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{"nog niet indeelbaar"}},
+		{"component not assignable", block(`"e"`, `"harness"`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{"cannot be assigned yet"}},
 		{"choice outside set", block(`"e"`, `"plan_review"`, `"gpt"`, "0.1", "5", `"2026-12-01"`), []string{"choice"}},
 		{"missing id", block("", `"plan_review"`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{"id is required"}},
 		{"missing start", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "5", ""), []string{"start"}},
@@ -51,7 +51,7 @@ func TestExperimentsFrom(t *testing.T) {
 		{"percent in id", block(`"50%d"`, `"harness"`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{`"50%d"`}},
 		{"duplicate id", valid + valid, []string{"duplicate id"}},
 		{"unknown key", valid + "bogus = 1\n", []string{"unknown key experiment.bogus"}},
-		{"collects all errors", block(`"e"`, `"harness"`, `"x"`, "0.5", "", ""), []string{"nog niet indeelbaar", "share", "sample", "start"}},
+		{"collects all errors", block(`"e"`, `"harness"`, `"x"`, "0.5", "", ""), []string{"cannot be assigned yet", "share", "sample", "start"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

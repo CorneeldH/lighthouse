@@ -87,7 +87,7 @@ func experimentsFrom(raws []rawExperiment, md toml.MetaData) ([]Experiment, erro
 		case r.Component == "":
 			fail("component is required")
 		case !ok:
-			fail("component %q is nog niet indeelbaar", r.Component)
+			fail("component %q cannot be assigned yet", r.Component)
 		case !slices.Contains(choices, r.Choice):
 			fail("choice %q is not one of %s", r.Choice, strings.Join(choices, ", "))
 		}
