@@ -132,3 +132,15 @@ func TestScheduleAcceptsArchitectureScan(t *testing.T) {
 		t.Errorf("job = %q", r.Schedules[0].Job)
 	}
 }
+
+func TestScheduleJobMeasureRecovery(t *testing.T) {
+	// Fails if measure-recovery is missing from scheduleJobs: its schedule would not load. The
+	// params stay untyped here; the job validates days (internal/scheduled/measurerecovery).
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[[schedule]]\nname = \"recovery\"\njob = \"measure-recovery\"\ncron = \"0 3 * * *\"\n\n[schedule.params]\ndays = 45\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := r.Schedules[0]; s.Job != "measure-recovery" || s.Params["days"] != int64(45) {
+		t.Errorf("schedule = %+v", s)
+	}
+}

@@ -4,6 +4,7 @@ package scheduledtest
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"sync"
 
@@ -102,6 +103,23 @@ func (j *Job) Finish(ctx context.Context, env scheduled.Env, dir string, v sched
 	j.record("Finish")
 	if j.FinishFn != nil {
 		return j.FinishFn(ctx, env, dir, v)
+	}
+	return nil
+}
+
+// DirectJob is a Job that runs in process (scheduled.Direct). Run is recorded as "Run" and
+// calls RunFn; a nil RunFn succeeds.
+type DirectJob struct {
+	Job
+	RunFn func(ctx context.Context, db *sql.DB, env scheduled.Env) error
+}
+
+var _ scheduled.Direct = (*DirectJob)(nil)
+
+func (j *DirectJob) Run(ctx context.Context, db *sql.DB, env scheduled.Env) error {
+	j.record("Run")
+	if j.RunFn != nil {
+		return j.RunFn(ctx, db, env)
 	}
 	return nil
 }

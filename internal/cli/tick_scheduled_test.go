@@ -650,3 +650,15 @@ func TestScheduledRegistryHasArchitectureScan(t *testing.T) {
 		t.Fatal("job architecture-scan is not registered")
 	}
 }
+
+// Classification: wiring. Fails if the blank import of measurerecovery is missing from the CLI:
+// the tick then logs `no job measure-recovery`, or would start an agent for it.
+func TestScheduledRegistryHasMeasureRecovery(t *testing.T) {
+	j, ok := scheduled.Lookup("measure-recovery")
+	if !ok || j.Name() != "measure-recovery" {
+		t.Fatal("job measure-recovery is not registered")
+	}
+	if _, direct := j.(scheduled.Direct); !direct {
+		t.Errorf("job measure-recovery %T is no scheduled.Direct", j)
+	}
+}

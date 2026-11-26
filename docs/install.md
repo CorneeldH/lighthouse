@@ -442,7 +442,8 @@ empty for them.
 werk na de merge hersteld moest worden, en schrijft dat in `recoveries` (een rij per PR, uniek op
 traject en PR: `merged_at`, `window_end`, `status`, `fixpr_rounds`) en `recovery_items` (een rij per
 herstel: `kind` `fix`, `revert` of `bug_issue`, met `ref` en `at`). De opdracht draait niet vanzelf;
-start haar met de hand of vanuit een eigen cron. `--days` is standaard 14, `--db` standaard de
+start haar met de hand, vanuit een eigen cron, of als geplande job `measure-recovery` (zie
+[tick.md](tick.md#job-measure-recovery)). `--days` is standaard 14, `--db` standaard de
 `lighthouse.db` van de statusmap. Repo en default branch komen uit de `lighthouse.toml` in
 `--repo-dir`; de opdracht haalt eerst `origin/<default branch>` op (mislukt dat, dan is het exit 1 en
 wordt niets geschreven) en meet op die ref.
@@ -672,7 +673,7 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh, reflect, map-planned or architecture-scan
+job  = "map-refresh"    # required; map-refresh, reflect, map-planned, architecture-scan or measure-recovery
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
@@ -693,7 +694,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 ```
 
 An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
-`reflect`, `map-planned` and `architecture-scan` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect) and [tick.md](tick.md#job-architecture-scan); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
+`reflect`, `map-planned`, `architecture-scan` and `measure-recovery` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect), [tick.md](tick.md#job-architecture-scan) and [tick.md](tick.md#job-measure-recovery); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.
