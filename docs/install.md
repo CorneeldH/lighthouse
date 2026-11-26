@@ -605,8 +605,9 @@ de steekproef.
   de steekproef, ook bij nul bevindingen; een traject dat zijn variant nog niet gebruikte telt niet.
   Telling en analyse nemen alleen runs vanaf `start`.
 - **Het traject houdt zijn indeling.** Elke latere run van het traject krijgt dezelfde indeling,
-  ook als het experiment ondertussen stopt of verandert. Trajecten van vóór deze functie
-  (`assignment` was leeg) worden bij de migratie `standard` en blijven dat. Een run krijgt zijn
+  ook als het experiment ondertussen stopt of verandert. Trajecten van vóór deze functie die al een
+  run hebben, worden bij de migratie `standard` en blijven dat; een traject zonder run (de collector
+  maakt trajecten ook vóór de eerste claim) blijft leeg tot zijn eerste claim. Een run krijgt zijn
   indeling als regel `assignment: <indeling>` in de prompt; bij `standard` ontbreekt de regel.
   Interactieve sessies delen niet in.
 - **Reikwijdte over repo's.** De dispatcher bedient meerdere repo's. Hetzelfde `id` in meer repo's is

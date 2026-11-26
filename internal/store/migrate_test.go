@@ -1168,3 +1168,36 @@ func TestMigration0014AddsReviewRunsAndTraits(t *testing.T) {
 		t.Error("component task_review: want CHECK failure")
 	}
 }
+
+var upTo14 = append(append([]string{}, upTo12...), "0013_deployment.sql", "0014_review_runs.sql")
+
+// 0015 marks a trajectory that already has a run as standard (it ran before assignments
+// existed); a trajectory without a run stays NULL: it is not assigned until its first claim.
+func TestMigrate0015AssignsOnlyTrajectoriesWithRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo14...)); err != nil {
+		t.Fatalf("migrate to 14: %v", err)
+	}
+	for _, q := range []string{
+		`INSERT INTO trajectories (id, repo, issue, created_at) VALUES (1, 'o/r', 7, 't0'), (2, 'o/r', 8, 't0')`,
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at, trajectory_id)
+			VALUES (41, 'o/r', 7, 's1', 'start', 'handoff', 'start:7', 1, 'c', '2026-01-02T00:00:00Z', 1)`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("insert at v14: %v", err)
+		}
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(append([]string{}, upTo14...), "0015_assignment.sql")...)); err != nil {
+		t.Fatalf("migrate to 15: %v", err)
+	}
+	for id, want := range map[int]sql.NullString{1: {String: "standard", Valid: true}, 2: {}} {
+		var got sql.NullString
+		if err := db.QueryRow(`SELECT assignment FROM trajectories WHERE id = ?`, id).Scan(&got); err != nil {
+			t.Fatalf("read trajectory %d: %v", id, err)
+		}
+		if got != want {
+			t.Errorf("trajectory %d assignment = %v, want %v", id, got, want)
+		}
+	}
+}
