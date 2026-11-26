@@ -3597,3 +3597,58 @@ func TestResumeDoesNotReassign(t *testing.T) {
 		t.Errorf("trajectory = %q, %q, want standard to stay", a, id)
 	}
 }
+
+// The assignment line of the prompt comes from the run (the trajectory's assignment), not from
+// what Decide proposes: a second start on a variant trajectory still carries the variant, a
+// standard trajectory carries no line, and a resume after a variant carries it too.
+func TestPromptCarriesAssignment(t *testing.T) {
+	const variant = "variant:plan_review=codex"
+	line := "\nassignment: " + variant
+
+	t.Run("second start on a variant trajectory", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+		h.env.Hash = func(string, int) float64 { return 0 }
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply first: %v", err)
+		}
+		if err := runs.Release(context.Background(), h.db, 1, runs.Returned, "", applyNow); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		h.env.Hash = func(string, int) float64 { return 1 } // Decide now proposes standard
+		second := startAction()
+		second.TriggerKey, second.CommentID = "handoff:56", 56
+		if _, err := Apply(context.Background(), h.env, []Action{second}); err != nil {
+			t.Fatalf("Apply second: %v", err)
+		}
+		if len(h.wp.spawned) != 2 || h.wp.spawned[1].Prompt != second.Prompt+line {
+			t.Errorf("spawned %+v, want the second prompt %q", h.wp.spawned, second.Prompt+line)
+		}
+	})
+	t.Run("standard has no line", func(t *testing.T) {
+		h := newHarness(t)
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != startAction().Prompt {
+			t.Errorf("spawned %+v, want the prompt unchanged", h.wp.spawned)
+		}
+	})
+	t.Run("resume after a variant", func(t *testing.T) {
+		h := newHarness(t)
+		h.env.Experiments = []experiment.Declared{testExperiment("e1", "plan_review")}
+		h.env.Hash = func(string, int) float64 { return 0 }
+		if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+			t.Fatalf("Apply start: %v", err)
+		}
+		if err := runs.Release(context.Background(), h.db, 1, runs.Question, "", applyNow); err != nil {
+			t.Fatalf("Release: %v", err)
+		}
+		if _, err := Apply(context.Background(), h.env, []Action{resumeAction()}); err != nil {
+			t.Fatalf("Apply resume: %v", err)
+		}
+		if n := len(h.wp.spawned); n != 2 || h.wp.spawned[n-1].Prompt != "the answer"+line {
+			t.Errorf("spawned %+v, want the resume prompt %q", h.wp.spawned, "the answer"+line)
+		}
+	})
+}

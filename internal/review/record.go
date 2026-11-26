@@ -665,6 +665,24 @@ type RecordInput struct {
 	Issue         *Issue
 	ShadowModel   string
 	Trajectory    *Trajectory // nil when repo or issue is unknown
+	// Assignment is "standard" (or empty) or "variant:<component>=<choice>", as the prompt of the
+	// run carried it; AssignmentApplied is whether the review followed it, required for a variant.
+	Assignment        string
+	AssignmentApplied *bool
+}
+
+// CheckAssignment is the error of an assignment the record cannot take: a form other than
+// standard or variant:..., or a variant without the note whether it was applied.
+func CheckAssignment(assignment string, applied *bool) error {
+	switch {
+	case assignment == "" || assignment == "standard":
+		return nil
+	case !strings.HasPrefix(assignment, "variant:"):
+		return fmt.Errorf("assignment %q: want standard or variant:<component>=<choice>", assignment)
+	case applied == nil:
+		return fmt.Errorf("assignment %q needs --assignment-applied=true or =false", assignment)
+	}
+	return nil
 }
 
 func closes(kind, decision string) bool { return slices.Contains(closedByKind[kind], decision) }
@@ -872,6 +890,16 @@ func BuildRecord(attemptDir string, in RecordInput, deps Deps) (*orderedjson.Obj
 		} else {
 			rec.Set("level", nil)
 		}
+	}
+	if err := CheckAssignment(in.Assignment, in.AssignmentApplied); err != nil {
+		return nil, err
+	}
+	if in.Assignment == "" || in.Assignment == "standard" {
+		rec.Set("assignment", "standard")
+		rec.Set("assignment_applied", nil)
+	} else {
+		rec.Set("assignment", in.Assignment)
+		rec.Set("assignment_applied", *in.AssignmentApplied)
 	}
 	rec.Set("rounds", json.Number(strconv.Itoa(len(order))))
 	kinds := make([]any, len(roundKinds))

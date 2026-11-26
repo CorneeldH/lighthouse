@@ -553,9 +553,14 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		}
 	}
 
+	// The line comes from the run, which holds what Take settled, never from the claim.
+	prompt := a.Prompt
+	if run.Assignment != "" && run.Assignment != "standard" {
+		prompt += "\nassignment: " + run.Assignment
+	}
 	spec := workplace.LaunchSpec{
 		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Profile: profile,
-		Prompt: a.Prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
+		Prompt: prompt, Native: a.Native, InstructionsFile: file, MCPConfig: mcpConfig,
 	}
 	outcome, reason, err := workplace.Launch(ctx, env.DB, w, run.ID, a.Branch, spec, now)
 	switch outcome {
