@@ -28,29 +28,34 @@ const standard = "standard"
 
 // Merge reduces the declared experiments to at most one. The same id in several repos is one
 // experiment and must be equal in every field. Experiments with different ids on different
-// components, or on the same component, conflict: no experiment and a note.
-func Merge(all []Declared) (active *repoconfig.Experiment, note string) {
+// components, or on the same component, conflict: no experiment and a note. repos is the set of
+// repos that declare the active experiment: only they take part, every other served repo stays
+// standard.
+func Merge(all []Declared) (active *repoconfig.Experiment, repos map[string]bool, note string) {
 	byID := map[string]repoconfig.Experiment{}
 	var first *repoconfig.Experiment
+	repos = map[string]bool{}
 	for _, d := range all {
 		e := d.Experiment
 		if prev, ok := byID[e.ID]; ok {
 			if prev != e {
-				return nil, "experiment " + strconv.Quote(e.ID) + " is declared differently across repos: no assignment"
+				return nil, nil, "experiment " + strconv.Quote(e.ID) + " is declared differently across repos: no assignment"
 			}
+			repos[d.Repo] = true
 			continue
 		}
 		byID[e.ID] = e
 		if first == nil {
 			first = &e
+			repos[d.Repo] = true
 			continue
 		}
 		if first.Component != e.Component {
-			return nil, "experiments on different components: no assignment"
+			return nil, nil, "experiments on different components: no assignment"
 		}
-		return nil, "more than one experiment on component " + strconv.Quote(e.Component) + ": no assignment"
+		return nil, nil, "more than one experiment on component " + strconv.Quote(e.Component) + ": no assignment"
 	}
-	return first, ""
+	return first, repos, ""
 }
 
 // Hash maps repo and issue to a stable value in [0,1): the top 53 bits of the first 8 bytes of

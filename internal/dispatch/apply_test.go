@@ -3579,9 +3579,25 @@ func TestStartNoAssignmentOnConflictLogs(t *testing.T) {
 	if a, id := trajectoryAssignment(t, h.db, 7); a != "standard" || id != "" {
 		t.Errorf("trajectory = %q, %q, want standard", a, id)
 	}
-	_, note := experiment.Merge(h.env.Experiments)
+	_, _, note := experiment.Merge(h.env.Experiments)
 	if note == "" || strings.Count(h.out.String(), note) != 1 {
 		t.Errorf("log %q does not hold the note %q once", h.out.String(), note)
+	}
+}
+
+// A served repo that does not declare the experiment does not take part: its start stays
+// standard, even when the draw would make it a variant.
+func TestStartNonDeclaringRepoStaysStandard(t *testing.T) {
+	h := newHarness(t)
+	other := testExperiment("e1", "plan_review")
+	other.Repo = "other/repo"
+	h.env.Experiments = []experiment.Declared{other}
+	h.env.Hash = func(string, int) float64 { return 0 }
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if a, id := trajectoryAssignment(t, h.db, 7); a != "standard" || id != "" {
+		t.Errorf("trajectory = %q, %q, want standard for a repo that does not declare e1", a, id)
 	}
 }
 

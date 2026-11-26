@@ -414,12 +414,15 @@ func (ap applier) release(ctx context.Context, a Action) error {
 }
 
 // propose is the assignment proposed for the trajectory of a start: the merged experiment of all
-// served repos, the variants it has used so far, and the draw of the trajectory. A note (a
+// served repos (standard for a repo that does not declare it), the variants it has used so far, and the draw of the trajectory. A note (a
 // conflict between declarations) is logged. Take decides: a trajectory that has an assignment
 // keeps it.
 func (ap applier) propose(ctx context.Context, a Action, now time.Time) (assignment, experimentID string, err error) {
 	env := ap.env
-	exp, note := experiment.Merge(env.Experiments)
+	exp, repos, note := experiment.Merge(env.Experiments)
+	if !repos[a.Repo] {
+		exp = nil // a repo that does not declare the experiment does not take part
+	}
 	count := 0
 	if exp != nil {
 		if count, err = experiment.VariantCount(ctx, env.DB, exp.ID, exp.Component, exp.Start); err != nil {

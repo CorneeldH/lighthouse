@@ -75,14 +75,17 @@ func TestDecideNilKeepsNote(t *testing.T) {
 
 func TestMergeSameIDAcrossRepos(t *testing.T) {
 	e := *exp(0.1)
-	got, note := Merge([]Declared{{"a/x", e}, {"b/y", e}})
+	got, repos, note := Merge([]Declared{{"a/x", e}, {"b/y", e}})
 	if note != "" || got == nil || *got != e {
 		t.Fatalf("got %v, note %q", got, note)
+	}
+	if !repos["a/x"] || !repos["b/y"] || len(repos) != 2 {
+		t.Errorf("repos = %v, want a/x and b/y", repos)
 	}
 }
 
 func TestMergeEmpty(t *testing.T) {
-	if got, note := Merge(nil); got != nil || note != "" {
+	if got, repos, note := Merge(nil); got != nil || len(repos) != 0 || note != "" {
 		t.Fatalf("got %v, note %q", got, note)
 	}
 }
@@ -90,7 +93,7 @@ func TestMergeEmpty(t *testing.T) {
 func TestMergeDifferentComponents(t *testing.T) {
 	a, b := *exp(0.1), *exp(0.1)
 	b.ID, b.Component = "e2", "spec_review"
-	got, note := Merge([]Declared{{"a/x", a}, {"b/y", b}})
+	got, _, note := Merge([]Declared{{"a/x", a}, {"b/y", b}})
 	if got != nil || note != "experiments on different components: no assignment" {
 		t.Fatalf("got %v, note %q", got, note)
 	}
@@ -99,14 +102,24 @@ func TestMergeDifferentComponents(t *testing.T) {
 func TestMergeSameComponentDifferentIDs(t *testing.T) {
 	a, b := *exp(0.1), *exp(0.1)
 	b.ID = "e2"
-	if got, note := Merge([]Declared{{"a/x", a}, {"b/y", b}}); got != nil || note == "" {
+	if got, _, note := Merge([]Declared{{"a/x", a}, {"b/y", b}}); got != nil || note == "" {
 		t.Fatalf("got %v, note %q", got, note)
 	}
 }
 
 func TestMergeSameIDDifferentFields(t *testing.T) {
 	a, b := *exp(0.1), *exp(0.2)
-	if got, note := Merge([]Declared{{"a/x", a}, {"b/y", b}}); got != nil || note == "" {
+	if got, _, note := Merge([]Declared{{"a/x", a}, {"b/y", b}}); got != nil || note == "" {
 		t.Fatalf("got %v, note %q", got, note)
+	}
+}
+
+// Only the repos that declare the active experiment take part: a repo that declares nothing is
+// not in the set.
+func TestMergeReposOnlyDeclaring(t *testing.T) {
+	e := *exp(0.1)
+	_, repos, _ := Merge([]Declared{{"a/x", e}})
+	if !repos["a/x"] || repos["b/y"] {
+		t.Errorf("repos = %v, want only a/x", repos)
 	}
 }
