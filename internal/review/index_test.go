@@ -601,3 +601,24 @@ func TestIndexAmbiguousDerivationStaysUnlinked(t *testing.T) {
 		t.Errorf("finding rows = %d, want 0", n)
 	}
 }
+
+// A record whose assignment the database cannot take is a skip of that chain, not an error that
+// aborts the index: the other chains are still written.
+func TestIndexRecordsSkipsBadAssignment(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	bad := rec(572, [3]string{"r1-f1", "MAJOR", "accept"})
+	bad["assignment"] = "variant:foo"
+	bad["assignment_applied"] = true
+	writeChain(t, root, "plan", "bad", "A1", bad)
+	writeChain(t, root, "plan", "good", "A1", rec(573))
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
+	if err != nil {
+		t.Fatalf("IndexRecords: %v, want the bad record skipped", err)
+	}
+	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0].Reason, "assignment") {
+		t.Errorf("Skipped = %+v, want one skip naming the assignment", res.Skipped)
+	}
+	if n := runRows(t, db, `1 = 1`); n != 1 || rows(t, db, `1 = 1`) != 0 {
+		t.Errorf("run rows = %d, finding rows = %d; want only the good chain's run", n, rows(t, db, `1 = 1`))
+	}
+}

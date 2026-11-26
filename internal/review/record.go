@@ -21,6 +21,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // SchemaVersion is the schema_version of the record that Write stores.
@@ -672,14 +673,16 @@ type RecordInput struct {
 }
 
 // CheckAssignment is the error of an assignment the record cannot take: a form other than
-// standard or variant:..., or a variant without the note whether it was applied.
+// standard or variant:<component>=<choice> with a component and choice that can be assigned, or a
+// variant without the note whether it was applied.
 func CheckAssignment(assignment string, applied *bool) error {
-	switch {
-	case assignment == "" || assignment == "standard":
+	if assignment == "" || assignment == "standard" {
 		return nil
-	case !strings.HasPrefix(assignment, "variant:"):
-		return fmt.Errorf("assignment %q: want standard or variant:<component>=<choice>", assignment)
-	case applied == nil:
+	}
+	if _, _, ok := repoconfig.ParseAssignment(assignment); !ok {
+		return fmt.Errorf("assignment %q: want standard or variant:<component>=<choice> (component plan_review or spec_review, choice codex or opus)", assignment)
+	}
+	if applied == nil {
 		return fmt.Errorf("assignment %q needs --assignment-applied=true or =false", assignment)
 	}
 	return nil

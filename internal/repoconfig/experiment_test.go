@@ -101,3 +101,27 @@ func TestExperimentsFromSpecReview(t *testing.T) {
 		t.Errorf("Assignment = %q", a)
 	}
 }
+
+func TestParseAssignment(t *testing.T) {
+	cases := []struct {
+		in, component, choice string
+		ok                    bool
+	}{
+		{"variant:plan_review=codex", "plan_review", "codex", true},
+		{"variant:spec_review=opus", "spec_review", "opus", true},
+		{"variant:foo", "", "", false},
+		{"variant:=codex", "", "", false},
+		{"variant:plan_review=", "", "", false},
+		{"variant:code_review=codex", "", "", false},
+		{"variant:plan_review=gpt", "", "", false},
+		{"variant:plan_review=codex=x", "", "", false},
+		{"standard", "", "", false},
+		{"", "", "", false},
+	}
+	for _, c := range cases {
+		component, choice, ok := ParseAssignment(c.in)
+		if component != c.component || choice != c.choice || ok != c.ok {
+			t.Errorf("ParseAssignment(%q) = %q, %q, %v; want %q, %q, %v", c.in, component, choice, ok, c.component, c.choice, c.ok)
+		}
+	}
+}

@@ -41,6 +41,21 @@ var experimentChoices = map[string][]string{
 	"spec_review": {"codex", "opus"},
 }
 
+// ParseAssignment splits a variant label "variant:<component>=<choice>" into its parts. ok is
+// false for any other text, including standard, and for a component or choice that cannot be
+// assigned: the same vocabulary [[experiment]] accepts.
+func ParseAssignment(s string) (component, choice string, ok bool) {
+	rest, found := strings.CutPrefix(s, "variant:")
+	if !found {
+		return "", "", false
+	}
+	component, choice, found = strings.Cut(rest, "=")
+	if !found || !slices.Contains(experimentChoices[component], choice) {
+		return "", "", false
+	}
+	return component, choice, true
+}
+
 // experimentsFrom validates the [[experiment]] blocks. It reports every problem, naming the
 // block by its position and, when it has one, its id.
 func experimentsFrom(raws []rawExperiment, md toml.MetaData) ([]Experiment, error) {

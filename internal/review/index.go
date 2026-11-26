@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
@@ -203,6 +204,12 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 	if err != nil {
 		skip("bad written_at: " + err.Error())
 		return deleteChain(ctx, db, chainPrefix, keep, res)
+	}
+	if doc.Assignment != "" && doc.Assignment != "standard" {
+		if _, _, ok := repoconfig.ParseAssignment(doc.Assignment); !ok {
+			skip(fmt.Sprintf("bad assignment %q: want standard or variant:<component>=<choice>", doc.Assignment))
+			return deleteChain(ctx, db, chainPrefix, keep, res)
+		}
 	}
 	linked := doc.Trajectory != nil && doc.Trajectory.Repo != "" && doc.Trajectory.Issue >= 1
 	repo, issue := unlinkedRepo, 0

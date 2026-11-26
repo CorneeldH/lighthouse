@@ -255,6 +255,11 @@ func TestRecordAssignmentFields(t *testing.T) {
 		{"variant not applied", variant, &no, variant, false, false},
 		{"variant without applied", variant, nil, "", nil, true},
 		{"unknown form", "codex", &yes, "", nil, true},
+		{"variant without component and choice", "variant:foo", &yes, "", nil, true},
+		{"variant with empty component", "variant:=codex", &yes, "", nil, true},
+		{"variant with empty choice", "variant:plan_review=", &yes, "", nil, true},
+		{"variant with unknown component", "variant:code_review=codex", &yes, "", nil, true},
+		{"variant with unknown choice", "variant:plan_review=gpt", &yes, "", nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
