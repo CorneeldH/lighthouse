@@ -243,8 +243,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 15 {
-		t.Errorf("user_version = %d, want 15", v)
+	if v != 16 {
+		t.Errorf("user_version = %d, want 16", v)
 	}
 }
 

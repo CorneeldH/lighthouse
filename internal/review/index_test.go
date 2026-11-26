@@ -385,3 +385,83 @@ func TestIndexLedgerWritesNoReviewRun(t *testing.T) {
 		t.Errorf("res = %+v, run rows = %d, want none", res, runRows(t, db, `1 = 1`))
 	}
 }
+
+func TestReviewersOf(t *testing.T) {
+	yes, no := true, false
+	cases := []struct {
+		name, mode, assignment string
+		applied                *bool
+		want                   string
+	}{
+		{"standard", "codex", "standard", nil, `["codex","opus"]`},
+		{"same family", "codex_same_family", "standard", nil, `["codex","opus"]`},
+		{"fallback", "fallback", "standard", nil, `["opus"]`},
+		{"variant codex applied", "codex", "variant:plan_review=codex", &yes, `["codex"]`},
+		{"variant opus applied", "codex", "variant:plan_review=opus", &yes, `["opus"]`},
+		{"variant not applied", "codex", "variant:plan_review=codex", &no, `["codex","opus"]`},
+		// Intention to treat: the trajectory stays in the variant group, the record says what ran.
+		{"fallback under variant codex", "fallback", "variant:plan_review=codex", &yes, `["opus"]`},
+	}
+	for _, c := range cases {
+		got, _ := json.Marshal(reviewersOf(c.mode, c.assignment, c.applied))
+		if string(got) != c.want {
+			t.Errorf("%s: reviewersOf = %s, want %s", c.name, got, c.want)
+		}
+	}
+}
+
+func runCols(t *testing.T, db *sql.DB) (mode, reviewers sql.NullString, assignment string, applied sql.NullInt64) {
+	t.Helper()
+	err := db.QueryRow(`SELECT review_mode, reviewers, assignment, assignment_applied FROM review_runs`).
+		Scan(&mode, &reviewers, &assignment, &applied)
+	if err != nil {
+		t.Fatalf("read review_runs: %v", err)
+	}
+	return
+}
+
+func TestIndexRecordsReviewRunColumns(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	r := rec(572)
+	r["review_mode"] = "fallback"
+	r["assignment"] = "variant:plan_review=codex"
+	r["assignment_applied"] = true
+	writeChain(t, root, "plan", "c1", "A1", r)
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	mode, reviewers, assignment, applied := runCols(t, db)
+	if mode.String != "fallback" || reviewers.String != `["opus"]` || assignment != "variant:plan_review=codex" ||
+		!applied.Valid || applied.Int64 != 1 {
+		t.Errorf("columns = %v %v %q %v; want fallback [\"opus\"] variant:plan_review=codex 1", mode, reviewers, assignment, applied)
+	}
+	if n := runRows(t, db, `finding_count = 0`); n != 1 {
+		t.Errorf("zero-finding run rows = %d, want 1", n)
+	}
+
+	r["review_mode"] = "codex"
+	r["assignment_applied"] = false
+	writeChain(t, root, "plan", "c1", "A1", r)
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	mode, reviewers, _, applied = runCols(t, db)
+	if mode.String != "codex" || reviewers.String != `["codex","opus"]` || !applied.Valid || applied.Int64 != 0 {
+		t.Errorf("after change = %v %v %v; want codex both 0", mode, reviewers, applied)
+	}
+}
+
+func TestIndexRecordsWithoutAssignmentIsStandard(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", rec(572))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	mode, reviewers, assignment, applied := runCols(t, db)
+	if assignment != "standard" || applied.Valid {
+		t.Errorf("assignment = %q, applied = %v; want standard, NULL", assignment, applied)
+	}
+	if mode.Valid || reviewers.Valid {
+		t.Errorf("mode = %v, reviewers = %v; want NULL for a record without review_mode", mode, reviewers)
+	}
+}

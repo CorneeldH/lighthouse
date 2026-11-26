@@ -171,3 +171,25 @@ func InTransactionRun(ctx context.Context, db *sql.DB, r ReviewRunRecord) (id in
 	})
 	return id, isNew, err
 }
+
+func TestRecordReviewRunAssignmentColumns(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	yes := true
+	r := reviewRun("plan:a:1", 7, "s1")
+	if _, _, err := InTransactionRun(ctx, db, r); err != nil {
+		t.Fatal(err)
+	}
+	if n := count(t, db, `SELECT count(*) FROM review_runs WHERE assignment = 'standard' AND assignment_applied IS NULL AND review_mode IS NULL AND reviewers IS NULL`); n != 1 {
+		t.Errorf("default rows = %d; want 1", n)
+	}
+	r.RecordSum, r.ReviewMode, r.Reviewers = "s2", "fallback", []string{"opus"}
+	r.Assignment, r.AssignmentApplied = "variant:plan_review=codex", &yes
+	if _, isNew, err := InTransactionRun(ctx, db, r); err != nil || isNew {
+		t.Fatalf("got isNew %v, %v; want an update", isNew, err)
+	}
+	if n := count(t, db, `SELECT count(*) FROM review_runs WHERE review_mode = 'fallback' AND reviewers = '["opus"]'
+		AND assignment = 'variant:plan_review=codex' AND assignment_applied = 1`); n != 1 {
+		t.Errorf("updated rows = %d; want 1", n)
+	}
+}

@@ -98,6 +98,28 @@ func newestAttempt(chainDir string) (attempt string, finished bool, err error) {
 	return attempt, finished, nil
 }
 
+// reviewersOf derives who reviewed from the record: a fallback ran Opus alone; otherwise Codex and
+// Opus, unless an applied variant narrowed it to one. A record without review_mode has no reviewers.
+// A fallback under variant:plan_review=codex stays in the variant group (intention to treat) and
+// says what actually ran.
+func reviewersOf(mode, assignment string, applied *bool) []string {
+	if mode == "" {
+		return nil
+	}
+	if mode == "fallback" {
+		return []string{"opus"}
+	}
+	if applied != nil && *applied {
+		switch {
+		case strings.HasPrefix(assignment, "variant:") && strings.HasSuffix(assignment, "=codex"):
+			return []string{"codex"}
+		case strings.HasPrefix(assignment, "variant:") && strings.HasSuffix(assignment, "=opus"):
+			return []string{"opus"}
+		}
+	}
+	return []string{"codex", "opus"}
+}
+
 // unlinkedRepo is the repo of a review run that belongs to no trajectory:
 // the row stores no repo, but RecordReviewRun wants a non-empty one.
 const unlinkedRepo = "-"
@@ -158,8 +180,11 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			Severity string  `json:"severity"`
 			Decision *string `json:"decision"`
 		} `json:"findings"`
-		Outcome   string `json:"outcome"`
-		WrittenAt string `json:"written_at"`
+		Outcome           string `json:"outcome"`
+		WrittenAt         string `json:"written_at"`
+		ReviewMode        string `json:"review_mode"`
+		Assignment        string `json:"assignment"`
+		AssignmentApplied *bool  `json:"assignment_applied"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		skip("unreadable record: " + err.Error())
@@ -224,6 +249,8 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 				Repo:   repo, Issue: issue, Component: kind + "_review",
 				RecordPath: recordPath, RecordSum: sum, RanAt: at,
 				Outcome: doc.Outcome, FindingCount: len(doc.Findings),
+				ReviewMode: doc.ReviewMode, Reviewers: reviewersOf(doc.ReviewMode, doc.Assignment, doc.AssignmentApplied),
+				Assignment: doc.Assignment, AssignmentApplied: doc.AssignmentApplied,
 			}); err != nil {
 				return err
 			}
