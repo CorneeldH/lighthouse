@@ -36,7 +36,7 @@ verdubbeld).
   is de enige bediende repo (`[dispatch] repos` in de hostconfig, met `forge.repo` uit zijn
   `lighthouse.toml`) waarvan de kloon `reviewed_sha` bevat. Is het issue of de repo niet eenduidig
   (de sha staat in twee repo's of in geen), dan blijft het record zoals hierboven: `no_trajectory`,
-  geen bevindingen. Zonder leesbare hostconfig herleidt hij niets.
+  geen bevindingen. Hij faalt dicht: zonder leesbare hostconfig, of als één van de bediende repo's niet laadt (fout in zijn `lighthouse.toml`, dubbele slug), herleidt hij niets, zodat een sha die ook in de weggelaten kloon staat niet naar de verkeerde repo linkt. `issue-<n>` telt alleen op een woordgrens: `reissue-5` en `issue-5bar` zijn geen verwijzing.
 - **Reviewer per bevinding.** `findings` draagt `reviewer_source` (`codex`, `fallback` of `both`) en de ernst per reviewer (`severity_codex`, `severity_fallback`), uit `source` en `severity_by_source` van de bevinding; een bevinding zonder `source` (verificatieronde) laat ze leeg. `findings.source` blijft de herkomst `plan-review-record`.
 - **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
   `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),

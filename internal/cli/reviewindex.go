@@ -28,8 +28,9 @@ func indexDataRoot(ctx context.Context, db *sql.DB) (review.IndexResult, error) 
 }
 
 // servedRepos lists the repos of the host's dispatch config with their forge.repo slug, for
-// tracing records without trajectory. A host config or repo config that cannot be read is
-// left out: tracing is best effort and then finds nothing.
+// tracing records without trajectory. Fail closed: a host config that cannot be read, or any
+// listed repo that does not resolve (load error, duplicate slug), gives nil, so no tracing: a
+// sha in a served clone and in an omitted one must not link to the wrong repo.
 func servedRepos(hostToml string) []review.ServedRepo {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
@@ -37,9 +38,10 @@ func servedRepos(hostToml string) []review.ServedRepo {
 	}
 	var out []review.ServedRepo
 	for _, l := range repoconfig.LoadAll(cfg.Repos) {
-		if l.Err == nil && l.Repo.Slug != "" {
-			out = append(out, review.ServedRepo{Slug: l.Repo.Slug, Dir: l.Path})
+		if l.Err != nil || l.Repo.Slug == "" {
+			return nil
 		}
+		out = append(out, review.ServedRepo{Slug: l.Repo.Slug, Dir: l.Path})
 	}
 	return out
 }
