@@ -616,8 +616,12 @@ de steekproef.
   `<repo>#<issue>: <reden>`. Alles blijft dan `standard`.
 - **Toepassen en vastleggen.** De skills `lighthouse-review-plan` en `lighthouse-review-spec`
   lezen de indeling en passen de keuze toe: onder `variant:plan_review=codex` draait ronde 1 zonder de
-  Opus-kant. Het reviewrecord legt de indeling vast en of die is toegepast
-  (`assignment_applied`; een interactieve review zonder indeling noteert dat ze niet is toegepast).
+  Opus-kant. Het reviewrecord legt de indeling vast en of die is toegepast (`assignment_applied`).
+  Een variant van een ander onderdeel geldt voor die review als `standard`; `write` weigert hem.
+  Een interactieve review zonder `assignment:`-regel schrijft `standard` met een lege
+  `assignment_applied`; dat de indeling niet is toegepast blijkt pas uit de join van
+  `review_runs.assignment` met `trajectories.assignment`, voor een reviewrun waarvan
+  `review_runs.component` het onderdeel van de variant van het traject is.
   Valt een `codex`-variant door de budgetcheck terug op Opus, dan blijft het traject in zijn groep
   (intention to treat); de fallback staat in `review_mode` en in `setup_switches`.
 

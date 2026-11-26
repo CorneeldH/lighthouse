@@ -134,6 +134,8 @@ round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does no
 round runs through Codex, as below.
 
 **Assignment.** Read `assignment:` from the prompt of the session; absent means `standard`.
+A variant of another component (`variant:spec_review=…`) is `standard` for
+this review: record `--assignment standard`; `write` refuses it.
 This variant runs round 1 only on Codex, so `variant:plan_review=codex` is applied as is
 (`--assignment-applied=true`); `variant:plan_review=opus` cannot be applied here (there is no Opus
 side): run Codex as usual and record `--assignment-applied=false`. The Codex budget check stays
@@ -317,11 +319,11 @@ instead of `--spec`. From inside Codex itself: `--review-mode codex_same_family`
 
 `--assignment <value> --assignment-applied=<true|false>` go to the record: `<value>` is the
 `assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
-round 1 followed it (a variant requires the flag, `standard` needs none). A non-applied assignment
-shows in the record as `assignment = standard` while the trajectory has a variant (join
-`review_runs.assignment` with `trajectories.assignment`); the record has no reason field. A non-applied assignment shows either as `assignment = standard`
-(an interactive review without the prompt line) or as `assignment_applied = 0` (a variant that this
-skill cannot apply).
+round 1 followed it (a variant requires the flag, `standard` needs none). The record has no
+reason field: a non-applied assignment shows either as `assignment = standard` in a review run
+whose `review_runs.component` is the component of the trajectory's variant (join
+`review_runs.assignment` with `trajectories.assignment`; an interactive review without the prompt
+line) or as `assignment_applied = 0` (a variant that this skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|

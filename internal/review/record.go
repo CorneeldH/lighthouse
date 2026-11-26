@@ -688,6 +688,16 @@ func CheckAssignment(assignment string, applied *bool) error {
 	return nil
 }
 
+// checkAssignmentKind is the error of a variant of another component than the review of kind:
+// such a variant does not apply here, so the skill records standard for it.
+func checkAssignmentKind(assignment, kind string) error {
+	component, _, ok := repoconfig.ParseAssignment(assignment)
+	if ok && component != kind+"_review" {
+		return fmt.Errorf("assignment %q belongs to another component than %s_review: record --assignment standard", assignment, kind)
+	}
+	return nil
+}
+
 func closes(kind, decision string) bool { return slices.Contains(closedByKind[kind], decision) }
 
 // BuildRecord reads the attempt directory and returns the record, validated: every finding
@@ -895,6 +905,9 @@ func BuildRecord(attemptDir string, in RecordInput, deps Deps) (*orderedjson.Obj
 		}
 	}
 	if err := CheckAssignment(in.Assignment, in.AssignmentApplied); err != nil {
+		return nil, err
+	}
+	if err := checkAssignmentKind(in.Assignment, kind); err != nil {
 		return nil, err
 	}
 	if in.Assignment == "" || in.Assignment == "standard" {

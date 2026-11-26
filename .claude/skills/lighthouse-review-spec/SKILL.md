@@ -276,8 +276,9 @@ and Opus*. Follow that: two background reviewers in one message, then
 is the retry in step 2 here.
 
 **Assignment (before the dispatch).** Read `assignment:` from the prompt of the session;
-absent means `standard`. Under `variant:spec_review=codex` round 1 runs only the Codex side and the
-Opus side is skipped; under `variant:spec_review=opus` it is the reverse (only the Opus side, no
+absent means `standard`. A variant of another component (`variant:plan_review=…`)
+is `standard` for this review: record `--assignment standard`; `write` refuses it. Under
+`variant:spec_review=codex` round 1 runs only the Codex side and the Opus side is skipped; under `variant:spec_review=opus` it is the reverse (only the Opus side, no
 Codex). `standard` keeps the pair. The Codex budget check stays the hard limit: if Codex falls
 back to Opus, the assignment stays `variant:…` (intention to treat) and the record gets
 `--assignment-applied=true` with `--review-mode fallback`. An interactive review without an
@@ -457,11 +458,11 @@ The verification rounds on Opus do not change `--review-mode`. Without a pair no
 
 `--assignment <value> --assignment-applied=<true|false>` go to the record: `<value>` is the
 `assignment:` line of the prompt (`standard` when absent), and `--assignment-applied` says whether
-round 1 followed it (a variant requires the flag, `standard` needs none). A non-applied assignment
-shows in the record as `assignment = standard` while the trajectory has a variant (join
-`review_runs.assignment` with `trajectories.assignment`); the record has no reason field. A non-applied assignment shows either as `assignment = standard`
-(an interactive review without the prompt line) or as `assignment_applied = 0` (a variant that this
-skill cannot apply).
+round 1 followed it (a variant requires the flag, `standard` needs none). The record has no
+reason field: a non-applied assignment shows either as `assignment = standard` in a review run
+whose `review_runs.component` is the component of the trajectory's variant (join
+`review_runs.assignment` with `trajectories.assignment`; an interactive review without the prompt
+line) or as `assignment_applied = 0` (a variant that this skill cannot apply).
 
 | exit | Meaning | You do |
 |---|---|---|

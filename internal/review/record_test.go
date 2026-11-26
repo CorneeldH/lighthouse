@@ -260,6 +260,8 @@ func TestRecordAssignmentFields(t *testing.T) {
 		{"variant with empty choice", "variant:plan_review=", &yes, "", nil, true},
 		{"variant with unknown component", "variant:code_review=codex", &yes, "", nil, true},
 		{"variant with unknown choice", "variant:plan_review=gpt", &yes, "", nil, true},
+		// A variant of another component than this review's kind is rejected, not recorded.
+		{"variant of another component", "variant:spec_review=codex", &yes, "", nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
