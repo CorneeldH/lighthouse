@@ -1,6 +1,7 @@
 package initcmd
 
 import (
+	"fmt"
 	"path"
 	"sort"
 	"strings"
@@ -85,4 +86,59 @@ func skippedPath(f string) bool {
 		}
 	}
 	return false
+}
+
+const dependabotPath = ".github/dependabot.yml"
+
+// lighthouseWorkflows is what Dependabot must leave alone: the installed workflows are
+// manifest units with pinned actions, and a bump would make the installation locally
+// modified.
+const lighthouseWorkflows = ".github/workflows/lighthouse-*.yml"
+
+// renderDependabot writes the dependabot.yml for eco, sorted by name: weekly, one group.
+func renderDependabot(eco []ecosystem) []byte {
+	eco = append([]ecosystem(nil), eco...)
+	sort.Slice(eco, func(i, j int) bool { return eco[i].Name < eco[j].Name })
+	var b strings.Builder
+	b.WriteString("# Gezaaid door `lighthouse init`; dit bestand is van de repo en wordt niet meer overschreven.\n")
+	b.WriteString("version: 2\nupdates:\n")
+	for _, e := range eco {
+		fmt.Fprintf(&b, "  - package-ecosystem: %q\n", e.Name)
+		if e.Name == "github-actions" {
+			b.WriteString("    directory: \"/\"\n")
+			fmt.Fprintf(&b, "    exclude-paths:\n      - %q\n", lighthouseWorkflows)
+		} else {
+			b.WriteString("    directories:\n")
+			for _, d := range e.Dirs {
+				fmt.Fprintf(&b, "      - %q\n", d)
+			}
+		}
+		b.WriteString("    schedule:\n      interval: \"weekly\"\n")
+		b.WriteString("    groups:\n      all:\n        patterns:\n          - \"*\"\n")
+	}
+	return []byte(b.String())
+}
+
+// dependabotPlan seeds .github/dependabot.yml into the plan, once: an existing file is the
+// project's and is never written, also with --force. Detection reads the disk before
+// apply, so workflows that this run installs are not counted yet.
+func dependabotPlan(root string, o Options, load func(string) (*planned, error)) error {
+	p, err := load(dependabotPath)
+	if err != nil {
+		return err
+	}
+	if p.existed {
+		_, _ = fmt.Fprintf(o.Err, "dependabot: %s exists; left as it is\n", dependabotPath)
+		return nil
+	}
+	eco, err := detectEcosystems(root)
+	if err != nil {
+		return err
+	}
+	if len(eco) == 0 {
+		_, _ = fmt.Fprintln(o.Err, "dependabot: no ecosystems found; nothing seeded")
+		return nil
+	}
+	p.new, p.mode = renderDependabot(eco), 0o644
+	return nil
 }

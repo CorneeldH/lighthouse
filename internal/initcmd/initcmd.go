@@ -285,7 +285,7 @@ func execute(o Options) error {
 		}
 	}
 
-	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel, memoryStand: resolved.Stand("memory-gate")}
+	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, dependabot: kind == "github", directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel, memoryStand: resolved.Stand("memory-gate")}
 	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, seeds)
 	if err != nil {
 		return err
@@ -480,6 +480,7 @@ type seeding struct {
 	labelsPath         string // "" without --labels
 	labelsTemplate     []byte
 	direction          bool // wantsDirection
+	dependabot         bool // the forge is github
 	directionTemplates map[string][]byte
 	writeLevel         string       // the level to write into lighthouse.toml, "" when it stays
 	memoryStand        levels.Stand // the stand of memory-gate; on when no level names it
@@ -648,6 +649,12 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	}
 	if seeds.direction {
 		if err := directionPlan(root, o, seeds.directionTemplates, headingsOf(desired), load); err != nil {
+			return nil, err
+		}
+	}
+
+	if seeds.dependabot {
+		if err := dependabotPlan(root, o, load); err != nil {
 			return nil, err
 		}
 	}

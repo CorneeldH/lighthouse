@@ -2,7 +2,12 @@ package initcmd
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
+
+	"github.com/CorneeldH/lighthouse/internal/manifest"
 )
 
 func writeAll(t *testing.T, root string, rels ...string) {
@@ -67,5 +72,125 @@ func TestDetectEcosystemsDocker(t *testing.T) {
 	want := []ecosystem{{Name: "docker", Dirs: []string{"/", "/svc"}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestRenderDependabot(t *testing.T) {
+	got := string(renderDependabot([]ecosystem{
+		{Name: "gomod", Dirs: []string{"/", "/web"}},
+		{Name: "github-actions", Dirs: []string{"/"}},
+	}))
+	var doc struct {
+		Version int `yaml:"version"`
+		Updates []struct {
+			Ecosystem    string   `yaml:"package-ecosystem"`
+			Directory    string   `yaml:"directory"`
+			Directories  []string `yaml:"directories"`
+			ExcludePaths []string `yaml:"exclude-paths"`
+			Schedule     struct {
+				Interval string `yaml:"interval"`
+			} `yaml:"schedule"`
+			Groups map[string]struct {
+				Patterns []string `yaml:"patterns"`
+			} `yaml:"groups"`
+		} `yaml:"updates"`
+	}
+	if err := yaml.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("not YAML: %v\n%s", err, got)
+	}
+	if doc.Version != 2 || len(doc.Updates) != 2 {
+		t.Fatalf("version %d, %d updates\n%s", doc.Version, len(doc.Updates), got)
+	}
+	ga, gm := doc.Updates[0], doc.Updates[1]
+	if ga.Ecosystem != "github-actions" || gm.Ecosystem != "gomod" {
+		t.Fatalf("order: %s, %s", ga.Ecosystem, gm.Ecosystem)
+	}
+	if ga.Directory != "/" || len(ga.Directories) != 0 {
+		t.Errorf("github-actions directory %q %v", ga.Directory, ga.Directories)
+	}
+	if !reflect.DeepEqual(ga.ExcludePaths, []string{".github/workflows/lighthouse-*.yml"}) {
+		t.Errorf("github-actions exclude-paths %v", ga.ExcludePaths)
+	}
+	if gm.Directory != "" || !reflect.DeepEqual(gm.Directories, []string{"/", "/web"}) || len(gm.ExcludePaths) != 0 {
+		t.Errorf("gomod %q %v %v", gm.Directory, gm.Directories, gm.ExcludePaths)
+	}
+	for _, u := range doc.Updates {
+		if u.Schedule.Interval != "weekly" || !reflect.DeepEqual(u.Groups["all"].Patterns, []string{"*"}) {
+			t.Errorf("%s: schedule %q groups %v", u.Ecosystem, u.Schedule.Interval, u.Groups)
+		}
+	}
+	if !strings.HasPrefix(got, "# ") || !strings.Contains(got, "lighthouse init") {
+		t.Errorf("no leading comment:\n%s", got)
+	}
+}
+
+func githubRepo(t *testing.T) string {
+	t.Helper()
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "https://github.com/x/y.git")
+	return root
+}
+
+func TestInitSeedsDependabot(t *testing.T) {
+	root := githubRepo(t)
+	write(t, root, "go.mod", "module x\n")
+	mustRun(t, root, yes)
+	if !strings.Contains(read(t, root, dependabotPath), `package-ecosystem: "gomod"`) {
+		t.Fatalf("dependabot.yml = %q", read(t, root, dependabotPath))
+	}
+	if strings.Contains(read(t, root, manifest.Path), "dependabot") {
+		t.Error("dependabot.yml is in the manifest")
+	}
+}
+
+func TestInitSeedsNothingWithoutEcosystems(t *testing.T) {
+	root := githubRepo(t)
+	r := mustRun(t, root, yes)
+	if exists(root, dependabotPath) {
+		t.Error("dependabot.yml seeded in an empty repo")
+	}
+	if !strings.Contains(r.err, "dependabot: no ecosystems found; nothing seeded") {
+		t.Errorf("stderr = %q", r.err)
+	}
+}
+
+func TestUpgradeLeavesExistingDependabot(t *testing.T) {
+	root := githubRepo(t)
+	write(t, root, "go.mod", "module x\n")
+	mustRun(t, root, yes)
+	for _, mod := range []func(*Options){upgrade, all(upgrade, force)} {
+		write(t, root, dependabotPath, "# mijn\n")
+		r := mustRun(t, root, all(yes, mod))
+		if got := read(t, root, dependabotPath); got != "# mijn\n" {
+			t.Errorf("dependabot.yml = %q", got)
+		}
+		if n := strings.Count(r.err, "dependabot: .github/dependabot.yml exists; left as it is\n"); n != 1 {
+			t.Errorf("stderr has the line %d times: %q", n, r.err)
+		}
+	}
+}
+
+func TestDependabotSkippedOnGitLab(t *testing.T) {
+	root := newRepo(t)
+	gitIn(t, root, "remote", "add", "origin", "https://gitlab.com/x/y.git")
+	write(t, root, "go.mod", "module x\n")
+	r := mustRun(t, root, yes)
+	if exists(root, dependabotPath) || strings.Contains(r.err, "dependabot:") {
+		t.Errorf("gitlab: exists %v, stderr %q", exists(root, dependabotPath), r.err)
+	}
+}
+
+func TestSecondUpgradeNoChanges(t *testing.T) {
+	root := githubRepo(t)
+	write(t, root, "go.mod", "module x\n")
+	mustRun(t, root, yes)
+	mustRun(t, root, all(yes, upgrade))
+	before := snapshot(t, root)
+	r := mustRun(t, root, all(yes, upgrade))
+	if r.out != "No changes.\n" {
+		t.Errorf("second upgrade: %q", r.out)
+	}
+	if !sameSnapshot(before, snapshot(t, root)) {
+		t.Error("second upgrade changed files")
 	}
 }
