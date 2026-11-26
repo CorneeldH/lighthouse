@@ -3,17 +3,20 @@
 `lighthouse init` zaait een `.github/dependabot.yml` met één blok per ecosysteem dat het in de repo
 vindt. Het bestand is daarna van de repo: `init` en `init --upgrade` laten een bestaand bestand
 staan (`dependabot: .github/dependabot.yml exists; left as it is`) en overschrijven het nooit, ook niet
-met `--force`.
+met `--force`. Ook een bestaand `.github/dependabot.yaml` geldt als de config van de repo: daarnaast
+zaait `init` niets, en de regel noemt dan dat pad.
 
 ## Welke ecosystemen
 
-`init` kijkt naar de bestanden die git kent (`git ls-files`, dus niets uit `.gitignore`) en slaat
-paden over met `testdata/`, `node_modules/` of `vendor/` erin. Per ecosysteem met een manifest komt
+`init` kijkt naar de bestanden die git kent: de gevolgde bestanden en de nieuwe die niet in `.gitignore`
+staan. De mappen die lighthouse zelf installeert (`.claude/`, `.agents/`, `.lighthouse/`) tellen niet
+mee, en paden met `testdata/`, `node_modules/` of `vendor/` erin worden overgeslagen. Per ecosysteem met een manifest komt
 één blok:
 
-- `github-actions` in `/`, zodra er een bestand onder `.github/workflows/` staat, of een `action.yml`
-  of `action.yaml` in de root. `.github/workflows/lighthouse-*.yml` valt buiten het blok
-  (`exclude-paths`): `init --upgrade` beheert die bestanden zelf.
+- `github-actions` in `/`, zodra er een eigen `.yml`- of `.yaml`-bestand onder `.github/workflows/` staat, of een
+  `action.yml` of `action.yaml` in de root. De workflows die lighthouse installeert
+  (`.github/workflows/lighthouse-*.yml`) tellen niet mee en staan in het blok onder `exclude-paths`:
+  `init --upgrade` beheert die bestanden zelf.
 - `gomod` per map met een `go.mod`.
 - `npm` per map met een `package.json`.
 - `uv` per map met een `uv.lock`.
@@ -36,9 +39,9 @@ sleutel, haal dan het blok `exclude-paths` weg.
 
 ## Self-hosted workflows
 
-Een Dependabot-PR draait niet met de secrets en runners van een gewone PR. Een workflow met
-`runs-on: self-hosted` waarin `dependabot[bot]` nergens voorkomt, laat zo'n PR wachten op een runner
-die hij niet kan gebruiken. `init` waarschuwt daarvoor met `runs on a self-hosted runner`.
+Een workflow met `runs-on: self-hosted` waarin `dependabot[bot]` nergens voorkomt, stuurt ook een
+Dependabot-PR naar de self-hosted runner. `init` waarschuwt daarvoor met
+`runs on a self-hosted runner` en noemt de guard die je kunt toevoegen.
 
 De waarschuwing heeft een grens:
 
@@ -56,10 +59,10 @@ gehost zijn. Voor andere repos geeft alleen de waarschuwing dat inzicht.
 
 ## Detectie vóór `apply`
 
-`init` leest de schijf voordat het schrijft. Een repo die nog geen workflow heeft en alleen `[ci]`
-krijgt, ziet in de eerste run geen `github-actions`-blok, want de workflow bestaat dan nog niet. De
-tweede `lighthouse init --upgrade` ziet hem wel; omdat het bestand dan al bestaat, voeg je dat blok
-met de hand toe, of je verwijdert het bestand en laat het opnieuw zaaien.
+`init` leest de schijf voordat het schrijft. Alleen je eigen workflows tellen voor `github-actions`:
+de workflows die lighthouse zelf installeert worden overgeslagen, want het blok sluit ze toch uit. Een
+repo met alleen `lighthouse-*.yml` krijgt dus geen `github-actions`-blok; voeg je later een eigen
+workflow toe, verwijder dan het bestand en laat het opnieuw zaaien, of voeg het blok met de hand toe.
 
 ## Bekende beperking: de changelog-job
 
