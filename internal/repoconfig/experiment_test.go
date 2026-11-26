@@ -43,6 +43,12 @@ func TestExperimentsFrom(t *testing.T) {
 		{"missing start", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "5", ""), []string{"start"}},
 		{"missing sample", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "", `"2026-12-01"`), []string{"sample"}},
 		{"bad start", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "5", `"1 dec"`), []string{"start"}},
+		{"spec_review bad choice", block(`"e"`, `"spec_review"`, `"gpt"`, "0.1", "5", `"2026-12-01"`), []string{"choice"}},
+		{"share NaN", block(`"e"`, `"plan_review"`, `"opus"`, "nan", "5", `"2026-12-01"`), []string{"share"}},
+		{"blank component", block(`"e"`, `""`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{"component is required"}},
+		{"sample zero", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "0", `"2026-12-01"`), []string{"sample must be at least 1"}},
+		{"sample negative", block(`"e"`, `"plan_review"`, `"opus"`, "0.1", "-3", `"2026-12-01"`), []string{"sample must be at least 1"}},
+		{"percent in id", block(`"50%d"`, `"harness"`, `"opus"`, "0.1", "5", `"2026-12-01"`), []string{`"50%d"`}},
 		{"duplicate id", valid + valid, []string{"duplicate id"}},
 		{"unknown key", valid + "bogus = 1\n", []string{"unknown key experiment.bogus"}},
 		{"collects all errors", block(`"e"`, `"harness"`, `"x"`, "0.5", "", ""), []string{"nog niet indeelbaar", "share", "sample", "start"}},
@@ -83,5 +89,15 @@ func TestLoadExperiments(t *testing.T) {
 	}
 	if len(r.Experiments) != 1 || r.Experiments[0].Choice != "codex" {
 		t.Errorf("experiments: %+v", r.Experiments)
+	}
+}
+
+func TestExperimentsFromSpecReview(t *testing.T) {
+	got, err := decodeExperiments(t, "[[experiment]]\nid = \"e\"\ncomponent = \"spec_review\"\nchoice = \"codex\"\nshare = 0.1\nsample = 5\nstart = \"2026-12-01\"\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a := got[0].Assignment(); a != "variant:spec_review=codex" {
+		t.Errorf("Assignment = %q", a)
 	}
 }

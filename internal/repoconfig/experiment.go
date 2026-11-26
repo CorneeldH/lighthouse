@@ -38,6 +38,7 @@ const maxExperimentShare = 0.20
 // experimentChoices maps each component that can be assigned to its allowed choices.
 var experimentChoices = map[string][]string{
 	"plan_review": {"codex", "opus"},
+	"spec_review": {"codex", "opus"},
 }
 
 // experimentsFrom validates the [[experiment]] blocks. It reports every problem, naming the
@@ -56,7 +57,9 @@ func experimentsFrom(raws []rawExperiment, md toml.MetaData) ([]Experiment, erro
 		if r.ID != "" {
 			at = fmt.Sprintf("experiment[%d] %q", i, r.ID)
 		}
-		fail := func(format string, a ...any) { errs = append(errs, fmt.Errorf(at+": "+format, a...)) }
+		fail := func(format string, a ...any) {
+			errs = append(errs, fmt.Errorf("%s: %s", at, fmt.Sprintf(format, a...)))
+		}
 		switch {
 		case r.ID == "":
 			fail("id is required")
@@ -77,7 +80,7 @@ func experimentsFrom(raws []rawExperiment, md toml.MetaData) ([]Experiment, erro
 		switch {
 		case r.Share == nil:
 			fail("share is required")
-		case *r.Share <= 0 || *r.Share > maxExperimentShare:
+		case !(*r.Share > 0 && *r.Share <= maxExperimentShare): // also rejects NaN
 			fail("share %v must be above 0 and at most %v", *r.Share, maxExperimentShare)
 		default:
 			e.Share = *r.Share
