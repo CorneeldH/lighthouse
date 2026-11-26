@@ -141,6 +141,8 @@ What `init` writes, all of it on the diff first:
   Code reads the rules through that line: if you already have a `CLAUDE.md`, or only an
   `AGENTS.md`, add `@AGENTS.md` to `CLAUDE.md` yourself.
 - `.github/pull_request_template.md` and `.github/workflows/lighthouse-<name>.yml`.
+- `.github/dependabot.yml`, one block per ecosystem found, only when the file does not exist; see
+  [Dependabot](dependabot.md).
 - `lighthouse.toml`: the keys that are missing, see below. Existing keys stay as they are.
 
 Each of these places, and whether `init` adds it or edits a file of yours, is on [the repo map](site/repo.html) (also online: [Your repo after init](https://corneeldh.github.io/lighthouse/repo.html)).
