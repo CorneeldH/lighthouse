@@ -7,15 +7,21 @@ met `--force`.
 
 ## Welke ecosystemen
 
-`init` kijkt naar de bestanden die git kent (`git ls-files`, dus niets uit `.gitignore` en niets onder
-`testdata/`) en maakt een blok voor elk ecosysteem met een manifest:
+`init` kijkt naar de bestanden die git kent (`git ls-files`, dus niets uit `.gitignore`) en slaat
+paden over met `testdata/`, `node_modules/` of `vendor/` erin. Per ecosysteem met een manifest komt
+één blok:
 
-- `github-actions` in `/`, zodra er een workflow staat of `init` er een schrijft (`[ci]`).
-  `.github/workflows/lighthouse-*.yml` valt buiten het blok (`exclude-paths`): `init --upgrade`
-  beheert die bestanden zelf.
-- `gomod`, `npm` en `uv` per map met een `go.mod`, `package.json` of `pyproject.toml`/`uv.lock`;
-  in een monorepo staan alle mappen onder één blok (`directories`).
-- `docker` per map met een `Dockerfile`.
+- `github-actions` in `/`, zodra er een bestand onder `.github/workflows/` staat, of een `action.yml`
+  of `action.yaml` in de root. `.github/workflows/lighthouse-*.yml` valt buiten het blok
+  (`exclude-paths`): `init --upgrade` beheert die bestanden zelf.
+- `gomod` per map met een `go.mod`.
+- `npm` per map met een `package.json`.
+- `uv` per map met een `uv.lock`.
+- `pip` per map met een `requirements*.txt` (elk bestand dat met `requirements` begint), `Pipfile` of
+  `setup.py`, en per map met een `pyproject.toml` zonder `uv.lock`.
+- `docker` per map met een `Dockerfile` of `Dockerfile.*`.
+
+Alle mappen van een ecosysteem staan onder één blok (`directories`).
 
 Elk blok draait wekelijks en heeft één groep `all` die alle updates van het blok in één PR bundelt.
 
@@ -36,9 +42,10 @@ die hij niet kan gebruiken. `init` waarschuwt daarvoor met `runs on a self-hoste
 
 De waarschuwing heeft een grens:
 
-- Alleen de letterlijke `self-hosted` in een `runs-on:`-regel telt (ook in een lijst tussen
-  `[` en `]`). De blokvorm (`runs-on:` en op de volgende regel `- self-hosted`), custom labels,
-  runner-groepen en expressies worden niet herkend.
+- Alleen een `runs-on:`-regel met de letterlijke `self-hosted` telt, ook in een lijst tussen `[` en
+  `]` of in een expressie die de letterlijke tekst bevat. De blokvorm (`runs-on:` en op de volgende
+  regel `- self-hosted`), custom labels, runner-groepen en expressies zonder de letterlijke
+  `self-hosted` worden niet herkend.
 - Commentaar telt niet mee.
 - De guard wordt per bestand gezocht: staat `dependabot[bot]` ergens in het bestand, dan geldt het
   bestand als bewaakt.
@@ -59,4 +66,4 @@ met de hand toe, of je verwijdert het bestand en laat het opnieuw zaaien.
 Dependabot-PR's maken de `changelog`-job van CI rood, zolang die geen uitzondering voor
 `dependabot/*` kent (`ci.yml`, regels 57-87): de job eist een fragment in `changelog.d/` dat een bot
 niet schrijft. Dat is een wijziging in een workflow, voor de workflow-pusher, en valt buiten
-[issue 617](https://github.com/CorneeldH/lighthouse/issues/617). Een vervolg-issue legt dat vast.
+issue 617. Een vervolg-issue legt dat vast.
