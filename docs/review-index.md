@@ -41,7 +41,12 @@ verdubbeld).
 - **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
   `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),
   pad en hash van het record, `ran_at` (`written_at`), `outcome` (`converged`, `round_limit` of
-  `aborted`) en `finding_count` (ook 0), `review_mode`, `reviewers` (JSON-array, bijvoorbeeld `["codex","opus"]`) en de indeling (`assignment`, standaard `standard`, en `assignment_applied`, leeg zonder veld in het record). Een nieuwere poging vervangt de rij van de oudere, en
+  `aborted`) en `finding_count` (ook 0), `review_mode`, `reviewers` (JSON-array) en de indeling
+  (`assignment`, standaard `standard`, en `assignment_applied`, leeg zonder veld in het record).
+  `reviewers` volgt de werkelijke samenstelling van ronde 1: `["opus"]` bij `review_mode =
+  fallback`, `["codex","opus"]` bij een gepaarde ronde 1 (`paired` in het record), anders
+  `["codex"]`. Een record zonder `review_mode` laat `review_mode` en `reviewers` leeg (NULL). Een
+  nieuwere poging vervangt de rij van de oudere, en
   dezelfde hash verandert niets. Per keten gebeurt het verwijderen van oude rijen, het schrijven
   van de run en het schrijven van de bevindingen in één transactie: bij een fout blijven de rijen
   van de vorige poging staan. Een onleesbaar record of een foute `written_at` blijft een

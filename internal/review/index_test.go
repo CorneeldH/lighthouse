@@ -386,24 +386,25 @@ func TestIndexLedgerWritesNoReviewRun(t *testing.T) {
 	}
 }
 
+// reviewersOf follows the real composition of round 1 in the record: a fallback ran Opus alone, a
+// paired round 1 ran Codex and Opus, any other Codex round ran Codex alone (the agents skill,
+// Opus failed, or a codex variant that skipped the Opus side).
 func TestReviewersOf(t *testing.T) {
-	yes, no := true, false
 	cases := []struct {
-		name, mode, assignment string
-		applied                *bool
-		want                   string
+		name, mode string
+		paired     bool
+		want       string
 	}{
-		{"standard", "codex", "standard", nil, `["codex","opus"]`},
-		{"same family", "codex_same_family", "standard", nil, `["codex","opus"]`},
-		{"fallback", "fallback", "standard", nil, `["opus"]`},
-		{"variant codex applied", "codex", "variant:plan_review=codex", &yes, `["codex"]`},
-		{"variant opus applied", "codex", "variant:plan_review=opus", &yes, `["opus"]`},
-		{"variant not applied", "codex", "variant:plan_review=codex", &no, `["codex","opus"]`},
-		// Intention to treat: the trajectory stays in the variant group, the record says what ran.
-		{"fallback under variant codex", "fallback", "variant:plan_review=codex", &yes, `["opus"]`},
+		{"paired", "codex", true, `["codex","opus"]`},
+		{"same family paired", "codex_same_family", true, `["codex","opus"]`},
+		{"codex only (agents skill, Opus failed, variant codex)", "codex", false, `["codex"]`},
+		{"same family alone", "codex_same_family", false, `["codex"]`},
+		// An Opus-only round: a Codex failure or variant:…=opus, both recorded as fallback.
+		{"fallback", "fallback", false, `["opus"]`},
+		{"no review_mode", "", true, `null`},
 	}
 	for _, c := range cases {
-		got, _ := json.Marshal(reviewersOf(c.mode, c.assignment, c.applied))
+		got, _ := json.Marshal(reviewersOf(c.mode, c.paired))
 		if string(got) != c.want {
 			t.Errorf("%s: reviewersOf = %s, want %s", c.name, got, c.want)
 		}
@@ -441,6 +442,7 @@ func TestIndexRecordsReviewRunColumns(t *testing.T) {
 
 	r["review_mode"] = "codex"
 	r["assignment_applied"] = false
+	r["paired"] = true
 	writeChain(t, root, "plan", "c1", "A1", r)
 	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
 		t.Fatal(err)
@@ -448,6 +450,16 @@ func TestIndexRecordsReviewRunColumns(t *testing.T) {
 	mode, reviewers, _, applied = runCols(t, db)
 	if mode.String != "codex" || reviewers.String != `["codex","opus"]` || !applied.Valid || applied.Int64 != 0 {
 		t.Errorf("after change = %v %v %v; want codex both 0", mode, reviewers, applied)
+	}
+
+	// A codex round 1 without a pair (the agents skill writes the same review_mode) is Codex alone.
+	r["paired"] = false
+	writeChain(t, root, "plan", "c1", "A1", r)
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, reviewers, _, _ = runCols(t, db); reviewers.String != `["codex"]` {
+		t.Errorf("unpaired codex reviewers = %v, want [\"codex\"]", reviewers)
 	}
 }
 

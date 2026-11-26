@@ -99,26 +99,20 @@ func newestAttempt(chainDir string) (attempt string, finished bool, err error) {
 	return attempt, finished, nil
 }
 
-// reviewersOf derives who reviewed from the record: a fallback ran Opus alone; otherwise Codex and
-// Opus, unless an applied variant narrowed it to one. A record without review_mode has no reviewers.
-// A fallback under variant:plan_review=codex stays in the variant group (intention to treat) and
-// says what actually ran.
-func reviewersOf(mode, assignment string, applied *bool) []string {
-	if mode == "" {
+// reviewersOf derives who reviewed round 1 from the record's real composition: a fallback ran Opus
+// alone (a Codex failure, or variant:…=opus recorded as fallback); a paired round 1 ran Codex and
+// Opus; any other Codex round ran Codex alone (the agents skill, an Opus side that failed, or
+// variant:…=codex that skipped it). A record without review_mode has no reviewers.
+func reviewersOf(mode string, paired bool) []string {
+	switch {
+	case mode == "":
 		return nil
-	}
-	if mode == "fallback" {
+	case mode == "fallback":
 		return []string{"opus"}
+	case paired:
+		return []string{"codex", "opus"}
 	}
-	if applied != nil && *applied {
-		switch {
-		case strings.HasPrefix(assignment, "variant:") && strings.HasSuffix(assignment, "=codex"):
-			return []string{"codex"}
-		case strings.HasPrefix(assignment, "variant:") && strings.HasSuffix(assignment, "=opus"):
-			return []string{"opus"}
-		}
-	}
-	return []string{"codex", "opus"}
+	return []string{"codex"}
 }
 
 // unlinkedRepo is the repo of a review run that belongs to no trajectory:
@@ -194,6 +188,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 		Outcome           string `json:"outcome"`
 		WrittenAt         string `json:"written_at"`
 		ReviewMode        string `json:"review_mode"`
+		Paired            bool   `json:"paired"`
 		Assignment        string `json:"assignment"`
 		AssignmentApplied *bool  `json:"assignment_applied"`
 	}
@@ -274,7 +269,7 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 				Repo:   repo, Issue: issue, Component: kind + "_review",
 				RecordPath: recordPath, RecordSum: sum, RanAt: at,
 				Outcome: doc.Outcome, FindingCount: len(doc.Findings),
-				ReviewMode: doc.ReviewMode, Reviewers: reviewersOf(doc.ReviewMode, doc.Assignment, doc.AssignmentApplied),
+				ReviewMode: doc.ReviewMode, Reviewers: reviewersOf(doc.ReviewMode, doc.Paired),
 				Assignment: doc.Assignment, AssignmentApplied: doc.AssignmentApplied,
 			}); err != nil {
 				return err
