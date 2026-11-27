@@ -2,10 +2,13 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -25,7 +28,7 @@ func newCompareReviewersCommand() *cobra.Command {
 			"of their trajectories in lighthouse.db, and prints a markdown report: records kept and\n" +
 			"dropped, findings per source, the 90% test with its Wilson interval, and a table per\n" +
 			"feature class. A class with fewer than 10 trajectories per group gets `geen conclusie`.\n" +
-			"Only reads; it changes no record and no model, skill or harness.\n\n" +
+			"Opens the database read-only (no migration, no file is created); it changes no record and no model, skill or harness.\n\n" +
 			"Exit 0 measured | 1 read or database error | 2 wrong usage.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
@@ -50,8 +53,11 @@ func newCompareReviewersCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			st, err := store.OpenShared(ctx, dbPath)
+			st, err := store.OpenReadOnly(ctx, dbPath)
 			if err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					return fmt.Errorf("no database at %s: run `lighthouse review-index` first: %w", dbPath, err)
+				}
 				return err
 			}
 			defer func() { _ = st.Close() }()
@@ -62,6 +68,9 @@ func newCompareReviewersCommand() *cobra.Command {
 			ts := make([]*telreport.Trajectory, len(ds.Trajectories))
 			for i := range ds.Trajectories {
 				ts[i] = &ds.Trajectories[i]
+			}
+			if len(ds.Missing) > 0 {
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Let op: tabellen ontbreken in de database (%s); het herstel na merge is niet gemeten.\n\n", strings.Join(ds.Missing, ", "))
 			}
 			printComparison(cmd.OutOrStdout(), kept, dropped, compare.Tally(kept), compare.ByClass(kept, ts))
 			return nil
