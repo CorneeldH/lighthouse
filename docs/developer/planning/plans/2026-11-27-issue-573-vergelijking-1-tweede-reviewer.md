@@ -48,11 +48,11 @@
 
 **Interfaces:**
 - Consumeert: `newestAttempt`-logica uit `internal/review/index.go` (exporteer een dunne helper in `internal/review` of dupliceer niet: maak `review.NewestRecordPath(chainDir string) (path string, ok bool, err error)` en laat `indexChain` die gebruiken).
-- Produceert: `type Record struct { Kind, Chain, Path string; Findings []Finding; Paired bool; Assignment string; AssignmentApplied *bool; Repo string; Issue int; Linked bool }`, `type Finding struct { ID, Source, Severity, SevCodex, SevFallback, Decision string }`, `func Select(dataRoot string, repos []review.ServedRepo) (kept []Record, dropped Dropped, err error)`, `type Dropped struct { Fallback, NoCodexVersion, NotPaired, NotFinished, Unreadable int }`.
+- Produceert: `type Record struct { Kind, Chain, Path string; Findings []Finding; Paired bool; Assignment string; AssignmentApplied *bool; Repo string; Issue int; Linked bool }`, `type Finding struct { ID, Source, Severity, SevCodex, SevFallback, Decision string; Round int }`, `func Select(dataRoot string, repos []review.ServedRepo) (kept []Record, dropped Dropped, err error)`, `type Dropped struct { Fallback, OtherMode, NoCodexVersion, NotPaired, NotFinished, Unreadable int }`.
 
 - [ ] **Stap 1: faalende test** `TestSelect_KeepsOnlyPairedCodexWithVersion`: fixture-datadir (in `t.TempDir()`) met vijf ketens — gepaard codex met versie, `review_mode: fallback`, codex zonder `codex_version`, `paired: false`, en één keten waarvan de nieuwste poging alleen `.<naam>.tmp` is. Verwacht: 1 record in `kept`; `Dropped{Fallback:1, NoCodexVersion:1, NotPaired:1, NotFinished:1}`.
 - [ ] **Stap 2:** `go test ./internal/review/compare/ -run TestSelect -v` → FAIL (pakket ontbreekt).
-- [ ] **Stap 3:** implementeer `Select` en de helper `review.NewestRecordPath`; herleiding traject via `review.Trace` met `ServedRepo`; zet `Linked=false` als niet eenduidig.
+- [ ] **Stap 3:** implementeer `Select` en de helper `review.NewestRecordPath`; herleiding traject eerst via `doc.Trajectory`, anders via `review.Trace` met `review.HasCommit` en `ServedRepo` (zoals `indexChain` in `internal/review/index.go`); zet `Linked=false` als niet eenduidig. Controlevolgorde voor `Dropped`: eerst modus (`fallback` of een andere modus dan `codex` → `Fallback` respectievelijk `OtherMode`), dan `paired`, dan `codex_version`. Neem `Round` uit het veld `round` van de bevinding; alleen ronde 1 heeft `source` en `severity_by_source`.
 - [ ] **Stap 4:** test `TestSelect_NewestAttemptPerChain` (twee pogingen, alleen de nieuwste telt) en `TestSelect_AmbiguousRepoNotLinked`. Draai `go test ./internal/review/...` → PASS.
 - [ ] **Stap 5: commit** `feat(review): selecteer gepaarde codex-records voor de eerste vergelijking (#573)`.
 
@@ -65,9 +65,9 @@
 - Consumeert: `[]Record` uit taak 1.
 - Produceert: `type Counts struct { N int; BySource map[string]int; Adopted, Rejected, LeftOpen int }`, `func Tally(rs []Record) Result`, `type Result struct { Sources map[string]Counts; CodexOnlyBM, OpusOnlyBM Capture }`, `type Capture struct { Adopted, Caught int; Low, High float64 }` (Wilson 95%-interval), `func Wilson(k, n int) (low, high float64)`.
 
-- [ ] **Stap 1: faalende tests**: `TestTally_CounterfactualUsesOwnSeverity` (een `both`-bevinding met Codex-ernst MINOR en Opus-ernst MAJOR telt als MINOR bij Codex-alleen en als MAJOR bij Opus-alleen); `TestTally_NoAdoptedBlockerMajor_NoDivision` (n=0 → `Capture{}` met `Defined=false`, geen NaN); `TestWilson_KnownValues` (k=9, n=10 → ongeveer 0.60–0.98).
+- [ ] **Stap 1: faalende tests**: `TestTally_CounterfactualUsesOwnSeverity` (een `both`-bevinding met Codex-ernst MINOR en Opus-ernst MAJOR telt als MINOR bij Codex-alleen en als MAJOR bij Opus-alleen); `TestTally_OnlyRound1Counts` (een ronde-2-bevinding met lege `Source` telt niet mee in `Sources` en niet in de noemer); `TestTally_OpusOnlyMajorLowersCodexCapture` (een Opus-only MAJOR brengt de Codex-capture onder 100%); `TestTally_NoAdoptedBlockerMajor_NoDivision` (n=0 → `Capture{}` met `Defined=false`, geen NaN); `TestWilson_KnownValues` (k=9, n=10 → ongeveer 0.60–0.98).
 - [ ] **Stap 2:** draai → FAIL.
-- [ ] **Stap 3:** implementeer `Tally`, `Capture.Defined bool`, `Wilson`. Besluit via `review.FindingDecision` op het recordbesluit; ernst uit `SevCodex` respectievelijk `SevFallback`.
+- [ ] **Stap 3:** implementeer `Tally`, `Capture.Defined bool`, `Wilson`. Tel alleen bevindingen met `Round == 1`. Noemer van de 90%-toets (`Capture.Adopted`): alle overgenomen (`accept`/`spec`) ronde-1-bevindingen die BLOCKER of MAJOR zijn bij minstens één bron, op de eigen ernst van die bron; `Caught` = die waarvan de Codex-ernst BLOCKER of MAJOR is. Een `fallback`-bevinding (Opus-only) zit dus in de noemer en niet in de teller. Besluit via `review.FindingDecision` op het recordbesluit; ernst uit `SevCodex` respectievelijk `SevFallback`.
 - [ ] **Stap 4:** draai → PASS.
 - [ ] **Stap 5: commit** `feat(review): tel bevindingen per bron met eigen ernst en onzekerheid (#573)`.
 
@@ -111,7 +111,7 @@ Dit is meetwerk op de echte datadir; de stappen zijn commando's, geen code.
 
 - [ ] **Stap 1:** bepaal het recordvenster: oudste `written_at` onder `<datadir>/{plan,spec}-review/*/*/record.json`; `DAYS` = dagen sinds die datum + 7.
 - [ ] **Stap 2:** voor elke bediende repo (`lighthouse config` van de hostconfig; elke clone): `lighthouse measure-recovery --repo-dir <clone> --days $DAYS`. Leg per repo de uitvoerregel vast.
-- [ ] **Stap 3:** `lighthouse review-index` en daarna `lighthouse compare-reviewers > uitvoer.md`.
+- [ ] **Stap 3:** `go run ./cmd/lighthouse review-index` en daarna `go run ./cmd/lighthouse compare-reviewers > uitvoer.md` (de geïnstalleerde binary kent `compare-reviewers` nog niet).
 - [ ] **Stap 4:** schrijf het resultaatdocument: aantallen per bron, 90%-toets met interval, klassen met aantallen, afgevallen records per reden, fallbacks en niet-toegepaste indelingen apart, en wat er niet uit te concluderen valt. Alleen aantallen en patronen, geen persoonsgegevens.
 - [ ] **Stap 5: commit** `docs(planning): uitkomst fase 1 van vergelijking 1 (#573)`.
 
@@ -125,8 +125,8 @@ Dit is meetwerk op de echte datadir; de stappen zijn commando's, geen code.
 - Consumeert: velden van `repoconfig.Experiment` (`id`, `component`, `choice`, `share`, `sample`, `start`) en `[[schedule]]` met `job = "measure-recovery"` en `[schedule.params] days` (zie `docs/tick.md`, *Job `measure-recovery`*).
 
 - [ ] **Stap 1:** schat de instroom: aantal trajecten met een planreview per week uit `runs` en de reviewrecords van de laatste 8 weken; trajecten per week × `share` = variant-trajecten per week. Leg `n_per_week`, de verwachte duur voor `sample = 20` en de keuze (8 weken of langer, binnen `share ≤ 0.20`) vast in het resultaatdocument.
-- [ ] **Stap 2: faalende test** in `internal/repoconfig/experiment_test.go`: `TestLighthouseToml_ExperimentLoads` laadt de `lighthouse.toml` van de repo en verwacht één `Experiment{Component:"plan_review", Choice:"codex"}`.
-- [ ] **Stap 3:** voeg toe, met `start` = de datum van de merge van de PR en `share`/`sample` uit stap 1 (`sample = 20`):
+- [ ] **Stap 2: faalende test** in `internal/repoconfig/experiment_test.go`: `TestLighthouseToml_ExperimentLoads` laadt de `lighthouse.toml` van de repo en verwacht één `Experiment{Component:"plan_review", Choice:"codex"}`. Deze test geldt alleen zolang het blok bestaat: taak 7 stap 2 en 3 verwijderen of herschrijven hem in dezelfde commit als het blok.
+- [ ] **Stap 3:** voeg toe, met `start` = de datum van vandaag (de commitdatum) en `share`/`sample` uit stap 1 (`sample = 20`):
 
   ```toml
   [[experiment]]
@@ -152,11 +152,11 @@ Dit is meetwerk op de echte datadir; de stappen zijn commando's, geen code.
 
 ## Taak 7: Fase 2 meten en besluit
 
-Dit vindt plaats na afloop van de steekproef of de duur; het is menselijk werk.
+Het is menselijk werk. Tijdens fase 2 controleert de mens de stopregel (stap 2) wekelijks, en bij elk 10e variant-traject, aan de hand van `measure-recovery`; de eindmeting en het besluit volgen na afloop van de steekproef of de duur.
 
-- [ ] **Stap 1:** draai `lighthouse compare-reviewers` en het telemetrierapport (`internal/telemetry/report`, componentblok `plan_review`) over de variantgroep en de standaardgroep. Noem fallbacks en niet-toegepaste indelingen apart.
-- [ ] **Stap 2:** controleer de stopregel: herstel na merge in de variantgroep ≥ 2× standaard na ≥ 10 trajecten → direct stoppen: verwijder het `[[experiment]]`-blok (commit `chore(experiment): stop plan_review=codex wegens herstel (#573)`).
-- [ ] **Stap 3:** na afloop: verwijder het `[[schedule]]`-blok `measure-recovery` van deze fase en het `[[experiment]]`-blok in een commit.
+- [ ] **Stap 1:** draai `go run ./cmd/lighthouse compare-reviewers` over de standaardgroep (variantrecords zijn niet gepaard en vallen daar af) en het telemetrierapport (`internal/telemetry/report`, componentblok `plan_review`) over de variantgroep en de standaardgroep; het fase-2-signaal komt uit het rapport. Noem fallbacks en niet-toegepaste indelingen apart.
+- [ ] **Stap 2:** controleer de stopregel: herstel na merge in de variantgroep ≥ 2× standaard na ≥ 10 trajecten → direct stoppen: verwijder het `[[experiment]]`-blok en herschrijf of verwijder `TestLighthouseToml_ExperimentLoads` in dezelfde commit (commit `chore(experiment): stop plan_review=codex wegens herstel (#573)`).
+- [ ] **Stap 3:** na afloop: verwijder het `[[schedule]]`-blok `measure-recovery` van deze fase en het `[[experiment]]`-blok in een commit, met dezelfde aanpassing van `TestLighthouseToml_ExperimentLoads`.
 - [ ] **Stap 4:** plaats de besluitcomment op #573: één van *behouden, aanpassen, breder inzetten, verder onderzoeken, stoppen*, met onderbouwing, aantallen en onzekerheid. Een voorgestelde wijziging aan model, skill of harness wordt een eigen issue (`/lighthouse-write-issue`). De mens neemt het besluit; sluit het issue via `/lighthouse-close-issue`.
 
 ## Zelfreview
