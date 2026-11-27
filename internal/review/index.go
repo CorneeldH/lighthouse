@@ -135,25 +135,33 @@ func deleteChain(ctx context.Context, db *sql.DB, chainPrefix, keep string, res 
 	return err
 }
 
+// NewestRecordPath returns the path of the record.json of the newest attempt of the chain in
+// chainDir. ok is false when the chain has no attempt or its newest attempt is only staged (a
+// `.<name>.tmp` directory): older attempts never stand in for it. The file itself is not read, so
+// it may still be missing; the caller sees that on reading.
+func NewestRecordPath(chainDir string) (path string, ok bool, err error) {
+	attempt, finished, err := newestAttempt(chainDir)
+	if err != nil || attempt == "" || !finished {
+		return "", false, err
+	}
+	return filepath.Join(chainDir, attempt, "record.json"), true, nil
+}
+
 func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, repos []ServedRepo, res *IndexResult) error {
 	chainDir := filepath.Join(dataRoot, kind+"-review", chain)
 	// Data and read errors of one chain are skips, so that one bad chain does not
 	// stop the others; only database errors are returned.
-	attempt, finished, err := newestAttempt(chainDir)
+	recordPath, ok, err := NewestRecordPath(chainDir)
 	if err != nil {
 		res.Skipped = append(res.Skipped, Skip{Path: chainDir, Reason: "unreadable chain: " + err.Error()})
 		return nil
 	}
-	if attempt == "" {
-		return nil
-	}
 	chainPrefix := kind + "/" + chain + "/"
 	keep := ""
-	recordPath := filepath.Join(chainDir, attempt, "record.json")
 	var data []byte
-	if finished {
+	if ok {
 		if data, err = os.ReadFile(recordPath); err == nil {
-			keep = chainPrefix + attempt + "/"
+			keep = chainPrefix + filepath.Base(filepath.Dir(recordPath)) + "/"
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			res.Skipped = append(res.Skipped, Skip{Path: recordPath, Reason: "unreadable record: " + err.Error()})
 			return nil
