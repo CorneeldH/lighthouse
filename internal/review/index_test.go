@@ -622,3 +622,22 @@ func TestIndexRecordsSkipsBadAssignment(t *testing.T) {
 		t.Errorf("run rows = %d, finding rows = %d; want only the good chain's run", n, rows(t, db, `1 = 1`))
 	}
 }
+
+func TestIndexRecordsChainDirWithoutAttemptsRemovesStaleRows(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	path := writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
+	if _, err := IndexRecords(ctx, db, root, fixedNow, nil); err != nil {
+		t.Fatal(err)
+	}
+	// the chain directory stays, its only attempt goes
+	if err := os.RemoveAll(filepath.Dir(filepath.Dir(path)) + "/A1"); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IndexRecords(ctx, db, root, fixedNow, nil)
+	if err != nil || res.Removed != 1 {
+		t.Fatalf("res = %+v, %v; want Removed 1", res, err)
+	}
+	if n := rows(t, db, `1 = 1`); n != 0 {
+		t.Errorf("rows = %d, want 0", n)
+	}
+}

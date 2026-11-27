@@ -101,9 +101,11 @@ func TestCompareReviewers_PrintsDroppedAndNoConclusion(t *testing.T) {
 		"Geselecteerd: 13 records. Afgevallen: 2.",
 		"| fallback (review_mode fallback) | 1 |",
 		"| zonder reviewer.codex_version | 1 |",
+		"Gekoppelde records zonder traject in de database (tellen voor bevindingen, niet voor herstel): 0.",
+		"de rij `both` telt de ernst van Codex",
 		"- Alleen Codex: 10 van 10 overgenomen BLOCKER/MAJOR (100%), Wilson 95%-interval 72% tot 100%: 90% niet uitgesloten, niet bevestigd.",
-		"| route | big | 10 | 10 | 10 van 10 | 0 hersteld, 0 open | gemeten |",
-		"| route | small | 3 | 3 | niet gedefinieerd | 0 hersteld, 0 open | geen conclusie |",
+		"| route | big | 10 | 10 | 10 van 10 | niet gemeten | gemeten |",
+		"| route | small | 3 | 3 | niet gedefinieerd | niet gemeten | geen conclusie |",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -156,5 +158,34 @@ func TestCompareReviewers_MissingDatabaseIsExit1AndCreatesNothing(t *testing.T) 
 func TestCompareReviewers_RejectsArguments(t *testing.T) {
 	if code, _, _ := runCompareReviewers(t, "x"); code != 2 {
 		t.Errorf("want exit 2, got %d", code)
+	}
+}
+
+func TestCompareReviewers_RecoveryMeasuredVersusNot(t *testing.T) {
+	data := compareEnv(t)
+	seedCompareDB(t, 2, func(i int) string { return fmt.Sprintf("r%d", i) })
+	path, _ := store.DefaultPath()
+	st, err := store.OpenShared(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	if err := st.DB.QueryRow(`SELECT id FROM trajectories WHERE issue = 1`).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DB.Exec(`INSERT INTO recoveries (source, source_id, recorded_at, trajectory_id, pr, merged_at, window_end, status) VALUES ('t', 'x1', '2026-03-03T09:00:00Z', ?, 5, '2026-03-03T09:00:00Z', '2026-03-10T09:00:00Z', 'recovered')`, id); err != nil {
+		t.Fatal(err)
+	}
+	_ = st.Close()
+	for i := 1; i <= 3; i++ { // issue 3 is not in the database
+		writeCompareRecord(t, data, fmt.Sprintf("c%d", i), chainRecord(i, "accept", ""))
+	}
+	_, out, _ := runCompareReviewers(t)
+	for _, want := range []string{"| route | r1 | 1 | 1 | 1 van 1 | 1 van 1 gemeten: 1 hersteld, 0 open | geen conclusie |",
+		"| route | r2 | 1 | 1 | 1 van 1 | niet gemeten | geen conclusie |",
+		"records zonder traject in de database (tellen voor bevindingen, niet voor herstel): 1."} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
 	}
 }

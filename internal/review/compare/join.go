@@ -15,13 +15,15 @@ const minGroup = 10
 
 // Class is one value of one feature (route, plangrootte, gebied, repo) with the findings of the
 // records in it and the recovery after merge of its trajectories. Trajectories counts the
-// distinct linked trajectories; Recovered and Open count those among them. Conclusion is true
-// only when at least 10 trajectories saw a Codex finding and at least 10 an Opus finding.
+// distinct linked trajectories; Recovered and Open count those among them, and Measured those
+// with at least one recovery row (0 means recovery is not measured, not that none happened). Conclusion is true
+// only (never for the class Unknown) when at least 10 trajectories saw a Codex finding and at least 10 an Opus finding.
 type Class struct {
 	Key, Value      string
 	Trajectories    int
 	Result          Result
 	Recovered, Open int
+	Measured        int
 	Conclusion      bool
 }
 
@@ -35,6 +37,7 @@ type acc struct {
 	trajs         map[tkey]bool
 	codex, opus   map[tkey]bool
 	recov, opened int
+	measured      int
 }
 
 // ByClass groups the records by the features of their trajectory. A record without a linked
@@ -86,6 +89,9 @@ func ByClass(rs []Record, ts []*report.Trajectory) []Class {
 			key := tkey{t.Repo, t.Issue}
 			if !a.trajs[key] {
 				a.trajs[key] = true
+				if len(t.Recoveries) > 0 {
+					a.measured++
+				}
 				switch recoveryOf(t) {
 				case "recovered":
 					a.recov++
@@ -111,8 +117,8 @@ func ByClass(rs []Record, ts []*report.Trajectory) []Class {
 	var out []Class
 	for k, a := range accs {
 		out = append(out, Class{Key: k[0], Value: k[1], Trajectories: len(a.trajs), Result: Tally(a.records),
-			Recovered: a.recov, Open: a.opened,
-			Conclusion: len(a.codex) >= minGroup && len(a.opus) >= minGroup})
+			Recovered: a.recov, Open: a.opened, Measured: a.measured,
+			Conclusion: k[1] != Unknown && len(a.codex) >= minGroup && len(a.opus) >= minGroup})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Key != out[j].Key {

@@ -72,7 +72,7 @@ func newCompareReviewersCommand() *cobra.Command {
 			if len(ds.Missing) > 0 {
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Let op: tabellen ontbreken in de database (%s); het herstel na merge is niet gemeten.\n\n", strings.Join(ds.Missing, ", "))
 			}
-			printComparison(cmd.OutOrStdout(), kept, dropped, compare.Tally(kept), compare.ByClass(kept, ts))
+			printComparison(cmd.OutOrStdout(), kept, countMissingTrajectories(kept, ts), dropped, compare.Tally(kept), compare.ByClass(kept, ts))
 			return nil
 		},
 	}
@@ -95,10 +95,11 @@ func printCapture(w io.Writer, name string, c compare.Capture) {
 		name, c.Caught, c.Adopted, pct(float64(c.Caught)/float64(c.Adopted)), pct(c.Low), pct(c.High), verdict)
 }
 
-func printComparison(w io.Writer, kept []compare.Record, d compare.Dropped, res compare.Result, classes []compare.Class) {
+func printComparison(w io.Writer, kept []compare.Record, missingTraj int, d compare.Dropped, res compare.Result, classes []compare.Class) {
 	totalDropped := d.Fallback + d.OtherMode + d.NoCodexVersion + d.NotPaired + d.NotFinished + d.Unreadable
 	_, _ = fmt.Fprintf(w, "# Vergelijking 1: wat voegt de tweede reviewer toe\n\n")
 	_, _ = fmt.Fprintf(w, "Geselecteerd: %d records. Afgevallen: %d.\n\n", len(kept), totalDropped)
+	_, _ = fmt.Fprintf(w, "Gekoppelde records zonder traject in de database (tellen voor bevindingen, niet voor herstel): %d.\n\n", missingTraj)
 	_, _ = fmt.Fprintf(w, "| Reden van afvallen | Aantal |\n|---|---|\n")
 	for _, r := range []struct {
 		name string
@@ -115,7 +116,7 @@ func printComparison(w io.Writer, kept []compare.Record, d compare.Dropped, res 
 	}
 
 	_, _ = fmt.Fprintf(w, "\n## Bevindingen per bron\n\n")
-	_, _ = fmt.Fprintf(w, "Ernst per bron zelf (ronde 1). `fallback` is Opus.\n\n")
+	_, _ = fmt.Fprintf(w, "Ernst per bron zelf (ronde 1). `fallback` is Opus; de rij `both` telt de ernst van Codex.\n\n")
 	_, _ = fmt.Fprintf(w, "| Bron | Bevindingen | BLOCKER | MAJOR | MINOR | Overgenomen | Afgewezen | Open |\n|---|---|---|---|---|---|---|---|\n")
 	for _, s := range []string{"codex", "fallback", "both"} {
 		c := res.Sources[s]
@@ -143,11 +144,15 @@ func printComparison(w io.Writer, kept []compare.Record, d compare.Dropped, res 
 		if c.Conclusion {
 			concl = "gemeten"
 		}
-		_, _ = fmt.Fprintf(w, "| %s | %s | %d | %d | %s | %d hersteld, %d open | %s |\n",
-			c.Key, c.Value, c.Trajectories, findings, catch, c.Recovered, c.Open, concl)
+		recov := "niet gemeten"
+		if c.Measured > 0 {
+			recov = fmt.Sprintf("%d van %d gemeten: %d hersteld, %d open", c.Measured, c.Trajectories, c.Recovered, c.Open)
+		}
+		_, _ = fmt.Fprintf(w, "| %s | %s | %d | %d | %s | %s | %s |\n",
+			c.Key, c.Value, c.Trajectories, findings, catch, recov, concl)
 	}
 	if len(classes) == 0 {
-		_, _ = fmt.Fprintf(w, "| - | - | 0 | 0 | niet gedefinieerd | 0 hersteld, 0 open | geen conclusie |\n")
+		_, _ = fmt.Fprintf(w, "| - | - | 0 | 0 | niet gedefinieerd | niet gemeten | geen conclusie |\n")
 	}
 
 	_, _ = fmt.Fprintf(w, "\n## Fallbacks en niet-toegepaste indelingen\n\n")
@@ -174,4 +179,19 @@ func printComparison(w io.Writer, kept []compare.Record, d compare.Dropped, res 
 	for _, n := range names {
 		_, _ = fmt.Fprintf(w, "- Niet-toegepaste indeling `%s` (assignment_applied: false): %d.\n", n, notApplied[n])
 	}
+}
+
+// countMissingTrajectories counts the linked records whose trajectory is not in the database.
+func countMissingTrajectories(kept []compare.Record, ts []*telreport.Trajectory) int {
+	have := map[string]bool{}
+	for _, t := range ts {
+		have[fmt.Sprintf("%s#%d", t.Repo, t.Issue)] = true
+	}
+	n := 0
+	for _, r := range kept {
+		if r.Linked && !have[fmt.Sprintf("%s#%d", r.Repo, r.Issue)] {
+			n++
+		}
+	}
+	return n
 }

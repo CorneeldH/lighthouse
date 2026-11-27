@@ -119,3 +119,29 @@ func TestByClass_RecoveredNeedsClosedTrajectory(t *testing.T) {
 		t.Errorf("not closed: neither recovered nor open, got %+v", c)
 	}
 }
+
+func TestByClass_MeasuredCountsTrajectoriesWithRecoveryRows(t *testing.T) {
+	ts := []*report.Trajectory{jtraj(1, "sdd", telemetry.RecoveryRecovered), jtraj(2, "sdd", "")}
+	c := classOf(t, ByClass([]Record{jrec(1, "both"), jrec(2, "both")}, ts), "route", "sdd")
+	if c.Trajectories != 2 || c.Measured != 1 {
+		t.Errorf("want 2 trajectories, 1 measured, got %+v", c)
+	}
+	none := classOf(t, ByClass([]Record{jrec(2, "both")}, ts[1:]), "route", "sdd")
+	if none.Measured != 0 {
+		t.Errorf("no recovery rows must give Measured 0, got %+v", none)
+	}
+}
+
+func TestByClass_UnknownClassNeverConcludes(t *testing.T) {
+	var rs []Record
+	for i := 1; i <= 12; i++ {
+		rs = append(rs, Record{Repo: "r/x", Issue: i, Linked: true, Findings: []Finding{f("a", "both", "MAJOR", "MAJOR", "adopted", 1)}})
+	}
+	var ts []*report.Trajectory
+	for i := 1; i <= 12; i++ { // trajectories without route: class onbekend
+		ts = append(ts, &report.Trajectory{Repo: "r/x", Issue: i})
+	}
+	if c := classOf(t, ByClass(rs, ts), "route", Unknown); c.Conclusion {
+		t.Errorf("class onbekend must never conclude, got %+v", c)
+	}
+}
