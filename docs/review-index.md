@@ -74,3 +74,15 @@ Het ledger heeft in deze repo geen vast formaat (het komt uit de externe superpo
 `subagent-driven-development`) en wordt aan het eind van de SDD-run verwijderd: draai
 `review-index --ledger` vóór die opruiming. Het automatisch aanroepen vanuit de skill hoort niet bij
 deze wijziging.
+
+## Vergelijking van de tweede reviewer
+
+`lighthouse compare-reviewers` leest dezelfde reviewrecords (alleen gepaarde `review_mode: codex`
+met een gevulde `reviewer.codex_version`, de nieuwste poging per keten) en het herstel na merge
+uit `lighthouse.db`, en print een markdown-rapport: geselecteerde en afgevallen records per reden,
+bevindingen per bron met de ernst van die bron zelf, de 90%-toets met Wilson-interval (`niet
+gedefinieerd` zonder overgenomen BLOCKER- of MAJOR-bevindingen), een tabel per kenmerkklasse
+(`geen conclusie` onder 10 trajecten per groep) en een apart blok voor fallbacks en
+niet-toegepaste indelingen. Het schrijft niets. Exit 0 gemeten, 1 lees- of databasefout, 2 verkeerd
+gebruik. Het is de eerste vergelijking van #573; er volgt geen automatische wijziging aan model,
+skill of harness.
