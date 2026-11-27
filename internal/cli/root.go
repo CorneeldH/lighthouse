@@ -82,6 +82,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newRoborevCommentCommand())
 	root.AddCommand(newPlanReviewRecordCommand(review.DefaultDeps()))
 	root.AddCommand(newReviewIndexCommand())
+	root.AddCommand(newCompareReviewersCommand())
 	root.AddCommand(newReviewPairCommand(review.DefaultPairDeps()))
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newTickCommand())
